@@ -38,24 +38,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function applyTheme(t: 'dark' | 'light') {
     theme.value = t;
-    const root = document.documentElement;
-    root.setAttribute('data-theme', t);
-    // Force CSS variables directly to bypass any selector issues
-    if (t === 'light') {
-      root.style.setProperty('--color-bg', '#ffffff');
-      root.style.setProperty('--color-card-bg', '#fafafa');
-      root.style.setProperty('--color-text-primary', '#1a1a1a');
-      root.style.setProperty('--color-text-secondary', '#666666');
-      root.style.setProperty('--color-border', '#e8e8e8');
-      root.style.setProperty('--color-header-bg', '#f0f0f0');
-    } else {
-      root.style.setProperty('--color-bg', '#1e1e2e');
-      root.style.setProperty('--color-card-bg', '#252536');
-      root.style.setProperty('--color-text-primary', '#e0e0e0');
-      root.style.setProperty('--color-text-secondary', '#888888');
-      root.style.setProperty('--color-border', '#333344');
-      root.style.setProperty('--color-header-bg', '#1a1a2e');
-    }
+    document.documentElement.setAttribute('data-theme', t);
   }
 
   return { settings, datasources, activeDatasource, theme, fetchSettings, setSetting, switchDatasource, toggleTheme, applyTheme };
