@@ -6,17 +6,28 @@ import { useWatchlistStore } from '@/stores/watchlist';
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
 const paused = ref(false);
+const page = ref(0);
+let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await watchlist.fetchWatchlist();
   await quoteStore.startListening();
+  startCycle();
 });
 
 onUnmounted(() => {
   quoteStore.stopListening();
+  if (cycleTimer) clearInterval(cycleTimer);
 });
 
-// Build ticker items: for each watchlist stock, get the latest quote
+function startCycle() {
+  cycleTimer = setInterval(() => {
+    if (!paused.value && tickerItems.value.length > 2) {
+      page.value = (page.value + 2) % tickerItems.value.length;
+    }
+  }, 3000);
+}
+
 const tickerItems = computed(() => {
   return watchlist.items.map(item => {
     const q = quoteStore.getQuote(item.code, item.market);
@@ -29,23 +40,37 @@ const tickerItems = computed(() => {
   });
 });
 
-// Double the items for seamless looping
-const displayItems = computed(() => {
-  return [...tickerItems.value, ...tickerItems.value];
+const visibleItems = computed(() => {
+  const items = tickerItems.value;
+  if (items.length === 0) return [];
+  const result = [];
+  for (let i = 0; i < 2; i++) {
+    const idx = (page.value + i) % items.length;
+    result.push(items[idx]);
+  }
+  return result;
 });
+
+function pauseCycle() {
+  paused.value = true;
+}
+
+function resumeCycle() {
+  paused.value = false;
+}
 </script>
 
 <template>
   <div
     class="ticker-bar"
-    @mouseenter="paused = true"
-    @mouseleave="paused = false"
+    @mouseenter="pauseCycle"
+    @mouseleave="resumeCycle"
   >
-    <div class="ticker-track" :class="{ paused }">
-      <span
-        v-for="(item, i) in displayItems"
-        :key="`${item.code}-${i}`"
-        class="ticker-item"
+    <template v-if="visibleItems.length > 0">
+      <div
+        v-for="item in visibleItems"
+        :key="item.code"
+        class="ticker-row"
       >
         <span class="ticker-name">{{ item.name }}</span>
         <span
@@ -55,7 +80,7 @@ const displayItems = computed(() => {
         >
           {{ item.price.toFixed(2) }}
         </span>
-        <span v-if="item.price === null" class="ticker-na">--</span>
+        <span v-else class="ticker-na">--</span>
         <span
           v-if="item.changePct !== null"
           class="ticker-change"
@@ -63,59 +88,66 @@ const displayItems = computed(() => {
         >
           {{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%
         </span>
-      </span>
+      </div>
+    </template>
+    <div v-else class="ticker-empty">
+      暂无自选
     </div>
   </div>
 </template>
 
 <style scoped>
 .ticker-bar {
-  width: 100vw;
-  height: 32px;
-  overflow: hidden;
+  width: 100%;
+  height: 100%;
   background-color: #0d1117;
-  border-top: 1px solid #222;
+  border: 1px solid #2a2a3a;
+  border-radius: 4px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   user-select: none;
   cursor: default;
+  overflow: hidden;
+  padding: 2px 8px;
 }
-.ticker-track {
+.ticker-row {
   display: flex;
-  gap: 24px;
-  white-space: nowrap;
-  animation: scroll-left 30s linear infinite;
-  padding: 0 16px;
-}
-.ticker-track.paused {
-  animation-play-state: paused;
-}
-.ticker-item {
-  display: flex;
-  gap: 6px;
   align-items: center;
-  flex-shrink: 0;
+  gap: 6px;
+  line-height: 1.3;
 }
 .ticker-name {
   color: #999;
-  font-size: 12px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 56px;
 }
 .ticker-price {
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
+  min-width: 52px;
+  text-align: right;
 }
 .ticker-na {
   color: #666;
-  font-size: 12px;
+  font-size: 11px;
+  min-width: 52px;
+  text-align: right;
 }
 .ticker-change {
-  font-size: 12px;
+  font-size: 11px;
+  min-width: 54px;
+  text-align: right;
 }
 .up { color: #ef5350; }
 .down { color: #66bb6a; }
-
-@keyframes scroll-left {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+.ticker-empty {
+  color: #666;
+  font-size: 11px;
+  text-align: center;
+  width: 100%;
 }
 </style>

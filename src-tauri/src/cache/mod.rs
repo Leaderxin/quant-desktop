@@ -99,7 +99,7 @@ impl Scheduler {
         app_handle: tauri::AppHandle,
         interval_secs: u64,
     ) {
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
 
             loop {

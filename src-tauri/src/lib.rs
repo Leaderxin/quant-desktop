@@ -119,6 +119,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Position ticker window at bottom-right of screen
+            if let Some(ticker) = app.get_webview_window("ticker") {
+                if let Ok(Some(monitor)) = ticker.primary_monitor() {
+                    let size = monitor.size();
+                    let ticker_size = ticker.outer_size().unwrap();
+                    let x = (size.width as i32).saturating_sub(ticker_size.width as i32 + 10);
+                    let y = (size.height as i32).saturating_sub(ticker_size.height as i32 + 60);
+                    let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
