@@ -98,7 +98,7 @@ pub fn run() {
                                     // Reposition to bottom-right
                                     if let Ok(Some(monitor)) = window.primary_monitor() {
                                         let size = monitor.size();
-                                        let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(280, 38));
+                                        let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(250, 38));
                                         let x = (size.width as i32).saturating_sub(win_size.width as i32 + 10);
                                         let y = (size.height as i32).saturating_sub(win_size.height as i32 + 46);
                                         let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
@@ -151,7 +151,7 @@ pub fn run() {
                 let _ = ticker.set_always_on_top(true);
                 if let Ok(Some(monitor)) = ticker.primary_monitor() {
                     let size = monitor.size();
-                    let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(280, 38));
+                    let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(250, 38));
                     let x = (size.width as i32).saturating_sub(ticker_size.width as i32 + 10);
                     let y = (size.height as i32).saturating_sub(ticker_size.height as i32 + 60);
                     let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));

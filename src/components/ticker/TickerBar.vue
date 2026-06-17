@@ -13,6 +13,8 @@ const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let themePollTimer: ReturnType<typeof setInterval> | null = null;
 
+let watchlistPollTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(async () => {
   await settings.fetchSettings();
   settings.applyTheme(settings.theme);
@@ -20,13 +22,21 @@ onMounted(async () => {
   await quoteStore.startListening();
   startCycle();
   startThemePoll();
+  startWatchlistPoll();
 });
 
 onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (themePollTimer) clearInterval(themePollTimer);
+  if (watchlistPollTimer) clearInterval(watchlistPollTimer);
 });
+
+function startWatchlistPoll() {
+  watchlistPollTimer = setInterval(() => {
+    watchlist.fetchWatchlist().catch(() => {});
+  }, 3000);
+}
 
 function startThemePoll() {
   let lastTheme = settings.theme;
@@ -66,8 +76,10 @@ const tickerItems = computed(() =>
 const visibleItems = computed(() => {
   const items = tickerItems.value;
   if (items.length === 0) return [];
+  if (items.length === 1) return [items[0]];
+  const count = Math.min(2, items.length);
   const result = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < count; i++) {
     result.push(items[(page.value + i) % items.length]);
   }
   return result;
