@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
@@ -6,5 +6,11 @@ pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn emit_theme_changed(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    let _ = app.emit("theme-changed", theme);
     Ok(())
 }
