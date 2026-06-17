@@ -38,6 +38,50 @@ pub fn reorder_watch(
 }
 
 #[tauri::command]
+pub fn move_watch_top(
+    db: State<'_, Arc<Database>>,
+    id: i64,
+) -> Result<(), String> {
+    let items = db.get_watchlist().map_err(|e| e.to_string())?;
+    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
+    if let Some(pos) = ids.iter().position(|&x| x == id) {
+        ids.remove(pos);
+        ids.insert(0, id);
+    }
+    db.reorder_watch(&ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn move_watch_up(
+    db: State<'_, Arc<Database>>,
+    id: i64,
+) -> Result<(), String> {
+    let items = db.get_watchlist().map_err(|e| e.to_string())?;
+    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
+    if let Some(pos) = ids.iter().position(|&x| x == id) {
+        if pos > 0 {
+            ids.swap(pos, pos - 1);
+        }
+    }
+    db.reorder_watch(&ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn move_watch_down(
+    db: State<'_, Arc<Database>>,
+    id: i64,
+) -> Result<(), String> {
+    let items = db.get_watchlist().map_err(|e| e.to_string())?;
+    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
+    if let Some(pos) = ids.iter().position(|&x| x == id) {
+        if pos + 1 < ids.len() {
+            ids.swap(pos, pos + 1);
+        }
+    }
+    db.reorder_watch(&ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn search_stocks(
     manager: State<'_, Arc<DataSourceManager>>,
     keyword: String,

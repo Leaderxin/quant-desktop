@@ -136,7 +136,7 @@ impl DataSource for EastmoneyAdapter {
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
         // SSE 000001, SZSE 399001, ChiNext 399006, STAR 50 000688
-        let index_secids = "1.000001,0.399001,0.399006,1.000688";
+        let index_secids = "1.000001,0.399001,0.399006,1.000680,1.000688";
         let params = [
             ("fltt", "2"),
             ("fields", "f2,f3,f4,f12,f14"),

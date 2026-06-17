@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { NButton, NDataTable, useMessage } from 'naive-ui';
+import { ref, h } from 'vue';
+import { NButton, NDataTable, NDropdown, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
-import { h } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import type { WatchItem } from '@/types';
@@ -12,6 +12,64 @@ const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const message = useMessage();
 const showAddDialog = ref(false);
+
+// Context menu state
+const ctxMenuX = ref(0);
+const ctxMenuY = ref(0);
+const ctxMenuItem = ref<WatchItem | null>(null);
+const showCtxMenu = ref(false);
+
+function handleContextMenu(e: MouseEvent, row: WatchItem) {
+  e.preventDefault();
+  ctxMenuX.value = e.clientX;
+  ctxMenuY.value = e.clientY;
+  ctxMenuItem.value = row;
+  showCtxMenu.value = true;
+}
+
+async function handleDelete() {
+  if (!ctxMenuItem.value) return;
+  await watchlist.removeStock(ctxMenuItem.value.code, ctxMenuItem.value.market);
+  showCtxMenu.value = false;
+}
+
+async function handleMoveTop() {
+  if (!ctxMenuItem.value) return;
+  await invoke('move_watch_top', { id: ctxMenuItem.value.id });
+  await watchlist.fetchWatchlist();
+  showCtxMenu.value = false;
+}
+
+async function handleMoveUp() {
+  if (!ctxMenuItem.value) return;
+  await invoke('move_watch_up', { id: ctxMenuItem.value.id });
+  await watchlist.fetchWatchlist();
+  showCtxMenu.value = false;
+}
+
+async function handleMoveDown() {
+  if (!ctxMenuItem.value) return;
+  await invoke('move_watch_down', { id: ctxMenuItem.value.id });
+  await watchlist.fetchWatchlist();
+  showCtxMenu.value = false;
+}
+
+const ctxOptions = [
+  { label: '置顶', key: 'top' },
+  { label: '上移', key: 'up' },
+  { label: '下移', key: 'down' },
+  { type: 'divider' as const, key: 'd1' },
+  { label: '删除', key: 'delete' },
+];
+
+function handleCtxSelect(key: string) {
+  switch (key) {
+    case 'top': handleMoveTop(); break;
+    case 'up': handleMoveUp(); break;
+    case 'down': handleMoveDown(); break;
+    case 'delete': handleDelete(); break;
+  }
+}
 
 const columns: DataTableColumns<WatchItem> = [
   { title: '代码', key: 'code', width: 80 },
@@ -82,12 +140,23 @@ const columns: DataTableColumns<WatchItem> = [
       :bordered="false"
       :single-line="true"
       size="small"
-      :row-props="() => ({ style: 'height: 36px' })"
+      :row-props="(row: WatchItem) => ({ style: 'height: 36px; cursor: context-menu', onContextmenu: (e: MouseEvent) => handleContextMenu(e, row) })"
       flex-height
       class="watchlist-table"
     />
 
     <AddStockDialog v-model:show="showAddDialog" />
+
+    <NDropdown
+      :show="showCtxMenu"
+      :x="ctxMenuX"
+      :y="ctxMenuY"
+      :options="ctxOptions"
+      placement="bottom-start"
+      trigger="manual"
+      @select="handleCtxSelect"
+      @clickoutside="showCtxMenu = false"
+    />
   </div>
 </template>
 

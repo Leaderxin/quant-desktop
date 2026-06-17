@@ -175,7 +175,7 @@ impl DataSource for SinaAdapter {
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
         // Sina index codes
-        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688";
+        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000680,s_sh000688";
         let url = format!("{}{}", SINA_URL, index_codes);
 
         let resp = self

@@ -9,8 +9,10 @@ const isUp = computed(() => props.index.change_pct >= 0);
 <template>
   <div class="index-card" :class="isUp ? 'card-up' : 'card-down'">
     <span class="index-name">{{ index.name }}</span>
-    <span class="index-price tabular-nums">{{ index.price.toFixed(2) }}</span>
-    <span class="index-change tabular-nums">
+    <span class="index-price tabular-nums" :class="isUp ? 'up' : 'down'">
+      {{ index.price.toFixed(2) }}
+    </span>
+    <span class="index-change tabular-nums" :class="isUp ? 'up' : 'down'">
       {{ isUp ? '+' : '' }}{{ index.change_pct.toFixed(2) }}%
     </span>
   </div>
@@ -20,13 +22,15 @@ const isUp = computed(() => props.index.change_pct >= 0);
 .index-card {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   background: var(--color-surface-1);
   border: 1px solid var(--color-border-0);
+  border-left: 2px solid var(--color-border-0);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
   flex-shrink: 0;
-  min-width: 150px;
+  min-width: 162px;
+  height: 44px;
   transition: border-color var(--transition-fast);
 }
 .card-up { border-left: 2px solid var(--color-up); }
@@ -39,18 +43,17 @@ const isUp = computed(() => props.index.change_pct >= 0);
   margin-right: auto;
 }
 .index-price {
-  font-size: var(--text-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-bold);
   font-family: var(--font-mono);
-  color: var(--color-text-primary);
 }
 .index-change {
   font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   font-family: var(--font-mono);
-  min-width: 56px;
+  min-width: 58px;
   text-align: right;
 }
-.card-up .index-change { color: var(--color-up); }
-.card-down .index-change { color: var(--color-down); }
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
 </style>
