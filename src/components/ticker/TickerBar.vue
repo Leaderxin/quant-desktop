@@ -111,7 +111,7 @@ async function handleClick() {
   height: 100%;
   background: var(--color-surface-1);
   border: 1px solid var(--color-border-0);
-  border-radius: var(--radius-md);
+  border-radius: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
