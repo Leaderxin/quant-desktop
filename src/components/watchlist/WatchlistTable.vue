@@ -112,7 +112,18 @@ const columns: DataTableColumns<WatchItem> = [
     }
   },
   {
-    title: '换手率', key: 'turnover_rate', width: 90,
+    title: '涨跌额', key: 'change', width: 90,
+    render(row) {
+      const q = quoteStore.getQuote(row.code, row.market);
+      if (!q) return '--';
+      const v = q.change;
+      const color = v >= 0 ? '#f85149' : '#3fb950';
+      return h('span', { style: { color } },
+        `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+    }
+  },
+  {
+    title: '换手率', key: 'turnover_rate', width: 80,
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q || q.turnover_rate == null) return '--';
