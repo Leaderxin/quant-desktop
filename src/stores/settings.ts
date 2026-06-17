@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Record<string, string>>({});
@@ -34,11 +35,13 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = theme.value === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme.value);
     setSetting('theme', theme.value);
+    emit('theme-changed', theme.value);
   }
 
   function applyTheme(t: 'dark' | 'light') {
     theme.value = t;
     document.documentElement.setAttribute('data-theme', t);
+    emit('theme-changed', t);
   }
 
   return { settings, datasources, activeDatasource, theme, fetchSettings, setSetting, switchDatasource, toggleTheme, applyTheme };

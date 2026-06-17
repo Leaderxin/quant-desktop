@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -12,17 +13,25 @@ const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
+let unlistenTheme: (() => void) | null = null;
+
 onMounted(async () => {
   await settings.fetchSettings();
   settings.applyTheme(settings.theme);
   await watchlist.fetchWatchlist();
   await quoteStore.startListening();
   startCycle();
+
+  // Listen for theme changes from main window
+  unlistenTheme = await listen<string>('theme-changed', (event) => {
+    settings.applyTheme(event.payload as 'dark' | 'light');
+  });
 });
 
 onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
+  unlistenTheme?.();
 });
 
 function startCycle() {
