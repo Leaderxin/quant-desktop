@@ -34,13 +34,11 @@ export const useSettingsStore = defineStore('settings', () => {
     theme.value = theme.value === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme.value);
     setSetting('theme', theme.value);
-    invoke('emit_theme_changed', { theme: theme.value });
   }
 
   function applyTheme(t: 'dark' | 'light') {
     theme.value = t;
     document.documentElement.setAttribute('data-theme', t);
-    invoke('emit_theme_changed', { theme: t });
   }
 
   return { settings, datasources, activeDatasource, theme, fetchSettings, setSetting, switchDatasource, toggleTheme, applyTheme };
