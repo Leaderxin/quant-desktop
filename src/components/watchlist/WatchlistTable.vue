@@ -7,6 +7,7 @@ import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import type { WatchItem } from '@/types';
 import AddStockDialog from './AddStockDialog.vue';
+import StockDetail from '@/components/detail/StockDetail.vue';
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
@@ -17,6 +18,9 @@ const ctxMenuX = ref(0);
 const ctxMenuY = ref(0);
 const ctxMenuItem = ref<WatchItem | null>(null);
 const showCtxMenu = ref(false);
+
+// Detail panel state
+const selectedRow = ref<WatchItem | null>(null);
 
 function handleContextMenu(e: MouseEvent, row: WatchItem) {
   e.preventDefault();
@@ -91,9 +95,17 @@ function handleCtxSelect(key: string) {
 
 const columns: DataTableColumns<WatchItem> = [
   { title: '代码', key: 'code', width: 80 },
-  { title: '名称', key: 'name', width: 100, ellipsis: true },
+  {
+    title: '名称', key: 'name', width: 100, ellipsis: true,
+    sorter: (a: WatchItem, b: WatchItem) => a.name.localeCompare(b.name),
+  },
   {
     title: '最新价', key: 'price', width: 100,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.price ?? 0) - (qb?.price ?? 0);
+    },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       return q?.price?.toFixed(2) ?? '--';
@@ -101,6 +113,11 @@ const columns: DataTableColumns<WatchItem> = [
   },
   {
     title: '涨跌幅', key: 'change_pct', width: 100,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.change_pct ?? 0) - (qb?.change_pct ?? 0);
+    },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q) return '--';
@@ -112,6 +129,11 @@ const columns: DataTableColumns<WatchItem> = [
   },
   {
     title: '涨跌额', key: 'change', width: 90,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.change ?? 0) - (qb?.change ?? 0);
+    },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q) return '--';
@@ -123,6 +145,11 @@ const columns: DataTableColumns<WatchItem> = [
   },
   {
     title: '换手率', key: 'turnover_rate', width: 80,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.turnover_rate ?? 0) - (qb?.turnover_rate ?? 0);
+    },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q || q.turnover_rate == null) return '--';
@@ -154,9 +181,19 @@ const columns: DataTableColumns<WatchItem> = [
       :bordered="false"
       :single-line="true"
       size="small"
-      :row-props="(row: WatchItem) => ({ style: 'height: 36px; cursor: context-menu', onContextmenu: (e: MouseEvent) => handleContextMenu(e, row) })"
+      :row-props="(row: WatchItem) => ({
+        style: `height: 36px; cursor: pointer; ${selectedRow?.id === row.id ? 'background: var(--color-bg-elevated, rgba(255,255,255,0.04))' : ''}`,
+        onContextmenu: (e: MouseEvent) => handleContextMenu(e, row),
+        onClick: () => { selectedRow = selectedRow?.id === row.id ? null : row; }
+      })"
       flex-height
       class="watchlist-table"
+    />
+
+    <StockDetail
+      v-if="selectedRow"
+      :item="selectedRow"
+      @close="selectedRow = null"
     />
 
     <AddStockDialog v-model:show="showAddDialog" />
