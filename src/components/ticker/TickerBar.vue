@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -13,7 +12,7 @@ const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
-let unlistenTheme: (() => void) | null = null;
+let themePollTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await settings.fetchSettings();
@@ -22,16 +21,24 @@ onMounted(async () => {
   await quoteStore.startListening();
   startCycle();
 
-  // Listen for theme changes from main window
-  unlistenTheme = await listen<string>('theme-changed', (event) => {
-    settings.applyTheme(event.payload as 'dark' | 'light');
-  });
+  // Poll theme from backend every second to sync with main window
+  let lastTheme = settings.theme;
+  themePollTimer = setInterval(async () => {
+    try {
+      const all = await invoke<Record<string, string>>('get_settings');
+      const current = (all['theme'] as 'dark' | 'light') || 'dark';
+      if (current !== lastTheme) {
+        lastTheme = current;
+        settings.applyTheme(current);
+      }
+    } catch { /* ignore */ }
+  }, 1000);
 });
 
 onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
-  unlistenTheme?.();
+  if (themePollTimer) clearInterval(themePollTimer);
 });
 
 function startCycle() {
