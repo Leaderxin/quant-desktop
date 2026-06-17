@@ -186,7 +186,7 @@ impl Database {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct WatchItem {
     pub id: i64,
     pub code: String,
