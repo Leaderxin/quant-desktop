@@ -1,6 +1,4 @@
 name: Release
-# Build desktop installers for Windows, macOS, and Linux.
-# Triggered on pushes to master (tags only) or manually via workflow_dispatch.
 
 on:
   push:
@@ -16,25 +14,13 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: |
-              *.exe
-              *.msi
-              *.zip
-
           - os: macos-latest
             target: universal-apple-darwin
-            artifact: |
-              *.dmg
-              *.app.tar.gz
-
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: |
-              *.deb
-              *.AppImage
-              *.tar.gz
 
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -61,7 +47,6 @@ jobs:
             libxdo-dev \
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
-          # tray indicator: try ayatana first (Ubuntu 22.04+), fallback to appindicator
           sudo apt-get install -y libayatana-appindicator3-dev 2>/dev/null || \
             sudo apt-get install -y libappindicator3-dev 2>/dev/null || true
 
@@ -73,16 +58,35 @@ jobs:
         run: npm ci
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        run: npx tauri build --target ${{ matrix.target }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target ${{ matrix.target }}
+          CI: 'true'
 
-      - name: Upload artifacts
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: quant-desktop-${{ matrix.os }}
+          name: quant-desktop-windows
           path: |
-            src-tauri/target/release/bundle/**/${{ matrix.artifact }}
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+      - name: Upload artifacts (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quant-desktop-macos
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+      - name: Upload artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quant-desktop-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
