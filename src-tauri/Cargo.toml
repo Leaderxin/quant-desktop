@@ -26,4 +26,5 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
 

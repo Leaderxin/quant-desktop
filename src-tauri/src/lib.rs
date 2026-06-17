@@ -1,6 +1,7 @@
 pub mod domain;
 pub mod db;
 pub mod datasource;
+pub mod cache;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
