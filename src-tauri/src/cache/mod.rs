@@ -29,7 +29,7 @@ impl QuoteCache {
     /// Restore cache from SQLite (called on startup)
     pub fn restore_from_db(&self) {
         if let Ok(cached) = self.db.get_cached_quotes() {
-            let mut quotes = self.quotes.lock().unwrap();
+            let mut quotes = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
             let now = std::time::Instant::now();
             for q in cached {
                 let key = format!("{}:{}", q.market, q.code);
@@ -44,46 +44,48 @@ impl QuoteCache {
         }
     }
 
-    /// Update cache with fresh quotes
+    /// Update cache with fresh quotes (DB write is outside the lock scope)
     pub fn update_quotes(&self, quotes: &[Quote]) {
-        let mut cache = self.quotes.lock().unwrap();
-        let now = std::time::Instant::now();
-        for q in quotes {
-            let key = format!("{}:{}", q.market, q.code);
-            cache.insert(
-                key,
-                CachedQuote {
-                    data: q.clone(),
-                    cached_at: now,
-                },
-            );
-        }
+        {
+            let mut cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
+            let now = std::time::Instant::now();
+            for q in quotes {
+                let key = format!("{}:{}", q.market, q.code);
+                cache.insert(
+                    key,
+                    CachedQuote {
+                        data: q.clone(),
+                        cached_at: now,
+                    },
+                );
+            }
+        } // lock released here — DB I/O happens outside
         // Best-effort async write to SQLite
         let _ = self.db.cache_quotes(quotes);
     }
 
     /// Get all cached quotes
     pub fn get_all_quotes(&self) -> Vec<Quote> {
-        let cache = self.quotes.lock().unwrap();
+        let cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
         cache.values().map(|c| c.data.clone()).collect()
     }
 
     /// Get a specific quote by market and code
     #[allow(dead_code)]
     pub fn get_quote(&self, market: &str, code: &str) -> Option<Quote> {
-        let cache = self.quotes.lock().unwrap();
+        let cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
         let key = format!("{}:{}", market, code);
         cache.get(&key).map(|c| c.data.clone())
     }
 
     /// Update indices
     pub fn update_indices(&self, indices: Vec<IndexQuote>) {
-        *self.indices.lock().unwrap() = indices;
+        *self.indices.lock().unwrap_or_else(|e| e.into_inner()) = indices;
     }
 
     /// Get cached indices
     pub fn get_indices(&self) -> Vec<IndexQuote> {
-        self.indices.lock().unwrap().clone()
+        self.indices.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -91,7 +93,10 @@ impl QuoteCache {
 pub struct Scheduler;
 
 impl Scheduler {
-    /// Spawn the global polling loop (runs in a background tokio task)
+    /// Spawn the global polling loop in a background tokio task.
+    /// All locks inside the data path are poison-safe, so a single
+    /// panic is extremely unlikely. If one does occur, tokio catches
+    /// it and the task exits gracefully without aborting the process.
     pub fn spawn(
         data_manager: Arc<crate::datasource::DataSourceManager>,
         cache: Arc<QuoteCache>,
@@ -109,11 +114,7 @@ impl Scheduler {
                 let codes = match db.get_watch_codes() {
                     Ok(c) if !c.is_empty() => c,
                     _ => {
-                        // No watchlist: just refresh indices
-                        Self::fetch_and_emit_indices(
-                            &data_manager, &cache, &app_handle,
-                        )
-                        .await;
+                        Self::fetch_and_emit_indices(&data_manager, &cache, &app_handle).await;
                         continue;
                     }
                 };
@@ -128,17 +129,18 @@ impl Scheduler {
 
                 // 3. Batch fetch quotes
                 if !cn_codes.is_empty() {
-                    let source = data_manager.active_source();
-                    match source.fetch_realtime(&cn_codes, "CN").await {
-                        Ok(quotes) => {
-                            cache.update_quotes(&quotes);
-                            let _ = app_handle.emit("quotes-updated", &quotes);
-                        }
-                        Err(_e) => {
-                            // Fallback: emit cached data
-                            let cached = cache.get_all_quotes();
-                            if !cached.is_empty() {
-                                let _ = app_handle.emit("quotes-updated", &cached);
+                    if let Some(source) = data_manager.active_source() {
+                        match source.fetch_realtime(&cn_codes, "CN").await {
+                            Ok(quotes) => {
+                                cache.update_quotes(&quotes);
+                                let _ = app_handle.emit("quotes-updated", &quotes);
+                            }
+                            Err(_e) => {
+                                // Fallback: emit cached data
+                                let cached = cache.get_all_quotes();
+                                if !cached.is_empty() {
+                                    let _ = app_handle.emit("quotes-updated", &cached);
+                                }
                             }
                         }
                     }
@@ -155,10 +157,11 @@ impl Scheduler {
         cache: &QuoteCache,
         app_handle: &tauri::AppHandle,
     ) {
-        let source = manager.active_source();
-        if let Ok(indices) = source.fetch_indices().await {
-            cache.update_indices(indices.clone());
-            let _ = app_handle.emit("indices-updated", &indices);
+        if let Some(source) = manager.active_source() {
+            if let Ok(indices) = source.fetch_indices().await {
+                cache.update_indices(indices.clone());
+                let _ = app_handle.emit("indices-updated", &indices);
+            }
         }
     }
 }

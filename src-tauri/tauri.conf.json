@@ -5,7 +5,7 @@
   "identifier": "com.ly-xuzhix.quant-desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:3000",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

@@ -51,7 +51,7 @@ impl DataSourceManager {
     pub fn register(&mut self, source: Box<dyn DataSource>) {
         let name = source.name().to_string();
         if self.sources.is_empty() {
-            *self.active.write().unwrap() = name.clone();
+            *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.clone();
         }
         self.sources.insert(name, source);
     }
@@ -59,7 +59,7 @@ impl DataSourceManager {
     /// Switch the active data source
     pub fn set_active(&self, name: &str) -> Result<(), String> {
         if self.sources.contains_key(name) {
-            *self.active.write().unwrap() = name.to_string();
+            *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.to_string();
             Ok(())
         } else {
             Err(format!("Data source '{}' is not registered", name))
@@ -68,15 +68,14 @@ impl DataSourceManager {
 
     /// Get the name of the currently active data source
     pub fn active_name(&self) -> String {
-        self.active.read().unwrap().clone()
+        self.active.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// Get a reference to the currently active data source
-    pub fn active_source(&self) -> &dyn DataSource {
-        let name = self.active.read().unwrap();
-        self.sources.get(&*name)
-            .expect("Active data source must be registered")
-            .as_ref()
+    /// Get a reference to the currently active data source.
+    /// Returns None if no source is registered (shouldn't happen after setup).
+    pub fn active_source(&self) -> Option<&dyn DataSource> {
+        let name = self.active.read().unwrap_or_else(|e| e.into_inner());
+        self.sources.get(&*name).map(|s| s.as_ref())
     }
 
     /// Get a reference to a specific data source by name

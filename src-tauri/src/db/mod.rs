@@ -19,7 +19,7 @@ impl Database {
     }
 
     fn migrate(&self) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS watchlist (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +64,7 @@ impl Database {
     // ── Watchlist CRUD ──
 
     pub fn get_watchlist(&self) -> SqliteResult<Vec<WatchItem>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
             "SELECT id, code, market, name, sort_order, added_at
              FROM watchlist ORDER BY sort_order ASC, id ASC"
@@ -83,7 +83,7 @@ impl Database {
     }
 
     pub fn add_watch(&self, code: &str, market: &str, name: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         conn.execute(
             "INSERT OR IGNORE INTO watchlist (code, market, name, added_at)
@@ -94,7 +94,7 @@ impl Database {
     }
 
     pub fn remove_watch(&self, code: &str, market: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "DELETE FROM watchlist WHERE code = ?1 AND market = ?2",
             params![code, market],
@@ -103,7 +103,7 @@ impl Database {
     }
 
     pub fn reorder_watch(&self, ids: &[i64]) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         for (i, id) in ids.iter().enumerate() {
             conn.execute(
                 "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
@@ -114,7 +114,7 @@ impl Database {
     }
 
     pub fn get_watch_codes(&self) -> SqliteResult<Vec<(String, String)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
             "SELECT code, market FROM watchlist ORDER BY sort_order ASC, id ASC"
         )?;
@@ -127,7 +127,7 @@ impl Database {
     // ── Settings CRUD ──
 
     pub fn get_setting(&self, key: &str) -> SqliteResult<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
         let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
         match rows.next() {
@@ -137,7 +137,7 @@ impl Database {
     }
 
     pub fn set_setting(&self, key: &str, value: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
             params![key, value],
@@ -146,7 +146,7 @@ impl Database {
     }
 
     pub fn get_all_settings(&self) -> SqliteResult<Vec<(String, String)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -157,7 +157,7 @@ impl Database {
     // ── Quote Cache ──
 
     pub fn cache_quotes(&self, quotes: &[crate::domain::Quote]) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         for q in quotes {
             let data = serde_json::to_string(q).unwrap_or_default();
@@ -171,7 +171,7 @@ impl Database {
     }
 
     pub fn get_cached_quotes(&self) -> SqliteResult<Vec<crate::domain::Quote>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare("SELECT data FROM quote_cache")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         let mut quotes = Vec::new();

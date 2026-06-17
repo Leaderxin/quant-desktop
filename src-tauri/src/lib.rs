@@ -77,7 +77,11 @@ pub fn run() {
                 .build()?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(
+                    app.default_window_icon()
+                        .cloned()
+                        .expect("Default window icon not embedded — check tauri.conf.json icons config"),
+                )
                 .tooltip("QuantDesktop")
                 .menu(&menu)
                 .on_menu_event(|app, event| {
@@ -110,8 +114,12 @@ pub fn run() {
                             // Close windows gracefully before exit
                             if let Some(w) = app.get_webview_window("main") { let _ = w.close(); }
                             if let Some(w) = app.get_webview_window("ticker") { let _ = w.close(); }
-                            std::thread::sleep(std::time::Duration::from_millis(200));
-                            app.exit(0);
+                            // Use async sleep to avoid blocking the event loop
+                            let handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                                handle.exit(0);
+                            });
                         }
                         _ => {}
                     }

@@ -34,10 +34,14 @@ watch(() => keyword.value, (val) => {
 });
 
 async function handleAdd(stock: StockBrief) {
-  await watchlist.addStock(stock.code, stock.market, stock.name);
-  message.success(`已添加 ${stock.name}`);
-  keyword.value = '';
-  results.value = [];
+  try {
+    await watchlist.addStock(stock.code, stock.market, stock.name);
+    message.success(`已添加 ${stock.name}`);
+    keyword.value = '';
+    results.value = [];
+  } catch (e) {
+    message.error(`添加失败: ${e}`);
+  }
 }
 </script>
 
@@ -63,25 +67,27 @@ async function handleAdd(stock: StockBrief) {
           </template>
         </NInput>
 
-        <div v-if="results.length > 0" class="results-list">
-          <div
-            v-for="s in results"
-            :key="s.code"
-            class="result-item"
-            @click="handleAdd(s)"
-          >
-            <div class="result-info">
-              <span class="result-name">{{ s.name }}</span>
-              <span class="result-code tabular-nums">{{ s.code }}</span>
+        <div class="results-wrapper">
+          <div v-if="results.length > 0" class="results-list">
+            <div
+              v-for="s in results"
+              :key="s.code"
+              class="result-item"
+              @click="handleAdd(s)"
+            >
+              <div class="result-info">
+                <span class="result-name">{{ s.name }}</span>
+                <span class="result-code tabular-nums">{{ s.code }}</span>
+              </div>
+              <NButton size="tiny" type="primary" ghost @click.stop="handleAdd(s)">
+                添加
+              </NButton>
             </div>
-            <NButton size="tiny" type="primary" ghost @click.stop="handleAdd(s)">
-              添加
-            </NButton>
           </div>
-        </div>
 
-        <div v-else-if="keyword && !searching" class="no-results">
-          未找到匹配标的
+          <div v-else-if="keyword && !searching" class="no-results">
+            未找到匹配标的
+          </div>
         </div>
       </NSpace>
     </NCard>
@@ -89,6 +95,9 @@ async function handleAdd(stock: StockBrief) {
 </template>
 
 <style scoped>
+.results-wrapper {
+  min-height: 260px;
+}
 .results-list {
   max-height: 260px;
   overflow-y: auto;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -11,7 +12,7 @@ const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
-let themePollTimer: ReturnType<typeof setInterval> | null = null;
+let unlistenTheme: UnlistenFn | null = null;
 
 let watchlistPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -21,14 +22,14 @@ onMounted(async () => {
   await watchlist.fetchWatchlist();
   await quoteStore.startListening();
   startCycle();
-  startThemePoll();
+  startThemeListen();
   startWatchlistPoll();
 });
 
 onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
-  if (themePollTimer) clearInterval(themePollTimer);
+  if (unlistenTheme) unlistenTheme();
   if (watchlistPollTimer) clearInterval(watchlistPollTimer);
 });
 
@@ -38,19 +39,13 @@ function startWatchlistPoll() {
   }, 3000);
 }
 
-function startThemePoll() {
-  let lastTheme = settings.theme;
-  themePollTimer = setInterval(() => {
-    invoke<Record<string, string>>('get_settings')
-      .then((all) => {
-        const current = (all['theme'] as 'dark' | 'light') || 'dark';
-        if (current !== lastTheme) {
-          lastTheme = current;
-          settings.applyTheme(current);
-        }
-      })
-      .catch(() => {});
-  }, 1000);
+function startThemeListen() {
+  listen<{ theme: string }>('theme-changed', (event) => {
+    const t = event.payload.theme as 'dark' | 'light';
+    settings.applyTheme(t);
+  }).then((unlisten) => {
+    unlistenTheme = unlisten;
+  }).catch(() => {});
 }
 
 function startCycle() {

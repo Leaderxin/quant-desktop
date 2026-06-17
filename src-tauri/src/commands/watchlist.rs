@@ -87,11 +87,16 @@ pub async fn search_stocks(
     keyword: String,
 ) -> Result<Vec<crate::domain::StockBrief>, String> {
     // Try active source first
-    let source = manager.active_source();
-    let mut results = source.search(&keyword, "CN").await.unwrap_or_default();
+    let mut results: Vec<crate::domain::StockBrief> = Vec::new();
+    let active_name = if let Some(source) = manager.active_source() {
+        results = source.search(&keyword, "CN").await.unwrap_or_default();
+        source.name().to_string()
+    } else {
+        String::new()
+    };
 
-    // Fallback to Eastmoney search if active source (e.g. Sina) returns empty
-    if results.is_empty() && source.name() != "eastmoney" {
+    // Fallback to Eastmoney search if active source returns empty
+    if results.is_empty() && active_name != "eastmoney" {
         if let Some(em) = manager.get_source("eastmoney") {
             if let Ok(em_results) = em.search(&keyword, "CN").await {
                 results = em_results;

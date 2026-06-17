@@ -143,7 +143,7 @@ const columns: DataTableColumns<WatchItem> = [
 
     <div v-if="watchlist.items.length === 0" class="empty-state">
       <span class="empty-icon">📋</span>
-      <p class="empty-text">暂无自选标的</p>
+      <p class="empty-text">暂无自选股票</p>
       <p class="empty-hint">点击「+ 添加」搜索并添加股票</p>
     </div>
 
