@@ -1,0 +1,23 @@
+/* src/assets/styles/variables.css */
+:root {
+  --color-up: #ef5350;
+  --color-down: #66bb6a;
+  --color-bg: #1e1e2e;
+  --color-card-bg: #252536;
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #888888;
+  --color-border: #333344;
+  --color-header-bg: #1a1a2e;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+}
+
+[data-theme="light"] {
+  --color-bg: #ffffff;
+  --color-card-bg: #fafafa;
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-border: #e8e8e8;
+  --color-header-bg: #f0f0f0;
+}
