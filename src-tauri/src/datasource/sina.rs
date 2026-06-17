@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
+use encoding::{Encoding, DecoderTrap};
+use encoding::all::GBK;
 use crate::domain::*;
 use super::DataSource;
 
@@ -158,10 +160,12 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| format!("Sina request failed: {:#}", e))?;
 
-        let body = resp
-            .text()
+        let body_bytes = resp
+            .bytes()
             .await
             .map_err(|e| format!("Sina read body failed: {:#}", e))?;
+        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
+            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
 
         let quotes: Vec<Quote> = body
             .lines()
@@ -187,10 +191,12 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| format!("Sina indices request failed: {:#}", e))?;
 
-        let body = resp
-            .text()
+        let body_bytes = resp
+            .bytes()
             .await
             .map_err(|e| format!("Sina read body failed: {:#}", e))?;
+        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
+            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
 
         let indices: Vec<IndexQuote> = body
             .lines()

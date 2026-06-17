@@ -27,4 +27,5 @@ chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full"] }
+encoding = "0.2"
 
