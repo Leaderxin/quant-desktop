@@ -171,6 +171,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::quote::get_quotes,
             commands::quote::get_indices,
+            commands::quote::get_depth,
+            commands::quote::get_intraday,
             commands::watchlist::get_watchlist,
             commands::watchlist::add_watch,
             commands::watchlist::remove_watch,
