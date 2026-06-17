@@ -185,12 +185,13 @@ const columns: DataTableColumns<WatchItem> = [
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 0 var(--space-4);
 }
 .watchlist-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) 0;
   flex-shrink: 0;
 }
 .section-title {

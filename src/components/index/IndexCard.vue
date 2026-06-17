@@ -29,7 +29,8 @@ const isUp = computed(() => props.index.change_pct >= 0);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
   flex-shrink: 0;
-  min-width: 155px;
+  flex: 1 1 0;
+  min-width: 120px;
   height: 44px;
   transition: border-color var(--transition-fast);
 }
