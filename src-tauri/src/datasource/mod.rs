@@ -116,3 +116,5 @@ impl DataSourceManager {
 
 pub mod eastmoney;
 pub mod sina;
+pub mod tencent;
+pub mod market_clock;

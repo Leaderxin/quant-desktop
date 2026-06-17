@@ -31,6 +31,9 @@ pub fn run() {
             ds_manager.register(Box::new(
                 crate::datasource::eastmoney::EastmoneyAdapter::new(),
             ));
+            ds_manager.register(Box::new(
+                crate::datasource::tencent::TencentAdapter::new(),
+            ));
 
             // Restore last used data source from settings
             if let Ok(Some(active)) = db.get_setting("active_datasource") {
@@ -59,7 +62,7 @@ pub fn run() {
             crate::cache::Scheduler::spawn(
                 ds_manager,
                 cache,
-                db,
+                db.clone(),
                 app.handle().clone(),
                 interval,
             );
@@ -143,15 +146,52 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Prevent main window from closing — hide instead of destroy
+            // Main window: hide on close, save/restore position and size
             if let Some(main) = app.get_webview_window("main") {
                 let main_clone = main.clone();
+                let db_clone = db.clone();
                 let _ = main.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = main_clone.hide();
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            // Save position before hiding
+                            if let Ok(pos) = main_clone.outer_position() {
+                                let _ = db_clone.set_setting("window_x", &pos.x.to_string());
+                                let _ = db_clone.set_setting("window_y", &pos.y.to_string());
+                            }
+                            if let Ok(size) = main_clone.outer_size() {
+                                let _ = db_clone.set_setting("window_width", &size.width.to_string());
+                                let _ = db_clone.set_setting("window_height", &size.height.to_string());
+                            }
+                            let _ = main_clone.hide();
+                        }
+                        tauri::WindowEvent::Moved(pos) => {
+                            let _ = db_clone.set_setting("window_x", &pos.x.to_string());
+                            let _ = db_clone.set_setting("window_y", &pos.y.to_string());
+                        }
+                        tauri::WindowEvent::Resized(size) => {
+                            let _ = db_clone.set_setting("window_width", &size.width.to_string());
+                            let _ = db_clone.set_setting("window_height", &size.height.to_string());
+                        }
+                        _ => {}
                     }
                 });
+
+                // Restore saved window position and size
+                if let Ok(Some(w)) = db.get_setting("window_width") {
+                    if let Ok(Some(h)) = db.get_setting("window_height") {
+                        if let (Ok(w_val), Ok(h_val)) = (w.parse::<u32>(), h.parse::<u32>()) {
+                            let _ = main.set_size(tauri::PhysicalSize::new(w_val, h_val));
+                        }
+                    }
+                }
+                if let Ok(Some(x)) = db.get_setting("window_x") {
+                    if let Ok(Some(y)) = db.get_setting("window_y") {
+                        if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                            let _ = main.set_position(tauri::PhysicalPosition::new(x_val, y_val));
+                        }
+                    }
+                }
             }
 
             // Position ticker window at bottom-right of screen
