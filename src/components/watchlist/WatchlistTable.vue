@@ -54,12 +54,31 @@ async function handleMoveDown() {
   showCtxMenu.value = false;
 }
 
+const iconTop = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('path', { d: 'M8 2V14' }),
+  h('polyline', { points: '4 6 8 2 12 6' }),
+  h('line', { x1: 2, y1: 14, x2: 14, y2: 14 }),
+]);
+const iconUp = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('polyline', { points: '4 9 8 5 12 9' }),
+]);
+const iconDown = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('polyline', { points: '4 5 8 9 12 5' }),
+]);
+const iconDelete = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: '#f85149', strokeWidth: 1.5, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('path', { d: 'M3 4h10' }),
+  h('path', { d: 'M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1' }),
+  h('path', { d: 'M6 7v4' }),
+  h('path', { d: 'M10 7v4' }),
+  h('path', { d: 'M4 4l1 9h6l1-9' }),
+]);
+
 const ctxOptions = [
-  { label: '置顶', key: 'top' },
-  { label: '上移', key: 'up' },
-  { label: '下移', key: 'down' },
+  { label: '置顶', key: 'top', icon: iconTop },
+  { label: '上移', key: 'up', icon: iconUp },
+  { label: '下移', key: 'down', icon: iconDown },
   { type: 'divider' as const, key: 'd1' },
-  { label: '删除', key: 'delete' },
+  { label: '删除', key: 'delete', icon: iconDelete },
 ];
 
 function handleCtxSelect(key: string) {

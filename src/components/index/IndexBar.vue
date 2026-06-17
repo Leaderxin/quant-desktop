@@ -18,12 +18,12 @@ const quote = useQuoteStore();
 <style scoped>
 .index-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface-0);
   border-bottom: 1px solid var(--color-border-0);
   flex-shrink: 0;
-  overflow-x: auto;
 }
 .index-placeholder {
   display: flex;
