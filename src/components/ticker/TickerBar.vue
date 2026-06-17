@@ -121,9 +121,7 @@ async function handleClick() {
 .ticker-bar {
   width: 100%;
   height: 100%;
-  background: var(--color-surface-1);
-  border: 1px solid var(--color-border-0);
-  border-radius: 0;
+  background: transparent;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -131,11 +129,10 @@ async function handleClick() {
   cursor: pointer;
   overflow: hidden;
   padding: var(--space-1) var(--space-2);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 .ticker-bar:hover {
-  border-color: var(--color-border-1);
-  background: var(--color-surface-2);
+  background: rgba(255, 255, 255, 0.03);
 }
 .ticker-row {
   display: flex;
