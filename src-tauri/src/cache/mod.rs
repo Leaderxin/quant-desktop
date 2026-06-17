@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
 use crate::domain::{Quote, IndexQuote};
+use crate::datasource::market_clock::MarketSession;
 
 /// Quote cache (in-memory + SQLite dual-write)
 pub struct QuoteCache {
@@ -102,13 +103,26 @@ impl Scheduler {
         cache: Arc<QuoteCache>,
         db: Arc<crate::db::Database>,
         app_handle: tauri::AppHandle,
-        interval_secs: u64,
+        base_interval_secs: u64,
     ) {
         tauri::async_runtime::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            let mut interval = tokio::time::interval(Duration::from_secs(base_interval_secs));
+            let mut last_session = MarketSession::current();
 
             loop {
                 interval.tick().await;
+
+                // Check market session and adjust interval dynamically
+                let session = MarketSession::current();
+                if session != last_session {
+                    let new_interval = session.recommended_interval();
+                    interval = tokio::time::interval(Duration::from_secs(new_interval));
+                    last_session = session;
+                    let _ = app_handle.emit("market-session-changed", serde_json::json!({
+                        "session": session.name(),
+                        "interval_secs": new_interval,
+                    }));
+                }
 
                 // 1. Get watchlist codes
                 let codes = match db.get_watch_codes() {
@@ -127,7 +141,16 @@ impl Scheduler {
                     }
                 }
 
-                // 3. Batch fetch quotes
+                // 3. Batch fetch quotes (skip API calls when market is closed, emit cached)
+                if session == MarketSession::Closed {
+                    let cached = cache.get_all_quotes();
+                    if !cached.is_empty() {
+                        let _ = app_handle.emit("quotes-updated", &cached);
+                    }
+                    Self::fetch_and_emit_indices(&data_manager, &cache, &app_handle).await;
+                    continue;
+                }
+
                 if !cn_codes.is_empty() {
                     if let Some(source) = data_manager.active_source() {
                         match source.fetch_realtime(&cn_codes, "CN").await {
@@ -136,7 +159,6 @@ impl Scheduler {
                                 let _ = app_handle.emit("quotes-updated", &quotes);
                             }
                             Err(_e) => {
-                                // Fallback: emit cached data
                                 let cached = cache.get_all_quotes();
                                 if !cached.is_empty() {
                                     let _ = app_handle.emit("quotes-updated", &cached);

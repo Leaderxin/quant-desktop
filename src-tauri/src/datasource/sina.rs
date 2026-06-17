@@ -239,6 +239,64 @@ impl DataSource for SinaAdapter {
         Ok(vec![])
     }
 
+    async fn fetch_depth(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<crate::domain::Depth, String> {
+        let sina_code = Self::code_to_sina(code, market);
+        let url = format!("{}{},{}",
+            SINA_URL,
+            format!("buy_{}", sina_code),
+            format!("sell_{}", sina_code),
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://finance.sina.com.cn")
+            .send()
+            .await
+            .map_err(|e| format!("Sina depth request failed: {:#}", e))?;
+
+        let body_bytes = resp.bytes().await.map_err(|e| format!("Sina read failed: {:#}", e))?;
+        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
+            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+
+        let mut bids = Vec::new();
+        let mut asks = Vec::new();
+
+        for line in body.lines() {
+            if let Some(eq_pos) = line.find('=') {
+                let var_part = &line[..eq_pos];
+                let quote_start = line[eq_pos + 1..].find('"').map(|p| eq_pos + 1 + p + 1);
+                if let Some(start) = quote_start {
+                    let quote_end = line[start..].find('"').unwrap_or(0);
+                    let data = &line[start..start + quote_end];
+                    let fields: Vec<&str> = data.split(',').collect();
+                    if var_part.contains("buy_") && fields.len() >= 2 {
+                        let price = fields[0].parse::<f64>().unwrap_or(0.0);
+                        let volume = fields[1].parse::<u64>().unwrap_or(0);
+                        if price > 0.0 {
+                            bids.push(crate::domain::Level { price, volume });
+                        }
+                    } else if var_part.contains("sell_") && fields.len() >= 2 {
+                        let price = fields[0].parse::<f64>().unwrap_or(0.0);
+                        let volume = fields[1].parse::<u64>().unwrap_or(0);
+                        if price > 0.0 {
+                            asks.push(crate::domain::Level { price, volume });
+                        }
+                    }
+                }
+            }
+        }
+
+        bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap_or(std::cmp::Ordering::Equal));
+        asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+
+        Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
+    }
+
     async fn health_check(&self) -> Result<bool, String> {
         let codes = vec!["000001".to_string()];
         self.fetch_realtime(&codes, "CN")

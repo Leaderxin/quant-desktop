@@ -6,6 +6,8 @@ use super::DataSource;
 
 const EASTMONEY_URL: &str = "https://push2.eastmoney.com/api/qt/ulist/get";
 const SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
+const EASTMONEY_DEPTH_URL: &str = "https://push2.eastmoney.com/api/qt/stock/get";
+const EASTMONEY_TREND_URL: &str = "https://push2.eastmoney.com/api/qt/stock/trends2/get";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 pub struct EastmoneyAdapter {
@@ -256,6 +258,130 @@ impl DataSource for EastmoneyAdapter {
             .collect();
 
         Ok(results)
+    }
+
+    async fn fetch_depth(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<crate::domain::Depth, String> {
+        let secid = Self::code_to_secid(code, market);
+        let params = [
+            ("secid", secid.as_str()),
+            ("fields", "f43,f44,f45,f46,f47,f48,f55,f56,f57,f58"),
+        ];
+
+        #[derive(Deserialize)]
+        struct RawResponse {
+            data: Option<RawDepth>,
+        }
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct RawDepth {
+            #[serde(rename = "f43")]
+            price: Option<f64>,
+            #[serde(rename = "f44")]
+            bid1_p: Option<f64>,
+            #[serde(rename = "f45")]
+            bid1_v: Option<u64>,
+            #[serde(rename = "f46")]
+            bid2_p: Option<f64>,
+            #[serde(rename = "f47")]
+            bid2_v: Option<u64>,
+            #[serde(rename = "f48")]
+            bid3_p: Option<f64>,
+            #[serde(rename = "f49")]
+            bid3_v: Option<u64>,
+            #[serde(rename = "f55")]
+            ask1_p: Option<f64>,
+            #[serde(rename = "f56")]
+            ask1_v: Option<u64>,
+            #[serde(rename = "f57")]
+            ask2_p: Option<f64>,
+            #[serde(rename = "f58")]
+            ask2_v: Option<u64>,
+        }
+
+        let resp = self
+            .client
+            .get(EASTMONEY_DEPTH_URL)
+            .query(&params)
+            .send()
+            .await
+            .map_err(|e| format!("Depth request failed: {:#}", e))?;
+
+        let body: RawResponse = resp.json().await.map_err(|e| format!("Parse depth failed: {}", e))?;
+
+        match body.data {
+            Some(d) => {
+                let mut bids = Vec::new();
+                let mut asks = Vec::new();
+                if let (Some(p), Some(v)) = (d.bid1_p, d.bid1_v) { bids.push(crate::domain::Level { price: p, volume: v }); }
+                if let (Some(p), Some(v)) = (d.bid2_p, d.bid2_v) { bids.push(crate::domain::Level { price: p, volume: v }); }
+                if let (Some(p), Some(v)) = (d.bid3_p, d.bid3_v) { bids.push(crate::domain::Level { price: p, volume: v }); }
+                if let (Some(p), Some(v)) = (d.ask1_p, d.ask1_v) { asks.push(crate::domain::Level { price: p, volume: v }); }
+                if let (Some(p), Some(v)) = (d.ask2_p, d.ask2_v) { asks.push(crate::domain::Level { price: p, volume: v }); }
+                Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
+            }
+            None => Ok(crate::domain::Depth { code: code.to_string(), bids: vec![], asks: vec![] }),
+        }
+    }
+
+    async fn fetch_minute_data(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+        let secid = Self::code_to_secid(code, market);
+        let params = [
+            ("secid", secid.as_str()),
+            ("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11"),
+            ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58"),
+            ("ndays", "1"),
+        ];
+
+        #[derive(Deserialize)]
+        struct RawResponse {
+            data: Option<RawTrend>,
+        }
+        #[derive(Deserialize)]
+        struct RawTrend {
+            trends: Option<Vec<String>>,
+        }
+
+        let resp = self
+            .client
+            .get(EASTMONEY_TREND_URL)
+            .query(&params)
+            .send()
+            .await
+            .map_err(|e| format!("Trend request failed: {:#}", e))?;
+
+        let body: RawResponse = resp.json().await.map_err(|e| format!("Parse trend failed: {}", e))?;
+
+        let trends = body
+            .data
+            .and_then(|d| d.trends)
+            .unwrap_or_default();
+
+        let data: Vec<crate::domain::MinuteData> = trends
+            .iter()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 8 {
+                    Some(crate::domain::MinuteData {
+                        time: parts[0].to_string(),
+                        price: parts[2].parse().unwrap_or(0.0),
+                        volume: parts[5].parse().unwrap_or(0),
+                        avg_price: parts[7].parse().unwrap_or(0.0),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(data)
     }
 
     async fn health_check(&self) -> Result<bool, String> {

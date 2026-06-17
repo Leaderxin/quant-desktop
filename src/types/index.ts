@@ -39,3 +39,21 @@ export interface WatchItem {
   sort_order: number;
   added_at: string;
 }
+
+export interface Level {
+  price: number;
+  volume: number;
+}
+
+export interface Depth {
+  code: string;
+  bids: Level[];
+  asks: Level[];
+}
+
+export interface MinuteData {
+  time: string;
+  price: number;
+  volume: number;
+  avg_price: number;
+}
