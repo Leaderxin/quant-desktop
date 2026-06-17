@@ -10,38 +10,71 @@ const watchlist = useWatchlistStore();
 const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
-const debugTheme = ref('');
+const debugTheme = ref('init');
 const debugPollCount = ref(0);
+const debugError = ref('');
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
-
 let themePollTimer: ReturnType<typeof setInterval> | null = null;
 
-onMounted(async () => {
-  await settings.fetchSettings();
-  console.log('[TICKER] mounted, fetched theme:', settings.theme);
-  settings.applyTheme(settings.theme);
-  debugTheme.value = settings.theme;
-  await watchlist.fetchWatchlist();
-  await quoteStore.startListening();
-  startCycle();
+// Simple heartbeat counter (no async) to verify setInterval works
+const heartbeat = ref(0);
+const heartbeatTimer = setInterval(() => {
+  heartbeat.value++;
+}, 1000);
 
-  // Poll theme from backend every second to sync with main window
-  let lastTheme = settings.theme;
-  themePollTimer = setInterval(async () => {
-    try {
-      const all = await invoke<Record<string, string>>('get_settings');
-      debugPollCount.value++;
-      const current = (all['theme'] as 'dark' | 'light') || 'dark';
-      console.log('[TICKER] poll #' + debugPollCount.value, 'current:', current, 'last:', lastTheme);
-      if (current !== lastTheme) {
-        console.log('[TICKER] theme changed!', lastTheme, '->', current);
-        lastTheme = current;
-        settings.applyTheme(current);
-        debugTheme.value = current;
-      }
-    } catch (e) { console.error('[TICKER] poll error:', e); }
-  }, 1000);
+onMounted(async () => {
+  debugTheme.value = 'loading';
+  try {
+    await settings.fetchSettings();
+    debugTheme.value = settings.theme;
+    console.log('[TICKER] mounted, theme:', settings.theme);
+    settings.applyTheme(settings.theme);
+  } catch (e: any) {
+    debugError.value = 'fetch:' + String(e);
+  }
+
+  try {
+    await watchlist.fetchWatchlist();
+  } catch (e: any) {
+    debugError.value = 'watch:' + String(e);
+  }
+
+  try {
+    await quoteStore.startListening();
+  } catch (e: any) {
+    debugError.value = 'quote:' + String(e);
+  }
+
+  startCycle();
+  startThemePoll();
 });
+
+onUnmounted(() => {
+  quoteStore.stopListening();
+  if (cycleTimer) clearInterval(cycleTimer);
+  if (themePollTimer) clearInterval(themePollTimer);
+  clearInterval(heartbeatTimer);
+});
+
+function startThemePoll() {
+  let lastTheme = settings.theme;
+  themePollTimer = setInterval(() => {
+    debugPollCount.value++;
+    invoke<Record<string, string>>('get_settings')
+      .then((all) => {
+        const current = (all['theme'] as 'dark' | 'light') || 'dark';
+        if (current !== lastTheme) {
+          console.log('[TICKER] theme changed!', lastTheme, '->', current);
+          lastTheme = current;
+          settings.applyTheme(current);
+          debugTheme.value = current;
+        }
+      })
+      .catch((e) => {
+        debugError.value = 'poll:' + String(e);
+      });
+  }, 2000);
+}
 
 onUnmounted(() => {
   quoteStore.stopListening();
@@ -133,7 +166,8 @@ async function handleClick() {
     </div>
     <!-- DEBUG: theme indicator -->
     <div class="debug-theme" :style="{ color: debugTheme === 'light' ? '#000' : '#fff' }">
-      {{ debugTheme }}#{{ debugPollCount }}
+      {{ debugTheme }}|poll#{{ debugPollCount }}|hb{{ heartbeat }}
+      <span v-if="debugError" style="color:red;">|{{ debugError }}</span>
     </div>
   </div>
 </template>
@@ -200,7 +234,9 @@ async function handleClick() {
   position: absolute;
   bottom: 1px;
   right: 4px;
-  font-size: 8px;
-  opacity: 0.6;
+  font-size: 7px;
+  opacity: 0.7;
+  white-space: nowrap;
+  pointer-events: none;
 }
 </style>
