@@ -12,9 +12,27 @@
   "app": {
     "windows": [
       {
-        "title": "quant-desktop",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "QuantDesktop",
+        "width": 1000,
+        "height": 680,
+        "visible": false,
+        "center": true,
+        "decorations": true,
+        "resizable": true
+      },
+      {
+        "label": "ticker",
+        "title": "QuantDesktop Ticker",
+        "url": "ticker.html",
+        "width": 1920,
+        "height": 32,
+        "decorations": false,
+        "alwaysOnBottom": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "visible": true
       }
     ],
     "security": {
