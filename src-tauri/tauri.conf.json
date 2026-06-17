@@ -26,7 +26,7 @@
         "title": "QuantDesktop Ticker",
         "url": "ticker.html",
         "width": 260,
-        "height": 48,
+        "height": 38,
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,

@@ -56,7 +56,6 @@ export const useSettingsStore = defineStore('settings', () => {
       root.style.setProperty('--color-border', '#333344');
       root.style.setProperty('--color-header-bg', '#1a1a2e');
     }
-    console.log('[TICKER] applyTheme:', t, 'data-theme attr:', root.getAttribute('data-theme'));
   }
 
   return { settings, datasources, activeDatasource, theme, fetchSettings, setSetting, switchDatasource, toggleTheme, applyTheme };

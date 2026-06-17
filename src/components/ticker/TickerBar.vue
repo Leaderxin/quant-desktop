@@ -10,41 +10,14 @@ const watchlist = useWatchlistStore();
 const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
-const debugTheme = ref('init');
-const debugPollCount = ref(0);
-const debugError = ref('');
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let themePollTimer: ReturnType<typeof setInterval> | null = null;
 
-// Simple heartbeat counter (no async) to verify setInterval works
-const heartbeat = ref(0);
-const heartbeatTimer = setInterval(() => {
-  heartbeat.value++;
-}, 1000);
-
 onMounted(async () => {
-  debugTheme.value = 'loading';
-  try {
-    await settings.fetchSettings();
-    debugTheme.value = settings.theme;
-    console.log('[TICKER] mounted, theme:', settings.theme);
-    settings.applyTheme(settings.theme);
-  } catch (e: any) {
-    debugError.value = 'fetch:' + String(e);
-  }
-
-  try {
-    await watchlist.fetchWatchlist();
-  } catch (e: any) {
-    debugError.value = 'watch:' + String(e);
-  }
-
-  try {
-    await quoteStore.startListening();
-  } catch (e: any) {
-    debugError.value = 'quote:' + String(e);
-  }
-
+  await settings.fetchSettings();
+  settings.applyTheme(settings.theme);
+  await watchlist.fetchWatchlist();
+  await quoteStore.startListening();
   startCycle();
   startThemePoll();
 });
@@ -53,27 +26,21 @@ onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (themePollTimer) clearInterval(themePollTimer);
-  clearInterval(heartbeatTimer);
 });
 
 function startThemePoll() {
   let lastTheme = settings.theme;
   themePollTimer = setInterval(() => {
-    debugPollCount.value++;
     invoke<Record<string, string>>('get_settings')
       .then((all) => {
         const current = (all['theme'] as 'dark' | 'light') || 'dark';
         if (current !== lastTheme) {
-          console.log('[TICKER] theme changed!', lastTheme, '->', current);
           lastTheme = current;
           settings.applyTheme(current);
-          debugTheme.value = current;
         }
       })
-      .catch((e) => {
-        debugError.value = 'poll:' + String(e);
-      });
-  }, 2000);
+      .catch(() => { /* ignore */ });
+  }, 1000);
 }
 
 onUnmounted(() => {
@@ -164,12 +131,6 @@ async function handleClick() {
     <div v-else class="ticker-empty">
       暂无自选
     </div>
-    <!-- DEBUG: error message -->
-    <div v-if="debugError" class="debug-error">{{ debugError }}</div>
-    <!-- DEBUG: status line -->
-    <div class="debug-theme" :style="{ color: debugTheme === 'light' ? '#000' : '#fff' }">
-      {{ debugTheme }}|p{{ debugPollCount }}|h{{ heartbeat }}
-    </div>
   </div>
 </template>
 
@@ -230,28 +191,5 @@ async function handleClick() {
   font-size: 11px;
   text-align: center;
   width: 100%;
-}
-.debug-theme {
-  position: absolute;
-  bottom: 2px;
-  right: 4px;
-  font-size: 9px;
-  opacity: 0.85;
-  white-space: nowrap;
-  pointer-events: none;
-  line-height: 1;
-}
-.debug-error {
-  position: absolute;
-  top: 2px;
-  left: 4px;
-  font-size: 9px;
-  color: #ef5350;
-  white-space: nowrap;
-  pointer-events: none;
-  line-height: 1;
-  max-width: 250px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 </style>
