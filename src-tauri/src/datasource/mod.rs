@@ -29,6 +29,28 @@ pub trait DataSource: Send + Sync {
         market: &str,
     ) -> Result<Vec<StockBrief>, String>;
 
+    /// Fetch 5-level depth (bid/ask order book)
+    async fn fetch_depth(
+        &self,
+        _code: &str,
+        _market: &str,
+    ) -> Result<crate::domain::Depth, String> {
+        Ok(crate::domain::Depth {
+            code: _code.to_string(),
+            bids: vec![],
+            asks: vec![],
+        })
+    }
+
+    /// Fetch intraday minute data for charting
+    async fn fetch_minute_data(
+        &self,
+        _code: &str,
+        _market: &str,
+    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+        Ok(vec![])
+    }
+
     /// Health check
     async fn health_check(&self) -> Result<bool, String>;
 }
