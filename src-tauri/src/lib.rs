@@ -104,6 +104,10 @@ pub fn run() {
                             }
                         }
                         "quit" => {
+                            // Close windows gracefully before exit
+                            if let Some(w) = app.get_webview_window("main") { let _ = w.close(); }
+                            if let Some(w) = app.get_webview_window("ticker") { let _ = w.close(); }
+                            std::thread::sleep(std::time::Duration::from_millis(200));
                             app.exit(0);
                         }
                         _ => {}
