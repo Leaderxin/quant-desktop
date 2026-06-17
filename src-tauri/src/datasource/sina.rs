@@ -203,11 +203,38 @@ impl DataSource for SinaAdapter {
 
     async fn search(
         &self,
-        _keyword: &str,
-        _market: &str,
+        keyword: &str,
+        market: &str,
     ) -> Result<Vec<StockBrief>, String> {
-        // Sina doesn't have a good search API; return empty and
-        // the caller can fall back to Eastmoney for search
+        // If the keyword looks like a 6-digit stock code, try direct lookup
+        let trimmed = keyword.trim();
+        if trimmed.len() == 6 && trimmed.chars().all(|c| c.is_ascii_digit()) {
+            let sina_code = Self::code_to_sina(trimmed, market);
+            let url = format!("{}{}", SINA_URL, sina_code);
+            let resp = self
+                .client
+                .get(&url)
+                .header("Referer", "https://finance.sina.com.cn")
+                .send()
+                .await
+                .map_err(|e| format!("Sina search request failed: {:#}", e))?;
+            let body_bytes = resp.bytes().await.map_err(|e| format!("Sina read failed: {:#}", e))?;
+            let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
+                .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+
+            // Parse the response to extract name
+            for line in body.lines() {
+                if let Some(quote) = Self::parse_sina_line(line) {
+                    if !quote.name.is_empty() {
+                        return Ok(vec![StockBrief {
+                            code: quote.code,
+                            market: quote.market,
+                            name: quote.name,
+                        }]);
+                    }
+                }
+            }
+        }
         Ok(vec![])
     }
 
