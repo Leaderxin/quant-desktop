@@ -101,7 +101,7 @@ impl DataSource for EastmoneyAdapter {
             .query(&params)
             .send()
             .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .map_err(|e| format!("Request failed: {:#}", e))?;
 
         let body: RawResponse = resp
             .json()
@@ -171,7 +171,7 @@ impl DataSource for EastmoneyAdapter {
             .query(&params)
             .send()
             .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .map_err(|e| format!("Request failed: {:#}", e))?;
 
         let status = resp.status();
         let body_text = resp.text().await.map_err(|e| format!("Read body failed: {}", e))?;
@@ -233,7 +233,7 @@ impl DataSource for EastmoneyAdapter {
             ])
             .send()
             .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .map_err(|e| format!("Request failed: {:#}", e))?;
 
         let body: RawResponse = resp.json().await.map_err(|e| format!("Parse failed: {}", e))?;
 
