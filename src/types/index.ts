@@ -11,6 +11,7 @@ export interface Quote {
   low: number;
   volume: number;
   turnover: number;
+  turnover_rate: number | null;
   timestamp: number;
 }
 

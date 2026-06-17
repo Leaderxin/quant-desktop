@@ -61,7 +61,7 @@ impl DataSource for EastmoneyAdapter {
 
         let params = [
             ("fltt", "2"),
-            ("fields", "f2,f3,f4,f12,f14,f15,f16,f17,f18"),
+            ("fields", "f2,f3,f4,f6,f8,f12,f14,f15,f16,f17,f18"),
             ("secids", &secids_str),
         ];
 
@@ -81,6 +81,10 @@ impl DataSource for EastmoneyAdapter {
             change_pct: Option<f64>,
             #[serde(rename = "f4")]
             change: Option<f64>,
+            #[serde(rename = "f6")]
+            turnover: Option<f64>,
+            #[serde(rename = "f8")]
+            turnover_rate: Option<f64>,
             #[serde(rename = "f12")]
             code: Option<String>,
             #[serde(rename = "f14")]
@@ -125,7 +129,8 @@ impl DataSource for EastmoneyAdapter {
                     high: r.high.unwrap_or(0.0),
                     low: r.low.unwrap_or(0.0),
                     volume: r.volume.unwrap_or(0),
-                    turnover: 0.0,
+                    turnover: r.turnover.unwrap_or(0.0),
+                    turnover_rate: r.turnover_rate,
                     timestamp: chrono::Utc::now().timestamp(),
                 })
             })

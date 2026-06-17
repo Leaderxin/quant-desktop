@@ -43,6 +43,7 @@ pub struct Quote {
     pub low: f64,
     pub volume: u64,
     pub turnover: f64,
+    pub turnover_rate: Option<f64>,
     pub timestamp: i64,
 }
 

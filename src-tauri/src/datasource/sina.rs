@@ -90,6 +90,7 @@ impl SinaAdapter {
             low,
             volume,
             turnover,
+            turnover_rate: None,
             timestamp: chrono::Utc::now().timestamp(),
         })
     }
