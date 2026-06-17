@@ -79,6 +79,11 @@ impl DataSourceManager {
             .as_ref()
     }
 
+    /// Get a reference to a specific data source by name
+    pub fn get_source(&self, name: &str) -> Option<&dyn DataSource> {
+        self.sources.get(name).map(|s| s.as_ref())
+    }
+
     /// List all registered data sources (id, display_name)
     pub fn list_sources(&self) -> Vec<(&str, &str)> {
         self.sources

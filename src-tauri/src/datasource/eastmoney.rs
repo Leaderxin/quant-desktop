@@ -173,9 +173,7 @@ impl DataSource for EastmoneyAdapter {
             .await
             .map_err(|e| format!("Request failed: {:#}", e))?;
 
-        let status = resp.status();
         let body_text = resp.text().await.map_err(|e| format!("Read body failed: {}", e))?;
-        eprintln!("[Eastmoney] indices status={}, body={}", status, &body_text[..body_text.len().min(500)]);
 
         let body: RawResponse = serde_json::from_str(&body_text)
             .map_err(|e| format!("Parse failed: {} — body: {}", e, &body_text[..body_text.len().min(200)]))?;
@@ -198,7 +196,6 @@ impl DataSource for EastmoneyAdapter {
             })
             .collect();
 
-        eprintln!("[Eastmoney] parsed {} indices", indices.len());
         Ok(indices)
     }
 

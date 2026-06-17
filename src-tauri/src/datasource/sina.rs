@@ -150,8 +150,6 @@ impl DataSource for SinaAdapter {
             .collect();
         let url = format!("{}{}", SINA_URL, sina_codes.join(","));
 
-        eprintln!("[Sina] fetching quotes: {}", url);
-
         let resp = self
             .client
             .get(&url)
@@ -172,7 +170,6 @@ impl DataSource for SinaAdapter {
             .filter_map(Self::parse_sina_line)
             .collect();
 
-        eprintln!("[Sina] parsed {} quotes", quotes.len());
         Ok(quotes)
     }
 
@@ -180,8 +177,6 @@ impl DataSource for SinaAdapter {
         // Sina index codes
         let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688";
         let url = format!("{}{}", SINA_URL, index_codes);
-
-        eprintln!("[Sina] fetching indices: {}", url);
 
         let resp = self
             .client
@@ -203,7 +198,6 @@ impl DataSource for SinaAdapter {
             .filter_map(Self::parse_sina_index)
             .collect();
 
-        eprintln!("[Sina] parsed {} indices", indices.len());
         Ok(indices)
     }
 

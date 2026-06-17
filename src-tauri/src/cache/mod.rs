@@ -156,19 +156,9 @@ impl Scheduler {
         app_handle: &tauri::AppHandle,
     ) {
         let source = manager.active_source();
-        match source.fetch_indices().await {
-            Ok(indices) => {
-                eprintln!("[Scheduler] indices fetched: {} items", indices.len());
-                if indices.is_empty() {
-                    eprintln!("[Scheduler] WARNING: indices vec is empty — API returned no data");
-                }
-                cache.update_indices(indices.clone());
-                let _ = app_handle.emit("indices-updated", &indices);
-            }
-            Err(e) => {
-                eprintln!("[Scheduler] fetch_indices error: {}", e);
-                let _ = app_handle.emit("indices-error", &e);
-            }
+        if let Ok(indices) = source.fetch_indices().await {
+            cache.update_indices(indices.clone());
+            let _ = app_handle.emit("indices-updated", &indices);
         }
     }
 }

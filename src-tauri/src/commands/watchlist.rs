@@ -42,6 +42,18 @@ pub async fn search_stocks(
     manager: State<'_, Arc<DataSourceManager>>,
     keyword: String,
 ) -> Result<Vec<crate::domain::StockBrief>, String> {
+    // Try active source first
     let source = manager.active_source();
-    source.search(&keyword, "CN").await
+    let mut results = source.search(&keyword, "CN").await.unwrap_or_default();
+
+    // Fallback to Eastmoney search if active source (e.g. Sina) returns empty
+    if results.is_empty() && source.name() != "eastmoney" {
+        if let Some(em) = manager.get_source("eastmoney") {
+            if let Ok(em_results) = em.search(&keyword, "CN").await {
+                results = em_results;
+            }
+        }
+    }
+
+    Ok(results)
 }
