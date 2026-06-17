@@ -154,6 +154,7 @@ pub fn run() {
             commands::settings::set_setting,
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
+            commands::window::show_main_window,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start application");

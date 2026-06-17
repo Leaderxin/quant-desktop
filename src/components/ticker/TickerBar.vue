@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
+import { useSettingsStore } from '@/stores/settings';
 
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
+const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
+  await settings.fetchSettings();
+  settings.applyTheme(settings.theme);
   await watchlist.fetchWatchlist();
   await quoteStore.startListening();
   startCycle();
@@ -58,6 +63,14 @@ function pauseCycle() {
 function resumeCycle() {
   paused.value = false;
 }
+
+async function handleClick() {
+  try {
+    await invoke('show_main_window');
+  } catch (e) {
+    console.error('Failed to show main window:', e);
+  }
+}
 </script>
 
 <template>
@@ -65,6 +78,7 @@ function resumeCycle() {
     class="ticker-bar"
     @mouseenter="pauseCycle"
     @mouseleave="resumeCycle"
+    @click="handleClick"
   >
     <template v-if="visibleItems.length > 0">
       <div
@@ -100,16 +114,19 @@ function resumeCycle() {
 .ticker-bar {
   width: 100%;
   height: 100%;
-  background-color: #0d1117;
-  border: 1px solid #2a2a3a;
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   user-select: none;
-  cursor: default;
+  cursor: pointer;
   overflow: hidden;
   padding: 2px 8px;
+}
+.ticker-bar:hover {
+  border-color: var(--color-text-secondary);
 }
 .ticker-row {
   display: flex;
@@ -118,7 +135,7 @@ function resumeCycle() {
   line-height: 1.3;
 }
 .ticker-name {
-  color: #999;
+  color: var(--color-text-secondary);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -130,9 +147,10 @@ function resumeCycle() {
   font-size: 11px;
   min-width: 52px;
   text-align: right;
+  color: var(--color-text-primary);
 }
 .ticker-na {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 11px;
   min-width: 52px;
   text-align: right;
@@ -142,10 +160,10 @@ function resumeCycle() {
   min-width: 54px;
   text-align: right;
 }
-.up { color: #ef5350; }
-.down { color: #66bb6a; }
+.up { color: var(--color-up); }
+.down { color: var(--color-down); }
 .ticker-empty {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 11px;
   text-align: center;
   width: 100%;
