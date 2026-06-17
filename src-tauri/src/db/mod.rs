@@ -48,7 +48,7 @@ impl Database {
     /// Insert default settings values (only if key does not exist)
     pub fn init_defaults(&self) -> SqliteResult<()> {
         let defaults = [
-            ("active_datasource", "eastmoney"),
+            ("active_datasource", "sina"),
             ("refresh_interval", "3"),
             ("theme", "dark"),
             ("ticker_visible", "true"),

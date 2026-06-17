@@ -23,8 +23,11 @@ pub fn run() {
             let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
 
-            // Initialize data source manager
+            // Initialize data source manager (Sina registered first as default)
             let mut ds_manager = DataSourceManager::new();
+            ds_manager.register(Box::new(
+                crate::datasource::sina::SinaAdapter::new(),
+            ));
             ds_manager.register(Box::new(
                 crate::datasource::eastmoney::EastmoneyAdapter::new(),
             ));

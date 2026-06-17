@@ -89,3 +89,4 @@ impl DataSourceManager {
 }
 
 pub mod eastmoney;
+pub mod sina;
