@@ -45,7 +45,7 @@ impl Database {
         Ok(())
     }
 
-    /// Insert default settings values (only if key does not exist)
+    /// Insert default settings values (overwrites data source to ensure sina is default)
     pub fn init_defaults(&self) -> SqliteResult<()> {
         let defaults = [
             ("active_datasource", "sina"),
@@ -54,7 +54,7 @@ impl Database {
             ("ticker_visible", "true"),
         ];
         for (k, v) in defaults {
-            if self.get_setting(k)?.is_none() {
+            if self.get_setting(k)?.is_none() || k == "active_datasource" {
                 self.set_setting(k, v)?;
             }
         }
