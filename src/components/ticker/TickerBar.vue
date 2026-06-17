@@ -164,10 +164,11 @@ async function handleClick() {
     <div v-else class="ticker-empty">
       暂无自选
     </div>
-    <!-- DEBUG: theme indicator -->
+    <!-- DEBUG: error message -->
+    <div v-if="debugError" class="debug-error">{{ debugError }}</div>
+    <!-- DEBUG: status line -->
     <div class="debug-theme" :style="{ color: debugTheme === 'light' ? '#000' : '#fff' }">
-      {{ debugTheme }}|poll#{{ debugPollCount }}|hb{{ heartbeat }}
-      <span v-if="debugError" style="color:red;">|{{ debugError }}</span>
+      {{ debugTheme }}|p{{ debugPollCount }}|h{{ heartbeat }}
     </div>
   </div>
 </template>
@@ -232,11 +233,25 @@ async function handleClick() {
 }
 .debug-theme {
   position: absolute;
-  bottom: 1px;
+  bottom: 2px;
   right: 4px;
-  font-size: 7px;
-  opacity: 0.7;
+  font-size: 9px;
+  opacity: 0.85;
   white-space: nowrap;
   pointer-events: none;
+  line-height: 1;
+}
+.debug-error {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: #ef5350;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
