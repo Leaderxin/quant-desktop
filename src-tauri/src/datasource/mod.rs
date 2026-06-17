@@ -87,3 +87,5 @@ impl DataSourceManager {
             .collect()
     }
 }
+
+pub mod eastmoney;
