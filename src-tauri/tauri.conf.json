@@ -25,7 +25,7 @@
         "label": "ticker",
         "title": "QuantDesktop Ticker",
         "url": "ticker.html",
-        "width": 260,
+        "width": 280,
         "height": 38,
         "decorations": false,
         "alwaysOnTop": true,

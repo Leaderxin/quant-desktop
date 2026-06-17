@@ -132,32 +132,36 @@ async function handleClick() {
   line-height: 1.4;
 }
 .ticker-name {
+  flex: 1;
+  min-width: 0;
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 50px;
 }
 .ticker-price {
+  flex-shrink: 0;
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  min-width: 48px;
+  width: 50px;
   text-align: right;
   color: var(--color-text-primary);
 }
 .ticker-na {
+  flex-shrink: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
-  min-width: 48px;
-  text-align: right;
   font-family: var(--font-mono);
+  width: 50px;
+  text-align: right;
 }
 .ticker-change {
+  flex-shrink: 0;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  min-width: 50px;
+  width: 52px;
   text-align: right;
 }
 .up { color: var(--color-up); }
