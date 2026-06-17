@@ -103,10 +103,20 @@ jobs:
           pattern: quant-desktop-*
           merge-multiple: true
 
+      - name: Flatten installer files
+        run: |
+          mkdir -p release
+          find . -type f \( \
+            -name "*.exe" -o -name "*.msi" -o \
+            -name "*.dmg" -o \
+            -name "*.deb" -o -name "*.AppImage" \
+          \) -exec cp {} release/ \;
+          ls -la release/
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: '**/*.exe **/*.msi **/*.dmg **/*.deb **/*.AppImage'
+          files: release/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
