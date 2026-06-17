@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { NModal, NCard, NInput, NList, NListItem, NButton, NSpace, useMessage } from 'naive-ui';
+import { NModal, NCard, NInput, NButton, NSpace, useMessage } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
 import { useWatchlistStore } from '@/stores/watchlist';
 
 const props = defineProps<{ show: boolean }>();
-const emit = defineEmits<{
-  (e: 'update:show', val: boolean): void;
-}>();
+const emit = defineEmits<{ (e: 'update:show', val: boolean): void }>();
 const message = useMessage();
 const watchlist = useWatchlistStore();
 
@@ -35,14 +33,6 @@ watch(() => keyword.value, (val) => {
   }, 300);
 });
 
-function onUpdateShow(val: boolean) {
-  emit('update:show', val);
-}
-
-function onClose() {
-  emit('update:show', false);
-}
-
 async function handleAdd(stock: StockBrief) {
   await watchlist.addStock(stock.code, stock.market, stock.name);
   message.success(`已添加 ${stock.name}`);
@@ -52,27 +42,90 @@ async function handleAdd(stock: StockBrief) {
 </script>
 
 <template>
-  <NModal :show="props.show" @update:show="onUpdateShow">
-    <NCard title="添加自选" style="width: 420px;" closable @close="onClose">
-      <NSpace vertical>
+  <NModal :show="props.show" @update:show="emit('update:show', $event)">
+    <NCard
+      title="添加自选"
+      style="width: 400px;"
+      closable
+      @close="emit('update:show', false)"
+      :bordered="false"
+    >
+      <NSpace vertical :size="12">
         <NInput
           v-model:value="keyword"
-          placeholder="输入代码或名称搜索..."
+          placeholder="输入代码或名称..."
           :loading="searching"
           clearable
-        />
-        <NList v-if="results.length > 0" hoverable style="max-height: 300px; overflow-y: auto;">
-          <NListItem v-for="s in results" :key="s.code">
-            <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
-              <div>
-                <span style="font-weight:500;margin-right:8px;">{{ s.name }}</span>
-                <span style="color:var(--color-text-secondary);font-size:var(--font-size-sm);">{{ s.code }}</span>
-              </div>
-              <NButton size="tiny" type="primary" @click="handleAdd(s)">+ 添加</NButton>
+          size="medium"
+        >
+          <template #prefix>
+            <span style="color:var(--color-text-tertiary);font-size:14px;">🔍</span>
+          </template>
+        </NInput>
+
+        <div v-if="results.length > 0" class="results-list">
+          <div
+            v-for="s in results"
+            :key="s.code"
+            class="result-item"
+            @click="handleAdd(s)"
+          >
+            <div class="result-info">
+              <span class="result-name">{{ s.name }}</span>
+              <span class="result-code tabular-nums">{{ s.code }}</span>
             </div>
-          </NListItem>
-        </NList>
+            <NButton size="tiny" type="primary" ghost @click.stop="handleAdd(s)">
+              添加
+            </NButton>
+          </div>
+        </div>
+
+        <div v-else-if="keyword && !searching" class="no-results">
+          未找到匹配标的
+        </div>
       </NSpace>
     </NCard>
   </NModal>
 </template>
+
+<style scoped>
+.results-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-0);
+  border-radius: var(--radius-md);
+}
+.result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--color-border-0);
+}
+.result-item:last-child { border-bottom: none; }
+.result-item:hover { background: var(--color-surface-2); }
+
+.result-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.result-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+.result-code {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-text-tertiary);
+}
+.no-results {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+</style>

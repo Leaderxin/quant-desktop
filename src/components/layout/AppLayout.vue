@@ -8,7 +8,9 @@ import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
   <div class="app-layout">
     <TopBar />
     <IndexBar />
-    <WatchlistTable />
+    <main class="main-content">
+      <WatchlistTable />
+    </main>
   </div>
 </template>
 
@@ -17,6 +19,12 @@ import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: var(--color-bg);
+  background: var(--color-surface-0);
+}
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 </style>

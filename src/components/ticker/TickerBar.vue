@@ -39,15 +39,9 @@ function startThemePoll() {
           settings.applyTheme(current);
         }
       })
-      .catch(() => { /* ignore */ });
+      .catch(() => {});
   }, 1000);
 }
-
-onUnmounted(() => {
-  quoteStore.stopListening();
-  if (cycleTimer) clearInterval(cycleTimer);
-  if (themePollTimer) clearInterval(themePollTimer);
-});
 
 function startCycle() {
   cycleTimer = setInterval(() => {
@@ -57,8 +51,8 @@ function startCycle() {
   }, 3000);
 }
 
-const tickerItems = computed(() => {
-  return watchlist.items.map(item => {
+const tickerItems = computed(() =>
+  watchlist.items.map(item => {
     const q = quoteStore.getQuote(item.code, item.market);
     return {
       name: item.name,
@@ -66,71 +60,48 @@ const tickerItems = computed(() => {
       price: q?.price ?? null,
       changePct: q?.change_pct ?? null,
     };
-  });
-});
+  })
+);
 
 const visibleItems = computed(() => {
   const items = tickerItems.value;
   if (items.length === 0) return [];
   const result = [];
   for (let i = 0; i < 2; i++) {
-    const idx = (page.value + i) % items.length;
-    result.push(items[idx]);
+    result.push(items[(page.value + i) % items.length]);
   }
   return result;
 });
 
-function pauseCycle() {
-  paused.value = true;
-}
-
-function resumeCycle() {
-  paused.value = false;
-}
-
 async function handleClick() {
-  try {
-    await invoke('show_main_window');
-  } catch (e) {
-    console.error('Failed to show main window:', e);
-  }
+  await invoke('show_main_window').catch(() => {});
 }
 </script>
 
 <template>
   <div
     class="ticker-bar"
-    @mouseenter="pauseCycle"
-    @mouseleave="resumeCycle"
+    @mouseenter="paused = true"
+    @mouseleave="paused = false"
     @click="handleClick"
   >
     <template v-if="visibleItems.length > 0">
-      <div
-        v-for="item in visibleItems"
-        :key="item.code"
-        class="ticker-row"
-      >
+      <div v-for="item in visibleItems" :key="item.code" class="ticker-row">
         <span class="ticker-name">{{ item.name }}</span>
         <span
           v-if="item.price !== null"
-          class="ticker-price"
+          class="ticker-price tabular-nums"
           :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
-        >
-          {{ item.price.toFixed(2) }}
-        </span>
+        >{{ item.price.toFixed(2) }}</span>
         <span v-else class="ticker-na">--</span>
         <span
           v-if="item.changePct !== null"
-          class="ticker-change"
+          class="ticker-change tabular-nums"
           :class="item.changePct >= 0 ? 'up' : 'down'"
-        >
-          {{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%
-        </span>
+        >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
       </div>
     </template>
-    <div v-else class="ticker-empty">
-      暂无自选
-    </div>
+    <div v-else class="ticker-empty">暂无自选</div>
   </div>
 </template>
 
@@ -138,57 +109,62 @@ async function handleClick() {
 .ticker-bar {
   width: 100%;
   height: 100%;
-  background-color: var(--color-card-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-0);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
   justify-content: center;
   user-select: none;
   cursor: pointer;
   overflow: hidden;
-  padding: 2px 8px;
+  padding: var(--space-1) var(--space-2);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 .ticker-bar:hover {
-  border-color: var(--color-text-secondary);
+  border-color: var(--color-border-1);
+  background: var(--color-surface-2);
 }
 .ticker-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  line-height: 1.3;
+  gap: var(--space-2);
+  line-height: 1.4;
 }
 .ticker-name {
   color: var(--color-text-secondary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 56px;
+  max-width: 50px;
 }
 .ticker-price {
-  font-weight: 600;
-  font-size: 11px;
-  min-width: 52px;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  min-width: 48px;
   text-align: right;
   color: var(--color-text-primary);
 }
 .ticker-na {
-  color: var(--color-text-secondary);
-  font-size: 11px;
-  min-width: 52px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  min-width: 48px;
   text-align: right;
+  font-family: var(--font-mono);
 }
 .ticker-change {
-  font-size: 11px;
-  min-width: 54px;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  min-width: 50px;
   text-align: right;
 }
 .up { color: var(--color-up); }
 .down { color: var(--color-down); }
 .ticker-empty {
-  color: var(--color-text-secondary);
-  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
   text-align: center;
   width: 100%;
 }

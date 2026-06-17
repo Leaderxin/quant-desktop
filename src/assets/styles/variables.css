@@ -1,23 +1,144 @@
-/* src/assets/styles/variables.css */
-:root {
-  --color-up: #ef5350;
-  --color-down: #66bb6a;
-  --color-bg: #1e1e2e;
-  --color-card-bg: #252536;
-  --color-text-primary: #e0e0e0;
-  --color-text-secondary: #888888;
-  --color-border: #333344;
-  --color-header-bg: #1a1a2e;
-  --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
+/* ================================================================
+   QuantDesktop Design System — CSS Custom Properties
+   Financial trading dashboard | Dark-first with light theme override
+   ================================================================ */
+
+/* ── Base Reset ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
+:root {
+  /* ── Surface Palette ── */
+  --color-surface-0: #0d1117;      /* Root background */
+  --color-surface-1: #161b22;      /* Card / panel background */
+  --color-surface-2: #1c2333;      /* Elevated surface (hover, table header) */
+  --color-surface-3: #252d3f;      /* Highest elevation (modals) */
+
+  /* ── Border System ── */
+  --color-border-0: #1e293b;       /* Default border */
+  --color-border-1: #30363d;       /* Stronger border */
+
+  /* ── Text Palette ── */
+  --color-text-primary: #e6edf3;   /* Headings, primary content */
+  --color-text-secondary: #8b949e; /* Secondary text, labels */
+  --color-text-tertiary: #6e7681;  /* Muted text, placeholders */
+
+  /* ── Semantic: P&L (A-share: red=up, green=down) ── */
+  --color-up: #f85149;
+  --color-up-bg: rgba(248, 81, 73, 0.12);
+  --color-down: #3fb950;
+  --color-down-bg: rgba(63, 185, 80, 0.12);
+
+  /* ── Brand / Accent ── */
+  --color-accent: #58a6ff;
+  --color-accent-dim: rgba(88, 166, 255, 0.12);
+
+  /* ── Typography ── */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ── Spacing (4px base) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* ── Border Radius ── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+
+  /* ── Transitions ── */
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+
+  /* ── Layout Tokens ── */
+  --header-height: 40px;
+  --index-bar-height: 52px;
+
+  /* Backward compat aliases */
+  --color-bg: var(--color-surface-0);
+  --color-card-bg: var(--color-surface-1);
+  --color-header-bg: var(--color-surface-2);
+  --color-border: var(--color-border-0);
+  --font-size-sm: var(--text-xs);
+  --font-size-base: var(--text-base);
+  --font-size-lg: var(--text-lg);
+}
+
+/* ================================================================
+   Light Theme
+   ================================================================ */
 [data-theme="light"] {
-  --color-bg: #ffffff;
-  --color-card-bg: #fafafa;
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #666666;
-  --color-border: #e8e8e8;
-  --color-header-bg: #f0f0f0;
+  --color-surface-0: #ffffff;
+  --color-surface-1: #f6f8fa;
+  --color-surface-2: #eef1f5;
+  --color-surface-3: #e2e5ea;
+
+  --color-border-0: #d0d7de;
+  --color-border-1: #c0c7cf;
+
+  --color-text-primary: #1f2328;
+  --color-text-secondary: #656d76;
+  --color-text-tertiary: #8b949e;
+
+  --color-up: #d1242f;
+  --color-up-bg: rgba(209, 36, 47, 0.08);
+  --color-down: #1a7f64;
+  --color-down-bg: rgba(26, 127, 100, 0.08);
+
+  --color-accent: #0969da;
+  --color-accent-dim: rgba(9, 105, 218, 0.08);
+
+  --shadow-sm: 0 1px 3px rgba(31,35,40,0.08);
+  --shadow-md: 0 4px 16px rgba(31,35,40,0.10);
+}
+
+/* ================================================================
+   Global Base
+   ================================================================ */
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-0);
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+/* Tabular numbers for financial columns */
+.tabular-nums {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
