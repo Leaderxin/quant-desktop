@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, h } from 'vue';
-import { NButton, NDataTable, NDropdown, useMessage } from 'naive-ui';
+import { NButton, NDataTable, NDropdown } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -10,7 +10,6 @@ import AddStockDialog from './AddStockDialog.vue';
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
-const message = useMessage();
 const showAddDialog = ref(false);
 
 // Context menu state
@@ -128,18 +127,6 @@ const columns: DataTableColumns<WatchItem> = [
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q || q.turnover_rate == null) return '--';
       return h('span', `${q.turnover_rate.toFixed(2)}%`);
-    }
-  },
-  {
-    title: '', key: 'action', width: 50, fixed: 'right',
-    render(row) {
-      return h(NButton, {
-        size: 'tiny', text: true, type: 'error',
-        onClick: async () => {
-          await watchlist.removeStock(row.code, row.market);
-          message.success(`已移除 ${row.name}`);
-        }
-      }, { default: () => '−' });
     }
   },
 ];
