@@ -128,6 +128,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Prevent main window from closing — hide instead of destroy
+            if let Some(main) = app.get_webview_window("main") {
+                let main_clone = main.clone();
+                let _ = main.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_clone.hide();
+                    }
+                });
+            }
+
             // Position ticker window at bottom-right of screen
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
