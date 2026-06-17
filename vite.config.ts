@@ -36,4 +36,13 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        ticker: fileURLToPath(new URL("./ticker.html", import.meta.url)),
+      },
+    },
+  },
 }));
