@@ -4,7 +4,7 @@ use serde::Deserialize;
 use crate::domain::*;
 use super::DataSource;
 
-const EASTMONEY_URL: &str = "https://push2.eastmoney.com/api/qt/ulist.npz";
+const EASTMONEY_URL: &str = "https://push2.eastmoney.com/api/qt/ulist/get";
 const SEARCH_URL: &str = "https://searchapi.eastmoney.com/api/suggest/get";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
