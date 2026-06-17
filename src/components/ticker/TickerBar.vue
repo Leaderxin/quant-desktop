@@ -10,13 +10,17 @@ const watchlist = useWatchlistStore();
 const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
+const debugTheme = ref('');
+const debugPollCount = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
 let themePollTimer: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   await settings.fetchSettings();
+  console.log('[TICKER] mounted, fetched theme:', settings.theme);
   settings.applyTheme(settings.theme);
+  debugTheme.value = settings.theme;
   await watchlist.fetchWatchlist();
   await quoteStore.startListening();
   startCycle();
@@ -26,12 +30,16 @@ onMounted(async () => {
   themePollTimer = setInterval(async () => {
     try {
       const all = await invoke<Record<string, string>>('get_settings');
+      debugPollCount.value++;
       const current = (all['theme'] as 'dark' | 'light') || 'dark';
+      console.log('[TICKER] poll #' + debugPollCount.value, 'current:', current, 'last:', lastTheme);
       if (current !== lastTheme) {
+        console.log('[TICKER] theme changed!', lastTheme, '->', current);
         lastTheme = current;
         settings.applyTheme(current);
+        debugTheme.value = current;
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.error('[TICKER] poll error:', e); }
   }, 1000);
 });
 
@@ -123,6 +131,10 @@ async function handleClick() {
     <div v-else class="ticker-empty">
       暂无自选
     </div>
+    <!-- DEBUG: theme indicator -->
+    <div class="debug-theme" :style="{ color: debugTheme === 'light' ? '#000' : '#fff' }">
+      {{ debugTheme }}#{{ debugPollCount }}
+    </div>
   </div>
 </template>
 
@@ -183,5 +195,12 @@ async function handleClick() {
   font-size: 11px;
   text-align: center;
   width: 100%;
+}
+.debug-theme {
+  position: absolute;
+  bottom: 1px;
+  right: 4px;
+  font-size: 8px;
+  opacity: 0.6;
 }
 </style>
