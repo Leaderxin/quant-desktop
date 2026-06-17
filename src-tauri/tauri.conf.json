@@ -28,7 +28,7 @@
         "width": 260,
         "height": 38,
         "decorations": false,
-        "alwaysOnBottom": true,
+        "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
         "focus": false,

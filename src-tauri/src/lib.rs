@@ -91,6 +91,15 @@ pub fn run() {
                                     let _ = window.hide();
                                 } else {
                                     let _ = window.show();
+                                    let _ = window.set_always_on_top(true);
+                                    // Reposition to bottom-right
+                                    if let Ok(Some(monitor)) = window.primary_monitor() {
+                                        let size = monitor.size();
+                                        let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(260, 38));
+                                        let x = (size.width as i32).saturating_sub(win_size.width as i32 + 10);
+                                        let y = (size.height as i32).saturating_sub(win_size.height as i32 + 60);
+                                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                                    }
                                 }
                             }
                         }
@@ -121,9 +130,10 @@ pub fn run() {
 
             // Position ticker window at bottom-right of screen
             if let Some(ticker) = app.get_webview_window("ticker") {
+                let _ = ticker.set_always_on_top(true);
                 if let Ok(Some(monitor)) = ticker.primary_monitor() {
                     let size = monitor.size();
-                    let ticker_size = ticker.outer_size().unwrap();
+                    let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(260, 38));
                     let x = (size.width as i32).saturating_sub(ticker_size.width as i32 + 10);
                     let y = (size.height as i32).saturating_sub(ticker_size.height as i32 + 60);
                     let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
