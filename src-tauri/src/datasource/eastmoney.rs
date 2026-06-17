@@ -267,7 +267,7 @@ impl DataSource for EastmoneyAdapter {
     ) -> Result<crate::domain::Depth, String> {
         let secid = Self::code_to_secid(code, market);
         let params = [
-            ("secid", &secid),
+            ("secid", secid.as_str()),
             ("fields", "f43,f44,f45,f46,f47,f48,f55,f56,f57,f58"),
         ];
 
@@ -276,6 +276,7 @@ impl DataSource for EastmoneyAdapter {
             data: Option<RawDepth>,
         }
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct RawDepth {
             #[serde(rename = "f43")]
             price: Option<f64>,
@@ -289,6 +290,8 @@ impl DataSource for EastmoneyAdapter {
             bid2_v: Option<u64>,
             #[serde(rename = "f48")]
             bid3_p: Option<f64>,
+            #[serde(rename = "f49")]
+            bid3_v: Option<u64>,
             #[serde(rename = "f55")]
             ask1_p: Option<f64>,
             #[serde(rename = "f56")]
@@ -331,7 +334,7 @@ impl DataSource for EastmoneyAdapter {
     ) -> Result<Vec<crate::domain::MinuteData>, String> {
         let secid = Self::code_to_secid(code, market);
         let params = [
-            ("secid", &secid),
+            ("secid", secid.as_str()),
             ("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11"),
             ("fields2", "f51,f52,f53,f54,f55,f56,f57,f58"),
             ("ndays", "1"),
