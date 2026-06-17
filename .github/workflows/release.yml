@@ -33,6 +33,22 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          cache-targets: true
+          cache-on-failure: true
+
+      - name: Cache Tauri tools (NSIS, WiX)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/tauri
+            ~/.local/share/tauri
+            ~/AppData/Local/Temp/.tauri
+          key: tauri-tools-${{ matrix.os }}
+
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
