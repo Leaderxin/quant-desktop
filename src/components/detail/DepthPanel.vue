@@ -2,6 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { Depth, Level } from '@/types';
+import { getPricePrecision } from '@/utils/format';
 
 const props = defineProps<{
   code: string;
@@ -27,14 +28,16 @@ async function fetchDepth() {
 onMounted(() => fetchDepth());
 watch(() => [props.code, props.market], () => fetchDepth());
 
-// Pad to 5 levels
 const levels = computed(() => {
-  const bids: (Level | null)[] = depth.value
-    ? Array.from({ length: 5 }, (_, i) => depth.value!.bids[i] ?? null)
-    : Array.from({ length: 5 }, () => null);
-  const asks: (Level | null)[] = depth.value
-    ? Array.from({ length: 5 }, (_, i) => depth.value!.asks[i] ?? null)
-    : Array.from({ length: 5 }, () => null);
+  const rawBids = depth.value ? [...depth.value.bids] : [];
+  const rawAsks = depth.value ? [...depth.value.asks] : [];
+
+  // Sort: bids high→low, asks low→high
+  rawBids.sort((a, b) => b.price - a.price);
+  rawAsks.sort((a, b) => a.price - b.price);
+
+  const bids: (Level | null)[] = Array.from({ length: 5 }, (_, i) => rawBids[i] ?? null);
+  const asks: (Level | null)[] = Array.from({ length: 5 }, (_, i) => rawAsks[i] ?? null);
 
   // Max volume across all levels for bar scaling
   const allVols = [...bids, ...asks]
@@ -82,7 +85,7 @@ function barWidth(vol: number, max: number): string {
               :style="{ width: level ? barWidth(level.volume, levels.maxVol) : '0' }"
             ></span>
           </span>
-          <span class="depth-price bid-price">{{ level?.price?.toFixed(2) ?? '--' }}</span>
+          <span class="depth-price bid-price">{{ level ? level.price.toFixed(getPricePrecision(level.price)) : '--' }}</span>
           <span class="depth-vol">{{ level ? formatVol(level.volume) : '--' }}</span>
         </div>
       </div>
@@ -104,7 +107,7 @@ function barWidth(vol: number, max: number): string {
               :style="{ width: level ? barWidth(level.volume, levels.maxVol) : '0' }"
             ></span>
           </span>
-          <span class="depth-price ask-price">{{ level?.price?.toFixed(2) ?? '--' }}</span>
+          <span class="depth-price ask-price">{{ level ? level.price.toFixed(getPricePrecision(level.price)) : '--' }}</span>
           <span class="depth-vol">{{ level ? formatVol(level.volume) : '--' }}</span>
         </div>
       </div>
@@ -186,8 +189,8 @@ function barWidth(vol: number, max: number): string {
   opacity: 0.12;
   transition: width var(--transition-fast);
 }
-.bid-bar { background: var(--color-down); }
-.ask-bar { background: var(--color-up); }
+.bid-bar { background: var(--color-up); }
+.ask-bar { background: var(--color-down); }
 
 .depth-price {
   position: relative;
@@ -200,6 +203,6 @@ function barWidth(vol: number, max: number): string {
   color: var(--color-text-secondary);
 }
 
-.bid-price { color: var(--color-down); }
-.ask-price { color: var(--color-up); }
+.bid-price { color: var(--color-up); }
+.ask-price { color: var(--color-down); }
 </style>
