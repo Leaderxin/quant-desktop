@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, h } from 'vue';
+import { ref, h, inject } from 'vue';
 import { NButton, NDataTable, NDropdown } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,10 +9,15 @@ import type { WatchItem } from '@/types';
 import { formatPrice } from '@/utils/format';
 import AddStockDialog from './AddStockDialog.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
+import { CLEAR_INDEX_DETAIL_KEY } from '@/components/layout/AppLayout.vue';
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const showAddDialog = ref(false);
+
+const indexDetailCoord = inject<{ clearIndexDetail: () => void } | undefined>(
+  CLEAR_INDEX_DETAIL_KEY
+);
 
 // Context menu state
 const ctxMenuX = ref(0);
@@ -242,7 +247,14 @@ const columns: DataTableColumns<WatchItem> = [
       :row-props="(row: WatchItem) => ({
         style: `height: 36px; cursor: pointer; ${selectedRow?.id === row.id ? 'background: var(--color-bg-elevated, rgba(255,255,255,0.04))' : ''}`,
         onContextmenu: (e: MouseEvent) => handleContextMenu(e, row),
-        onClick: () => { selectedRow = selectedRow?.id === row.id ? null : row; }
+        onClick: () => {
+          if (selectedRow?.id === row.id) {
+            selectedRow = null;
+          } else {
+            indexDetailCoord?.clearIndexDetail();
+            selectedRow = row;
+          }
+        }
       })"
       flex-height
       class="watchlist-table"

@@ -2,6 +2,17 @@
 import TopBar from './TopBar.vue';
 import IndexBar from '@/components/index/IndexBar.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
+import { provide, ref } from 'vue';
+
+// Key for dependency injection — coordinates stock/index detail mutual exclusion
+export const CLEAR_INDEX_DETAIL_KEY = Symbol('clearIndexDetail');
+
+const clearIndexDetailFn = ref<(() => void) | null>(null);
+
+provide(CLEAR_INDEX_DETAIL_KEY, {
+  registerClearFn: (fn: () => void) => { clearIndexDetailFn.value = fn; },
+  clearIndexDetail: () => { clearIndexDetailFn.value?.(); },
+});
 
 defineProps<{
   initError?: string | null;

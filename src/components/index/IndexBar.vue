@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, inject, onMounted } from 'vue';
 import { useQuoteStore } from '@/stores/quote';
 import type { IndexQuote } from '@/types';
 import IndexCard from './IndexCard.vue';
 import IndexDetail from '@/components/detail/IndexDetail.vue';
+import { CLEAR_INDEX_DETAIL_KEY } from '@/components/layout/AppLayout.vue';
 
 const quote = useQuoteStore();
+
+const indexDetailCoord = inject<{ registerClearFn: (fn: () => void) => void } | undefined>(
+  CLEAR_INDEX_DETAIL_KEY
+);
+
+onMounted(() => {
+  indexDetailCoord?.registerClearFn(() => {
+    selectedIndex.value = null;
+  });
+});
+
 const selectedIndex = ref<IndexQuote | null>(null);
 
 function handleSelect(index: IndexQuote) {
