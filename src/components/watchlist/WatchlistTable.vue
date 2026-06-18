@@ -138,8 +138,7 @@ const columns: DataTableColumns<WatchItem> = [
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q) return '--';
       const v = q.change_pct;
-      const color = v >= 0 ? '#f85149' : '#3fb950';
-      return h('span', { style: { color, fontWeight: 500 } },
+      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
         `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
     }
   },
@@ -154,8 +153,7 @@ const columns: DataTableColumns<WatchItem> = [
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q) return '--';
       const v = q.change;
-      const color = v >= 0 ? '#f85149' : '#3fb950';
-      return h('span', { style: { color } },
+      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
         `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
     }
   },
@@ -326,4 +324,8 @@ const columns: DataTableColumns<WatchItem> = [
 :deep(.watchlist-table) {
   flex: 1;
 }
+/* P&L color classes (used via render functions) */
+:deep(.pct-col) { font-weight: 500; }
+:deep(.pct-col.up) { color: var(--color-up); }
+:deep(.pct-col.down) { color: var(--color-down); }
 </style>

@@ -22,17 +22,27 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function setSetting(key: string, value: string) {
-    await invoke('set_setting', { key, value });
-    settings.value[key] = value;
+    try {
+      await invoke('set_setting', { key, value });
+      settings.value[key] = value;
+    } catch (e) {
+      console.error(`[settings] setSetting('${key}') failed:`, e);
+    }
   }
 
   async function switchDatasource(name: string) {
-    await invoke('switch_datasource', { name });
-    activeDatasource.value = name;
-    settings.value['active_datasource'] = name;
-    emit('datasource-changed', { datasource: name }).catch((e) => {
-      console.error('[settings] Failed to emit datasource-changed:', e);
-    });
+    const previous = activeDatasource.value;
+    try {
+      await invoke('switch_datasource', { name });
+      activeDatasource.value = name;
+      settings.value['active_datasource'] = name;
+      emit('datasource-changed', { datasource: name }).catch((e) => {
+        console.error('[settings] Failed to emit datasource-changed:', e);
+      });
+    } catch (e) {
+      activeDatasource.value = previous;
+      console.error('[settings] switchDatasource failed:', e);
+    }
   }
 
   async function toggleTheme() {

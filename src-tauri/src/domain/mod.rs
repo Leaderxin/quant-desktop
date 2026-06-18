@@ -1,34 +1,8 @@
 // src-tauri/src/domain/mod.rs
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum Market {
-    #[serde(rename = "CN")]
-    CN,
-    #[serde(rename = "HK")]
-    HK,
-    #[serde(rename = "US")]
-    US,
-}
-
-impl Market {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_uppercase().as_str() {
-            "CN" => Some(Self::CN),
-            "HK" => Some(Self::HK),
-            "US" => Some(Self::US),
-            _ => None,
-        }
-    }
-
-    pub fn as_prefix(&self) -> &str {
-        match self {
-            Market::CN => "0",
-            Market::HK => "116",
-            Market::US => "105",
-        }
-    }
-}
+// Note: market is stored as a String (e.g. "CN", "HK", "US") in Quote/IndexQuote
+// rather than using a typed enum, to keep the IPC boundary simple.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Quote {
@@ -87,11 +61,4 @@ pub struct StockBrief {
     pub code: String,
     pub market: String,
     pub name: String,
-}
-
-/// 行情快照的批量查询结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuotesResponse {
-    pub quotes: Vec<Quote>,
-    pub errors: Vec<String>,
 }

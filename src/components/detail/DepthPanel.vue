@@ -25,7 +25,7 @@ async function fetchDepth() {
 }
 
 onMounted(() => fetchDepth());
-watch(() => props.code, () => fetchDepth());
+watch(() => [props.code, props.market], () => fetchDepth());
 
 // Pad to 5 levels
 const levels = computed(() => {

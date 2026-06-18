@@ -15,8 +15,7 @@ pub struct QuoteCache {
 
 struct CachedQuote {
     data: Quote,
-    #[allow(dead_code)]
-    cached_at: std::time::Instant,
+    _cached_at: std::time::Instant,
 }
 
 impl QuoteCache {
@@ -39,7 +38,7 @@ impl QuoteCache {
                     key,
                     CachedQuote {
                         data: q,
-                        cached_at: now,
+                        _cached_at: now,
                     },
                 );
             }
@@ -56,7 +55,7 @@ impl QuoteCache {
                 key,
                 CachedQuote {
                     data: q.clone(),
-                    cached_at: now,
+                    _cached_at: now,
                 },
             );
         }
@@ -82,14 +81,6 @@ impl QuoteCache {
     pub fn get_all_quotes(&self) -> Vec<Quote> {
         let cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
         cache.values().map(|c| c.data.clone()).collect()
-    }
-
-    /// Get a specific quote by market and code
-    #[allow(dead_code)]
-    pub fn get_quote(&self, market: &str, code: &str) -> Option<Quote> {
-        let cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
-        let key = format!("{}:{}", market, code);
-        cache.get(&key).map(|c| c.data.clone())
     }
 
     /// Update indices

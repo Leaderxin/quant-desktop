@@ -126,7 +126,7 @@ pub fn run() {
                                         let size = monitor.size();
                                         let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(crate::datasource::TICKER_WIDTH, crate::datasource::TICKER_HEIGHT));
                                         let x = (size.width as i32).saturating_sub(win_size.width as i32 + 10);
-                                        let y = (size.height as i32).saturating_sub(win_size.height as i32 + 46);
+                                        let y = (size.height as i32).saturating_sub(win_size.height as i32 + 60);
                                         let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
                                     }
                                 }

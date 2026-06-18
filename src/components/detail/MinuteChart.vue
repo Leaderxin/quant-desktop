@@ -187,13 +187,17 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (abortController) {
+    abortController.abort();
+    abortController = null;
+  }
   if (chart) {
     dispose(chart);
     chart = null;
   }
 });
 
-watch(() => props.code, () => { loadData(); });
+watch(() => [props.code, props.market], () => { loadData(); });
 watch(() => settings.theme, () => { applyChartStyles(); });
 </script>
 
@@ -240,15 +244,15 @@ watch(() => settings.theme, () => { applyChartStyles(); });
 .chart-error-overlay {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  background: rgba(22, 27, 34, 0.92);
+  gap: var(--space-2);
+  background: var(--color-surface-0);
 }
 .chart-error-icon {
-  color: #ffa657;
+  color: var(--color-warning);
 }
 .chart-error-text {
-  font-size: 12px;
-  color: #d29922;
+  font-size: var(--text-xs);
+  color: var(--color-warning);
   text-align: center;
   max-width: 240px;
   line-height: 1.4;
@@ -257,16 +261,16 @@ watch(() => settings.theme, () => { applyChartStyles(); });
   display: inline-flex;
   align-items: center;
   padding: 3px 12px;
-  border: 1px solid rgba(255, 166, 87, 0.25);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-sm);
-  background: rgba(255, 166, 87, 0.06);
-  color: #ffa657;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
   font-size: var(--text-xs);
   font-family: var(--font-sans);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 .chart-retry-btn:hover {
-  background: rgba(255, 166, 87, 0.14);
+  filter: brightness(1.2);
 }
 </style>

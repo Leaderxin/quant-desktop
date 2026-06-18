@@ -24,14 +24,24 @@ export const useWatchlistStore = defineStore('watchlist', () => {
 
   async function addStock(code: string, market: string, name: string) {
     error.value = null;
-    await invoke('add_watch', { code, market, name });
-    await fetchWatchlist();
+    try {
+      await invoke('add_watch', { code, market, name });
+      await fetchWatchlist();
+    } catch (e) {
+      error.value = `添加失败: ${e}`;
+      console.error('[watchlist] addStock failed:', e);
+    }
   }
 
   async function removeStock(code: string, market: string) {
     error.value = null;
-    await invoke('remove_watch', { code, market });
-    await fetchWatchlist();
+    try {
+      await invoke('remove_watch', { code, market });
+      await fetchWatchlist();
+    } catch (e) {
+      error.value = `删除失败: ${e}`;
+      console.error('[watchlist] removeStock failed:', e);
+    }
   }
 
   return { items, loading, error, fetchWatchlist, addStock, removeStock };

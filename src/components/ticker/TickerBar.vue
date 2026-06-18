@@ -45,7 +45,7 @@ onUnmounted(() => {
 
 function startWatchlistPoll() {
   watchlistPollTimer = setInterval(() => {
-    watchlist.fetchWatchlist().catch(() => {});
+    watchlist.fetchWatchlist().catch((e) => { console.error('[TickerBar] poll failed:', e); });
   }, 3000);
 }
 
@@ -106,7 +106,13 @@ const retryHintVisible = ref(false);
 
 async function handleClick() {
   if (initFailed.value) {
-    // Double-click to retry initialization in the tiny ticker window
+    // Clean up any stale timers/listeners from failed init before retrying
+    if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
+    if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
+    if (unlistenDatasource) { unlistenDatasource(); unlistenDatasource = null; }
+    if (watchlistPollTimer) { clearInterval(watchlistPollTimer); watchlistPollTimer = null; }
+    quoteStore.stopListening();
+
     initFailed.value = false;
     retryHintVisible.value = true;
     try {
@@ -126,7 +132,7 @@ async function handleClick() {
     }
     return;
   }
-  await invoke('show_main_window').catch(() => {});
+  await invoke('show_main_window').catch((e) => { console.error('[TickerBar] show_main_window failed:', e); });
 }
 </script>
 
