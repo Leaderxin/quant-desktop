@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, h, inject } from 'vue';
+import { ref, h, inject, onMounted } from 'vue';
 import { NButton, NDataTable, NDropdown } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
@@ -15,9 +15,16 @@ const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const showAddDialog = ref(false);
 
-const indexDetailCoord = inject<{ clearIndexDetail: () => void } | undefined>(
-  CLEAR_INDEX_DETAIL_KEY
-);
+const indexDetailCoord = inject<{
+  clearIndexDetail: () => void;
+  registerClearStockFn?: (fn: () => void) => void;
+} | undefined>(CLEAR_INDEX_DETAIL_KEY);
+
+onMounted(() => {
+  indexDetailCoord?.registerClearStockFn?.(() => {
+    selectedRow.value = null;
+  });
+});
 
 // Context menu state
 const ctxMenuX = ref(0);
@@ -211,6 +218,8 @@ const columns: DataTableColumns<WatchItem> = [
     }
   },
 ];
+
+defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 </script>
 
 <template>

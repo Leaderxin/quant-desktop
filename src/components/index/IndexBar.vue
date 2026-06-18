@@ -8,12 +8,13 @@ import { CLEAR_INDEX_DETAIL_KEY } from '@/components/layout/AppLayout.vue';
 
 const quote = useQuoteStore();
 
-const indexDetailCoord = inject<{ registerClearFn: (fn: () => void) => void } | undefined>(
-  CLEAR_INDEX_DETAIL_KEY
-);
+const indexDetailCoord = inject<{
+  registerClearIndexFn: (fn: () => void) => void;
+  clearStockDetail: () => void;
+} | undefined>(CLEAR_INDEX_DETAIL_KEY);
 
 onMounted(() => {
-  indexDetailCoord?.registerClearFn(() => {
+  indexDetailCoord?.registerClearIndexFn(() => {
     selectedIndex.value = null;
   });
 });
@@ -25,6 +26,7 @@ function handleSelect(index: IndexQuote) {
     // Toggle: deselect
     selectedIndex.value = null;
   } else {
+    indexDetailCoord?.clearStockDetail();
     selectedIndex.value = index;
   }
 }

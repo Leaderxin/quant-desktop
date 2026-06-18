@@ -122,7 +122,8 @@ impl Scheduler {
             tauri::async_runtime::spawn(async move {
                 loop {
                     dm.wakeup.notified().await;
-                    Self::fetch_once(&dm, &c, &d, &ah, &fg).await;
+                    // force=true: bypass market-closed check so data source switch always refreshes
+                    Self::fetch_once(&dm, &c, &d, &ah, &fg, true).await;
                 }
             });
 
@@ -143,19 +144,21 @@ impl Scheduler {
                     }
                 }
 
-                Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching).await;
+                Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching, false).await;
             }
         });
     }
 
     /// Run one fetch cycle — used by both the interval loop and on-demand wakeups.
     /// The `fetching` guard prevents concurrent fetches from the two loops.
+    /// When `force` is true (data source switch), bypass the market-closed check.
     async fn fetch_once(
         manager: &crate::datasource::DataSourceManager,
         cache: &Arc<QuoteCache>,
         db: &std::sync::Arc<crate::db::Database>,
         app_handle: &tauri::AppHandle,
         fetching: &AtomicBool,
+        force: bool,
     ) {
         // Skip if a fetch is already in progress (prevents duplicate API calls)
         if fetching.swap(true, Ordering::AcqRel) {
@@ -196,8 +199,9 @@ impl Scheduler {
             }
         }
 
-        // 3. Batch fetch quotes (skip API calls when market is closed, emit cached)
-        if session == MarketSession::Closed {
+        // 3. Batch fetch quotes. When market is closed, skip API calls and emit cached
+        //    data — unless force=true (data source switch), in which case fetch anyway.
+        if session == MarketSession::Closed && !force {
             let cached = cache.get_all_quotes();
             if !cached.is_empty() {
                 if let Err(e) = app_handle.emit("quotes-updated", &cached) {

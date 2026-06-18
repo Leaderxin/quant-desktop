@@ -8,10 +8,13 @@ import { provide, ref } from 'vue';
 export const CLEAR_INDEX_DETAIL_KEY = Symbol('clearIndexDetail');
 
 const clearIndexDetailFn = ref<(() => void) | null>(null);
+const clearStockDetailFn = ref<(() => void) | null>(null);
 
 provide(CLEAR_INDEX_DETAIL_KEY, {
-  registerClearFn: (fn: () => void) => { clearIndexDetailFn.value = fn; },
+  registerClearIndexFn: (fn: () => void) => { clearIndexDetailFn.value = fn; },
   clearIndexDetail: () => { clearIndexDetailFn.value?.(); },
+  registerClearStockFn: (fn: () => void) => { clearStockDetailFn.value = fn; },
+  clearStockDetail: () => { clearStockDetailFn.value?.(); },
 });
 
 defineProps<{
