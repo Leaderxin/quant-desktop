@@ -249,7 +249,12 @@ impl DataSource for SinaAdapter {
         code: &str,
         market: &str,
     ) -> Result<Vec<crate::domain::MinuteData>, String> {
-        let symbol = Self::code_to_sina(code, market);
+        let symbol = if code.starts_with("s_") {
+            // Index codes already have exchange prefix: "s_sh000001" → "sh000001"
+            code[2..].to_string()
+        } else {
+            Self::code_to_sina(code, market)
+        };
         let url = format!(
             "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale=5&datalen=240",
             symbol

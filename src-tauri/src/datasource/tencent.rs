@@ -218,7 +218,12 @@ impl DataSource for TencentAdapter {
         code: &str,
         market: &str,
     ) -> Result<Vec<crate::domain::MinuteData>, String> {
-        let tc_code = Self::code_to_tencent(code, market);
+        let tc_code = if code.starts_with("s_") {
+            // Index codes already have exchange prefix: "s_sh000001" → "sh000001"
+            code[2..].to_string()
+        } else {
+            Self::code_to_tencent(code, market)
+        };
         // Use 5-min K-line endpoint — same as Sina, returns multi-day data
         let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m5,,240", tc_code);
 
