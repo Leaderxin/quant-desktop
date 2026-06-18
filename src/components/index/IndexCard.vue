@@ -2,12 +2,33 @@
 import type { IndexQuote } from '@/types';
 import { computed } from 'vue';
 
-const props = defineProps<{ index: IndexQuote }>();
+const props = defineProps<{
+  index: IndexQuote;
+  selected?: boolean;
+}>();
+
+const emit = defineEmits<{
+  select: [index: IndexQuote];
+}>();
+
 const isUp = computed(() => props.index.change_pct >= 0);
 </script>
 
 <template>
-  <div class="index-card" :class="isUp ? 'card-up' : 'card-down'">
+  <div
+    class="index-card"
+    :class="{
+      'card-up': isUp,
+      'card-down': !isUp,
+      'card-selected': selected
+    }"
+    role="button"
+    tabindex="0"
+    :aria-label="`查看 ${index.name} 详情`"
+    @click="emit('select', index)"
+    @keydown.enter="emit('select', index)"
+    @keydown.space.prevent="emit('select', index)"
+  >
     <span class="index-name">{{ index.name }}</span>
     <span class="index-price tabular-nums" :class="isUp ? 'up' : 'down'">
       {{ index.price.toFixed(2) }}
@@ -33,7 +54,21 @@ const isUp = computed(() => props.index.change_pct >= 0);
   width: 140px;
   height: 60px;
   flex-shrink: 0;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.index-card:hover {
+  background: var(--color-bg-elevated, rgba(255,255,255,0.04));
+  border-color: var(--color-border, rgba(255,255,255,0.12));
+}
+.index-card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.card-selected {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .card-up {
