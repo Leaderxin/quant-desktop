@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -105,6 +106,46 @@ const visibleItems = computed(() => {
 
 const retryHintVisible = ref(false);
 
+// Manual window dragging via Tauri position API (works reliably on all platforms).
+// Track mouse down/move/up to distinguish click from drag (4px threshold).
+let dragging = false;
+let dragScreenX = 0;
+let dragScreenY = 0;
+let winStartX = 0;
+let winStartY = 0;
+
+async function onMouseDown(e: MouseEvent) {
+  dragScreenX = e.screenX;
+  dragScreenY = e.screenY;
+  dragging = false;
+  try {
+    const pos = await getCurrentWindow().outerPosition();
+    winStartX = pos.x;
+    winStartY = pos.y;
+  } catch { /* ignore */ }
+}
+
+function onMouseMove(e: MouseEvent) {
+  if (e.buttons !== 1) return;
+  const dx = Math.abs(e.screenX - dragScreenX);
+  const dy = Math.abs(e.screenY - dragScreenY);
+  if (!dragging && (dx > 4 || dy > 4)) {
+    dragging = true;
+  }
+  if (dragging) {
+    const newX = winStartX + (e.screenX - dragScreenX);
+    const newY = winStartY + (e.screenY - dragScreenY);
+    getCurrentWindow().setPosition(new LogicalPosition(newX, newY));
+  }
+}
+
+function onMouseUp() {
+  if (!dragging) {
+    handleClick();
+  }
+  dragging = false;
+}
+
 async function handleClick() {
   if (initFailed.value) {
     // Clean up any stale timers/listeners from failed init before retrying
@@ -147,7 +188,9 @@ async function handleClick() {
     @keydown.space.prevent="handleClick"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
-    @click="handleClick"
+    @mousedown="onMouseDown"
+    @mousemove="onMouseMove"
+    @mouseup="onMouseUp"
   >
     <template v-if="initFailed">
       <div class="ticker-row ticker-error-row">
@@ -189,7 +232,7 @@ async function handleClick() {
   flex-direction: column;
   justify-content: center;
   user-select: none;
-  cursor: pointer;
+  cursor: grab;
   overflow: hidden;
   padding: var(--space-1) var(--space-2);
   transition: background var(--transition-fast);

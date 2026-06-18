@@ -107,7 +107,9 @@ pub fn run() {
                 )
                 .tooltip("QuantDesktop")
                 .menu(&menu)
-                .on_menu_event(|app, event| {
+                .on_menu_event({
+                    let db = db.clone();
+                    move |app, event| {
                     match event.id().as_ref() {
                         "show" => {
                             if let Some(window) = app.get_webview_window("main") {
@@ -122,12 +124,38 @@ pub fn run() {
                                 } else {
                                     let _ = window.show();
                                     let _ = window.set_always_on_top(true);
-                                    if let Ok(Some(monitor)) = window.primary_monitor() {
-                                        let size = monitor.size();
-                                        let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(crate::datasource::TICKER_WIDTH, crate::datasource::TICKER_HEIGHT));
-                                        let x = (size.width as i32).saturating_sub(win_size.width as i32 + 10);
-                                        let y = (size.height as i32).saturating_sub(win_size.height as i32 + 60);
-                                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                                    // Try saved position first, fall back to bottom-right
+                                    let mon = window.primary_monitor().ok().flatten();
+                                    let (mon_w, mon_h) = mon
+                                        .as_ref()
+                                        .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
+                                        .unwrap_or((1920, 1080));
+                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
+                                        crate::datasource::TICKER_WIDTH,
+                                        crate::datasource::TICKER_HEIGHT,
+                                    ));
+                                    let tw = win_size.width as i32;
+                                    let th = win_size.height as i32;
+
+                                    let mut restored = false;
+                                    if let Ok(Some(x)) = db.get_setting("ticker_x") {
+                                        if let Ok(Some(y)) = db.get_setting("ticker_y") {
+                                            if let (Ok(sx), Ok(sy)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                                                if sx + tw > 0 && sy + th > 0 && sx < mon_w && sy < mon_h {
+                                                    let _ = window.set_position(
+                                                        tauri::PhysicalPosition::new(sx, sy),
+                                                    );
+                                                    restored = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if !restored {
+                                        let x = (mon_w).saturating_sub(tw + 10);
+                                        let y = (mon_h).saturating_sub(th + 60);
+                                        let _ = window.set_position(
+                                            tauri::PhysicalPosition::new(x, y),
+                                        );
                                     }
                                 }
                             }
@@ -142,6 +170,7 @@ pub fn run() {
                             });
                         }
                         _ => {}
+                    }
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -242,7 +271,6 @@ pub fn run() {
                 }
                 let w = if saved_w >= 400 && saved_w <= mon_w as u32 { saved_w } else { default_w };
                 let h = if saved_h >= 300 && saved_h <= mon_h as u32 { saved_h } else { default_h };
-                let _ = main.set_size(tauri::PhysicalSize::new(w, h));
 
                 let (mut saved_x, mut saved_y) = (0i32, 0i32);
                 let mut has_pos = false;
@@ -255,6 +283,11 @@ pub fn run() {
                         }
                     }
                 }
+
+                // Show first so the native NSWindow is realized before applying
+                // geometry (required for correct sizing on macOS).
+                let _ = main.show();
+                let _ = main.set_size(tauri::PhysicalSize::new(w, h));
                 if has_pos
                     && saved_x + 200 < mon_w
                     && saved_y + 100 < mon_h
@@ -263,20 +296,60 @@ pub fn run() {
                 {
                     let _ = main.set_position(tauri::PhysicalPosition::new(saved_x, saved_y));
                 }
-
-                // Show the main window after restoring position/size
-                let _ = main.show();
                 let _ = main.set_focus();
             }
 
-            // Position ticker window at bottom-right of screen
+            // Ticker window: save position on move, restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
-                if let Ok(Some(monitor)) = ticker.primary_monitor() {
-                    let size = monitor.size();
-                    let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(crate::datasource::TICKER_WIDTH, crate::datasource::TICKER_HEIGHT));
-                    let x = (size.width as i32).saturating_sub(ticker_size.width as i32 + 10);
-                    let y = (size.height as i32).saturating_sub(ticker_size.height as i32 + 60);
+
+                // Save ticker position on move
+                let db_clone = db.clone();
+                let _ = ticker.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Moved(pos) = event {
+                        if let Err(e) = db_clone.set_setting("ticker_x", &pos.x.to_string()) {
+                            log::warn!("Failed to save ticker_x: {}", e);
+                        }
+                        if let Err(e) = db_clone.set_setting("ticker_y", &pos.y.to_string()) {
+                            log::warn!("Failed to save ticker_y: {}", e);
+                        }
+                    }
+                });
+
+                // Restore saved position, fall back to bottom-right
+                let mon = ticker.primary_monitor().ok().flatten();
+                let (mon_w, mon_h) = mon
+                    .as_ref()
+                    .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
+                    .unwrap_or((1920, 1080));
+                let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(
+                    crate::datasource::TICKER_WIDTH,
+                    crate::datasource::TICKER_HEIGHT,
+                ));
+                let tw = ticker_size.width as i32;
+                let th = ticker_size.height as i32;
+
+                let (mut saved_x, mut saved_y) = (0i32, 0i32);
+                let mut has_pos = false;
+                if let Ok(Some(x)) = db.get_setting("ticker_x") {
+                    if let Ok(Some(y)) = db.get_setting("ticker_y") {
+                        if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                            saved_x = x_val;
+                            saved_y = y_val;
+                            has_pos = true;
+                        }
+                    }
+                }
+                if has_pos
+                    && saved_x + tw > 0
+                    && saved_y + th > 0
+                    && saved_x < mon_w
+                    && saved_y < mon_h
+                {
+                    let _ = ticker.set_position(tauri::PhysicalPosition::new(saved_x, saved_y));
+                } else {
+                    let x = (mon_w).saturating_sub(tw + 10);
+                    let y = (mon_h).saturating_sub(th + 60);
                     let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
                 }
             }
