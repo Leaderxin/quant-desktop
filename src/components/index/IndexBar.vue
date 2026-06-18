@@ -74,8 +74,7 @@ defineExpose({
 
 .index-bar {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface-0);
