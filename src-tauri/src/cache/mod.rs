@@ -95,9 +95,6 @@ pub struct Scheduler;
 
 impl Scheduler {
     /// Spawn the global polling loop in a background tokio task.
-    /// All locks inside the data path are poison-safe, so a single
-    /// panic is extremely unlikely. If one does occur, tokio catches
-    /// it and the task exits gracefully without aborting the process.
     pub fn spawn(
         data_manager: Arc<crate::datasource::DataSourceManager>,
         cache: Arc<QuoteCache>,
@@ -108,6 +105,18 @@ impl Scheduler {
         tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(base_interval_secs));
             let mut last_session = MarketSession::current();
+
+            // Background wakeup listener — triggered on datasource switch for immediate refresh
+            let dm = data_manager.clone();
+            let c = cache.clone();
+            let d = db.clone();
+            let ah = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    dm.wakeup.notified().await;
+                    Self::fetch_once(&dm, &c, &d, &ah).await;
+                }
+            });
 
             loop {
                 interval.tick().await;
@@ -124,54 +133,66 @@ impl Scheduler {
                     }));
                 }
 
-                // 1. Get watchlist codes
-                let codes = match db.get_watch_codes() {
-                    Ok(c) if !c.is_empty() => c,
-                    _ => {
-                        Self::fetch_and_emit_indices(&data_manager, &cache, &app_handle).await;
-                        continue;
-                    }
-                };
+                Self::fetch_once(&data_manager, &cache, &db, &app_handle).await;
+            }
+        });
+    }
 
-                // 2. Group by market
-                let mut cn_codes: Vec<String> = Vec::new();
-                for (code, market) in &codes {
-                    if market == "CN" {
-                        cn_codes.push(code.clone());
-                    }
-                }
+    /// Run one fetch cycle — used by both the interval loop and on-demand wakeups
+    async fn fetch_once(
+        manager: &crate::datasource::DataSourceManager,
+        cache: &QuoteCache,
+        db: &crate::db::Database,
+        app_handle: &tauri::AppHandle,
+    ) {
+        let session = MarketSession::current();
 
-                // 3. Batch fetch quotes (skip API calls when market is closed, emit cached)
-                if session == MarketSession::Closed {
-                    let cached = cache.get_all_quotes();
-                    if !cached.is_empty() {
-                        let _ = app_handle.emit("quotes-updated", &cached);
-                    }
-                    Self::fetch_and_emit_indices(&data_manager, &cache, &app_handle).await;
-                    continue;
-                }
+        // 1. Get watchlist codes
+        let codes = match db.get_watch_codes() {
+            Ok(c) if !c.is_empty() => c,
+            _ => {
+                Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+                return;
+            }
+        };
 
-                if !cn_codes.is_empty() {
-                    if let Some(source) = data_manager.active_source() {
-                        match source.fetch_realtime(&cn_codes, "CN").await {
-                            Ok(quotes) => {
-                                cache.update_quotes(&quotes);
-                                let _ = app_handle.emit("quotes-updated", &quotes);
-                            }
-                            Err(_e) => {
-                                let cached = cache.get_all_quotes();
-                                if !cached.is_empty() {
-                                    let _ = app_handle.emit("quotes-updated", &cached);
-                                }
-                            }
+        // 2. Group by market
+        let mut cn_codes: Vec<String> = Vec::new();
+        for (code, market) in &codes {
+            if market == "CN" {
+                cn_codes.push(code.clone());
+            }
+        }
+
+        // 3. Batch fetch quotes (skip API calls when market is closed, emit cached)
+        if session == MarketSession::Closed {
+            let cached = cache.get_all_quotes();
+            if !cached.is_empty() {
+                let _ = app_handle.emit("quotes-updated", &cached);
+            }
+            Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+            return;
+        }
+
+        if !cn_codes.is_empty() {
+            if let Some(source) = manager.active_source() {
+                match source.fetch_realtime(&cn_codes, "CN").await {
+                    Ok(quotes) => {
+                        cache.update_quotes(&quotes);
+                        let _ = app_handle.emit("quotes-updated", &quotes);
+                    }
+                    Err(_e) => {
+                        let cached = cache.get_all_quotes();
+                        if !cached.is_empty() {
+                            let _ = app_handle.emit("quotes-updated", &cached);
                         }
                     }
                 }
-
-                // 4. Refresh indices every cycle
-                Self::fetch_and_emit_indices(&data_manager, &cache, &app_handle).await;
             }
-        });
+        }
+
+        // 4. Refresh indices
+        Self::fetch_and_emit_indices(manager, cache, app_handle).await;
     }
 
     async fn fetch_and_emit_indices(

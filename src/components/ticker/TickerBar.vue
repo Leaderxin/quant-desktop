@@ -13,6 +13,7 @@ const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let unlistenTheme: UnlistenFn | null = null;
+let unlistenDatasource: UnlistenFn | null = null;
 
 let watchlistPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -23,6 +24,7 @@ onMounted(async () => {
   await quoteStore.startListening();
   startCycle();
   startThemeListen();
+  startDatasourceListen();
   startWatchlistPoll();
 });
 
@@ -30,6 +32,7 @@ onUnmounted(() => {
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (unlistenTheme) unlistenTheme();
+  if (unlistenDatasource) unlistenDatasource();
   if (watchlistPollTimer) clearInterval(watchlistPollTimer);
 });
 
@@ -45,6 +48,14 @@ function startThemeListen() {
     settings.applyTheme(t);
   }).then((unlisten) => {
     unlistenTheme = unlisten;
+  }).catch(() => {});
+}
+
+function startDatasourceListen() {
+  listen<{ datasource: string }>('datasource-changed', (event) => {
+    settings.activeDatasource = event.payload.datasource;
+  }).then((unlisten) => {
+    unlistenDatasource = unlisten;
   }).catch(() => {});
 }
 
@@ -132,7 +143,7 @@ async function handleClick() {
 .ticker-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   line-height: 1.4;
 }
 .ticker-name {
@@ -149,7 +160,7 @@ async function handleClick() {
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 50px;
+  width: 46px;
   text-align: right;
   color: var(--color-text-primary);
 }
@@ -158,14 +169,14 @@ async function handleClick() {
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 50px;
+  width: 46px;
   text-align: right;
 }
 .ticker-change {
   flex-shrink: 0;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 52px;
+  width: 48px;
   text-align: right;
 }
 .up { color: var(--color-up); }

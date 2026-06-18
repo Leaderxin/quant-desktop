@@ -95,11 +95,12 @@ pub async fn search_stocks(
         String::new()
     };
 
-    // Fallback to Eastmoney search if active source returns empty
-    if results.is_empty() && active_name != "eastmoney" {
-        if let Some(em) = manager.get_source("eastmoney") {
-            if let Ok(em_results) = em.search(&keyword, "CN").await {
-                results = em_results;
+    // Fallback to other data source if active source returns empty
+    if results.is_empty() {
+        let fallback = if active_name == "sina" { "tencent" } else { "sina" };
+        if let Some(fb) = manager.get_source(fallback) {
+            if let Ok(fb_results) = fb.search(&keyword, "CN").await {
+                results = fb_results;
             }
         }
     }

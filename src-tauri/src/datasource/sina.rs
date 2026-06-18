@@ -70,12 +70,19 @@ impl SinaAdapter {
         let low = fields[5].parse::<f64>().unwrap_or(0.0);
         let volume = fields[8].parse::<u64>().unwrap_or(0);
         let turnover = fields[9].parse::<f64>().unwrap_or(0.0);
+        // Sina's hq.sinajs.cn/list= endpoint only returns basic quote +
+        // 5-level depth (~33 fields). Turnover rate is NOT included.
+        let turnover_rate: Option<f64> = None;
 
-        let change = price - prev_close;
-        let change_pct = if prev_close != 0.0 {
-            (change / prev_close) * 100.0
+        // When market is closed, Sina returns price=0.0 while prev_close
+        // retains the last close. Computing change from that yields bogus
+        // -100% values. Guard: if price is 0, the stock isn't trading.
+        let (change, change_pct) = if price > 0.0 && prev_close > 0.0 {
+            let c = price - prev_close;
+            let pct = (c / prev_close) * 100.0;
+            (c, pct)
         } else {
-            0.0
+            (0.0, 0.0)
         };
 
         Some(Quote {
@@ -90,7 +97,7 @@ impl SinaAdapter {
             low,
             volume,
             turnover,
-            turnover_rate: None,
+            turnover_rate,
             timestamp: chrono::Utc::now().timestamp(),
         })
     }
@@ -176,7 +183,7 @@ impl DataSource for SinaAdapter {
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
         // Sina index codes
-        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000680,s_sh000688";
+        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
         let url = format!("{}{}", SINA_URL, index_codes);
 
         let resp = self

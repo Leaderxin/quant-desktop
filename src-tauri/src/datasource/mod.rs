@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::RwLock;
+use tokio::sync::Notify;
 use crate::domain::*;
 
 /// Abstract data source trait — all market data adapters implement this
@@ -59,6 +60,7 @@ pub trait DataSource: Send + Sync {
 pub struct DataSourceManager {
     sources: HashMap<String, Box<dyn DataSource>>,
     active: RwLock<String>,
+    pub wakeup: Notify,
 }
 
 impl DataSourceManager {
@@ -66,6 +68,7 @@ impl DataSourceManager {
         Self {
             sources: HashMap::new(),
             active: RwLock::new(String::new()),
+            wakeup: Notify::new(),
         }
     }
 
@@ -82,6 +85,7 @@ impl DataSourceManager {
     pub fn set_active(&self, name: &str) -> Result<(), String> {
         if self.sources.contains_key(name) {
             *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.to_string();
+            self.wakeup.notify_one();
             Ok(())
         } else {
             Err(format!("Data source '{}' is not registered", name))
@@ -114,7 +118,6 @@ impl DataSourceManager {
     }
 }
 
-pub mod eastmoney;
 pub mod sina;
 pub mod tencent;
 pub mod market_clock;

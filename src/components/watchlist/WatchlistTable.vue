@@ -144,6 +144,38 @@ const columns: DataTableColumns<WatchItem> = [
     }
   },
   {
+    title: '成交量', key: 'volume', width: 90,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.volume ?? 0) - (qb?.volume ?? 0);
+    },
+    render(row) {
+      const q = quoteStore.getQuote(row.code, row.market);
+      if (!q || !q.volume) return '--';
+      // volume is in shares; 1 手 = 100 shares
+      const shou = q.volume / 100;
+      if (shou >= 10000) return h('span', `${(shou / 10000).toFixed(2)}万手`);
+      return h('span', `${shou.toFixed(0)}手`);
+    }
+  },
+  {
+    title: '成交额', key: 'turnover', width: 90,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const qa = quoteStore.getQuote(a.code, a.market);
+      const qb = quoteStore.getQuote(b.code, b.market);
+      return (qa?.turnover ?? 0) - (qb?.turnover ?? 0);
+    },
+    render(row) {
+      const q = quoteStore.getQuote(row.code, row.market);
+      if (!q || !q.turnover) return '--';
+      // turnover is in 元; display in 万元 or 亿元
+      const wan = q.turnover / 10000;
+      if (wan >= 10000) return h('span', `${(wan / 10000).toFixed(2)}亿`);
+      return h('span', `${wan.toFixed(2)}万`);
+    }
+  },
+  {
     title: '换手率', key: 'turnover_rate', width: 80,
     sorter: (a: WatchItem, b: WatchItem) => {
       const qa = quoteStore.getQuote(a.code, a.market);

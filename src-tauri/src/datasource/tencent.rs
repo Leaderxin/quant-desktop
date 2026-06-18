@@ -52,12 +52,18 @@ impl TencentAdapter {
         let price = fields[3].parse::<f64>().unwrap_or(0.0);
         let prev_close = fields[4].parse::<f64>().unwrap_or(0.0);
         let change_pct = fields[32].parse::<f64>().unwrap_or(0.0);
-        let change = price - prev_close;
+        // Guard against bogus change when market closed (price=0, prev_close>0)
+        let change = if price > 0.0 && prev_close > 0.0 {
+            price - prev_close
+        } else {
+            0.0
+        };
         let open = fields[5].parse::<f64>().unwrap_or(0.0);
         let high = fields[33].parse::<f64>().unwrap_or(0.0);
         let low = fields[34].parse::<f64>().unwrap_or(0.0);
         let volume = fields[6].parse::<u64>().unwrap_or(0);
         let turnover = fields[37].parse::<f64>().unwrap_or(0.0);
+        let turnover_rate = fields.get(38).and_then(|s| s.parse::<f64>().ok());
         // Tencent volume is in "手" (100 shares), convert to shares
         let volume_shares = volume * 100;
 
@@ -73,12 +79,14 @@ impl TencentAdapter {
             low,
             volume: volume_shares,
             turnover: (turnover * 10000.0 * 100.0).round() / 100.0,
-            turnover_rate: None,
+            turnover_rate,
             timestamp: chrono::Utc::now().timestamp(),
         })
     }
 
     fn parse_index_line(line: &str) -> Option<IndexQuote> {
+        // Tencent index format: v_s_sh000001="market~name~code~price~change~change_pct~...~ZS~"
+        // Fields are separated by '~', typically 11 fields for indices.
         let eq_pos = line.find('=')?;
         let var_part = &line[..eq_pos];
         let name_raw = var_part.strip_prefix("v_")?;
@@ -88,14 +96,18 @@ impl TencentAdapter {
         let data = &line[quote_start..quote_start + quote_end];
         let fields: Vec<&str> = data.split('~').collect();
 
-        if fields.len() < 32 { return None; }
+        if fields.len() < 6 { return None; }
 
         let name = fields[1].to_string();
         let price = fields[3].parse::<f64>().unwrap_or(0.0);
-        let change_pct = fields[32].parse::<f64>().unwrap_or(0.0);
-        let change = fields[31].parse::<f64>().unwrap_or(0.0);
+        let change = fields[4].parse::<f64>().unwrap_or(0.0);
+        let change_pct = fields[5].parse::<f64>().unwrap_or(0.0);
         let volume = fields[6].parse::<u64>().unwrap_or(0);
-        let turnover = fields[37].parse::<f64>().unwrap_or(0.0);
+        let turnover = if fields.len() > 9 {
+            fields[9].parse::<f64>().unwrap_or(0.0)
+        } else {
+            0.0
+        };
 
         Some(IndexQuote {
             code: name_raw.to_string(),
@@ -142,12 +154,11 @@ impl DataSource for TencentAdapter {
             .lines()
             .filter_map(Self::parse_quote_line)
             .collect();
-
         Ok(quotes)
     }
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
-        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688";
+        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
         let resp = self
@@ -166,7 +177,6 @@ impl DataSource for TencentAdapter {
             .lines()
             .filter_map(Self::parse_index_line)
             .collect();
-
         Ok(indices)
     }
 

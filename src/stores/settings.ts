@@ -7,13 +7,13 @@ import { emit } from '@tauri-apps/api/event';
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Record<string, string>>({});
   const datasources = ref<[string, string][]>([]);
-  const activeDatasource = ref('eastmoney');
+  const activeDatasource = ref('sina');
   const theme = ref<'dark' | 'light'>('dark');
 
   async function fetchSettings() {
     try {
       settings.value = await invoke<Record<string, string>>('get_settings');
-      activeDatasource.value = settings.value['active_datasource'] || 'eastmoney';
+      activeDatasource.value = settings.value['active_datasource'] || 'sina';
       theme.value = (settings.value['theme'] as 'dark' | 'light') || 'dark';
       datasources.value = await invoke<[string, string][]>('list_datasources');
     } catch (e) {
@@ -29,6 +29,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function switchDatasource(name: string) {
     await invoke('switch_datasource', { name });
     activeDatasource.value = name;
+    emit('datasource-changed', { datasource: name }).catch(() => {});
   }
 
   function toggleTheme() {
@@ -41,7 +42,9 @@ export const useSettingsStore = defineStore('settings', () => {
   function applyTheme(t: 'dark' | 'light') {
     theme.value = t;
     document.documentElement.setAttribute('data-theme', t);
-    emit('theme-changed', { theme: t }).catch(() => {});
+    // NOTE: does NOT emit 'theme-changed' — only toggleTheme() broadcasts.
+    // If applyTheme emitted, the ticker's theme-changed listener would call
+    // applyTheme again, creating an infinite event loop between windows.
   }
 
   return { settings, datasources, activeDatasource, theme, fetchSettings, setSetting, switchDatasource, toggleTheme, applyTheme };

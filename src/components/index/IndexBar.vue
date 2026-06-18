@@ -19,7 +19,8 @@ const quote = useQuoteStore();
 .index-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  justify-content: center;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface-0);
   border-bottom: 1px solid var(--color-border-0);
