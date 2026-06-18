@@ -49,10 +49,11 @@ const levels = computed(() => {
 });
 
 function formatVol(v: number): string {
-  if (v >= 1000000) return (v / 1000000).toFixed(2) + '万手';
-  if (v >= 10000) return (v / 10000).toFixed(1) + '万手';
-  if (v >= 100) return (v / 100).toFixed(0) + '手';
-  return v.toString();
+  // v is in 股 (shares), convert to 手 (1手=100股)
+  const shou = v / 100;
+  if (shou >= 10000) return (shou / 10000).toFixed(2) + '万手';
+  if (shou > 0) return shou.toFixed(0) + '手';
+  return '0手';
 }
 
 function barWidth(vol: number, max: number): string {
