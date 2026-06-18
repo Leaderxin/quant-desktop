@@ -4,7 +4,9 @@ pub mod datasource;
 pub mod cache;
 pub mod commands;
 
+use std::fs::File;
 use std::sync::Arc;
+use simplelog::{CombinedLogger, WriteLogger, TermLogger, LevelFilter, Config, TerminalMode, ColorChoice};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -21,7 +23,24 @@ pub fn run() {
         .setup(|app| {
             // Initialize database
             let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+
+            // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file)
+            let log_file = File::create(app_dir.join("quant-desktop.log"))
+                .expect("Failed to create log file");
+            CombinedLogger::init(vec![
+                TermLogger::new(
+                    LevelFilter::Info,
+                    Config::default(),
+                    TerminalMode::Mixed,
+                    ColorChoice::Auto,
+                ),
+                WriteLogger::new(LevelFilter::Info, Config::default(), log_file),
+            ])
+            .expect("Failed to initialize logger");
+            log::info!("QuantDesktop v{} starting", env!("CARGO_PKG_VERSION"));
+
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
+            log::info!("Database opened successfully");
 
             // Initialize data source manager (Sina registered first as default)
             let mut ds_manager = DataSourceManager::new();
@@ -34,7 +53,10 @@ pub fn run() {
 
             // Restore last used data source from settings
             if let Ok(Some(active)) = db.get_setting("active_datasource") {
-                let _ = ds_manager.set_active(&active);
+                match ds_manager.set_active(&active) {
+                    Ok(()) => log::info!("Restored data source: {}", active),
+                    Err(e) => log::warn!("Failed to restore data source '{}': {}", active, e),
+                }
             }
 
             let ds_manager = Arc::new(ds_manager);
@@ -42,6 +64,7 @@ pub fn run() {
             // Initialize cache and restore from SQLite
             let cache = Arc::new(QuoteCache::new(db.clone()));
             cache.restore_from_db();
+            log::info!("Quote cache initialized and restored from DB");
 
             // Manage state
             app.manage(db.clone());
@@ -152,12 +175,20 @@ pub fn run() {
                             let is_vis = main_clone.is_visible().unwrap_or(false);
                             if is_vis && !is_min {
                                 if let Ok(pos) = main_clone.outer_position() {
-                                    let _ = db_clone.set_setting("window_x", &pos.x.to_string());
-                                    let _ = db_clone.set_setting("window_y", &pos.y.to_string());
+                                    if let Err(e) = db_clone.set_setting("window_x", &pos.x.to_string()) {
+                                        log::warn!("Failed to save window_x on close: {}", e);
+                                    }
+                                    if let Err(e) = db_clone.set_setting("window_y", &pos.y.to_string()) {
+                                        log::warn!("Failed to save window_y on close: {}", e);
+                                    }
                                 }
                                 if let Ok(size) = main_clone.outer_size() {
-                                    let _ = db_clone.set_setting("window_width", &size.width.to_string());
-                                    let _ = db_clone.set_setting("window_height", &size.height.to_string());
+                                    if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
+                                        log::warn!("Failed to save window_width on close: {}", e);
+                                    }
+                                    if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
+                                        log::warn!("Failed to save window_height on close: {}", e);
+                                    }
                                 }
                             }
                             let _ = main_clone.hide();
@@ -166,13 +197,21 @@ pub fn run() {
                             if !main_clone.is_minimized().unwrap_or(false)
                                 && main_clone.is_visible().unwrap_or(false)
                             {
-                                let _ = db_clone.set_setting("window_x", &pos.x.to_string());
-                                let _ = db_clone.set_setting("window_y", &pos.y.to_string());
+                                if let Err(e) = db_clone.set_setting("window_x", &pos.x.to_string()) {
+                                    log::warn!("Failed to save window_x on move: {}", e);
+                                }
+                                if let Err(e) = db_clone.set_setting("window_y", &pos.y.to_string()) {
+                                    log::warn!("Failed to save window_y on move: {}", e);
+                                }
                             }
                         }
                         tauri::WindowEvent::Resized(size) => {
-                            let _ = db_clone.set_setting("window_width", &size.width.to_string());
-                            let _ = db_clone.set_setting("window_height", &size.height.to_string());
+                            if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
+                                log::warn!("Failed to save window_width on resize: {}", e);
+                            }
+                            if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
+                                log::warn!("Failed to save window_height on resize: {}", e);
+                            }
                         }
                         _ => {}
                     }

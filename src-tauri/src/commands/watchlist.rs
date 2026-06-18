@@ -89,7 +89,10 @@ pub async fn search_stocks(
     // Try active source first
     let mut results: Vec<crate::domain::StockBrief> = Vec::new();
     let active_name = if let Some(source) = manager.active_source() {
-        results = source.search(&keyword, "CN").await.unwrap_or_default();
+        match source.search(&keyword, "CN").await {
+            Ok(r) => results = r,
+            Err(e) => log::warn!("Search via {} failed: {}", source.name(), e),
+        }
         source.name().to_string()
     } else {
         String::new()
@@ -99,8 +102,9 @@ pub async fn search_stocks(
     if results.is_empty() {
         let fallback = if active_name == "sina" { "tencent" } else { "sina" };
         if let Some(fb) = manager.get_source(fallback) {
-            if let Ok(fb_results) = fb.search(&keyword, "CN").await {
-                results = fb_results;
+            match fb.search(&keyword, "CN").await {
+                Ok(fb_results) => results = fb_results,
+                Err(e) => log::warn!("Fallback search via {} failed: {}", fallback, e),
             }
         }
     }

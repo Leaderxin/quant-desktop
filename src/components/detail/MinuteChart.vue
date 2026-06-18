@@ -17,6 +17,7 @@ const props = defineProps<{
 const chartRef = ref<HTMLElement | null>(null);
 let chart: Chart | null = null;
 const loading = ref(false);
+const error = ref('');
 
 function applyChartStyles() {
   if (!chart) return;
@@ -98,9 +99,13 @@ const dataLoader: DataLoader = {
 
 async function loadData() {
   loading.value = true;
+  error.value = '';
   try {
     const data = await invoke<MinuteData[]>('get_intraday', { code: props.code, market: props.market });
-    if (!data.length) return;
+    if (!data.length) {
+      // No data yet (e.g., market not open) — not an error, chart stays empty
+      return;
+    }
 
     const today = new Date();
     klineData.value = data.map((d) => {
@@ -123,10 +128,10 @@ async function loadData() {
     });
 
     if (chart) {
-      // setDataLoader calls resetData → _processDataLoad → dataLoader.getBars
       chart.setDataLoader(dataLoader);
     }
   } catch (e) {
+    error.value = `加载分时数据失败: ${String(e).slice(0, 80)}`;
     console.error('[MinuteChart] failed:', e);
   } finally {
     loading.value = false;
@@ -177,7 +182,17 @@ watch(() => settings.theme, () => { applyChartStyles(); });
 
 <template>
   <div class="minute-chart">
-    <div v-if="loading" class="chart-loading">加载分时图...</div>
+    <div v-if="loading" class="chart-overlay">
+      <span class="chart-status-text">加载分时图...</span>
+    </div>
+    <div v-else-if="error" class="chart-overlay chart-error-overlay" role="alert">
+      <svg class="chart-error-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <span class="chart-error-text">{{ error }}</span>
+      <button class="chart-retry-btn" @click="loadData()" aria-label="重新加载分时图">重试</button>
+    </div>
     <div ref="chartRef" class="chart-container"></div>
   </div>
 </template>
@@ -192,12 +207,49 @@ watch(() => settings.theme, () => { applyChartStyles(); });
   width: 100%;
   height: 320px;
 }
-.chart-loading {
+.chart-overlay {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  background: var(--color-surface-0);
+}
+.chart-status-text {
   font-size: 12px;
-  color: var(--color-text-tertiary, #888);
+  color: var(--color-text-tertiary);
+}
+.chart-error-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(22, 27, 34, 0.92);
+}
+.chart-error-icon {
+  color: #ffa657;
+}
+.chart-error-text {
+  font-size: 12px;
+  color: #d29922;
+  text-align: center;
+  max-width: 240px;
+  line-height: 1.4;
+}
+.chart-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border: 1px solid rgba(255, 166, 87, 0.25);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 166, 87, 0.06);
+  color: #ffa657;
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.chart-retry-btn:hover {
+  background: rgba(255, 166, 87, 0.14);
 }
 </style>

@@ -9,7 +9,9 @@ pub struct Database {
 impl Database {
     /// Open or create database, auto-run migrations
     pub fn open(app_dir: PathBuf) -> SqliteResult<Self> {
-        std::fs::create_dir_all(&app_dir).ok();
+        if let Err(e) = std::fs::create_dir_all(&app_dir) {
+            log::warn!("Failed to create app data dir {:?}: {}", app_dir, e);
+        }
         let db_path = app_dir.join("quant-desktop.db");
         let conn = Connection::open(db_path)?;
         let db = Self { conn: Mutex::new(conn) };
@@ -54,7 +56,7 @@ impl Database {
             ("ticker_visible", "true"),
         ];
         for (k, v) in defaults {
-            if self.get_setting(k)?.is_none() || k == "active_datasource" {
+            if self.get_setting(k)?.is_none() {
                 self.set_setting(k, v)?;
             }
         }
@@ -159,14 +161,26 @@ impl Database {
     pub fn cache_quotes(&self, quotes: &[crate::domain::Quote]) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+        // Wrap all INSERTs in a single transaction for better performance
+        let tx = conn.unchecked_transaction()?;
         for q in quotes {
-            let data = serde_json::to_string(q).unwrap_or_default();
-            conn.execute(
+            let data = serde_json::to_string(q).unwrap_or_else(|e| {
+                log::warn!(
+                    "Failed to serialize quote {}:{} for cache: {}",
+                    q.market, q.code, e
+                );
+                String::new()
+            });
+            if data.is_empty() {
+                continue;
+            }
+            tx.execute(
                 "INSERT OR REPLACE INTO quote_cache (code, market, data, cached_at)
                  VALUES (?1, ?2, ?3, ?4)",
                 params![q.code, q.market, data, now],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -177,8 +191,12 @@ impl Database {
         let mut quotes = Vec::new();
         for row in rows {
             if let Ok(data) = row {
-                if let Ok(quote) = serde_json::from_str::<crate::domain::Quote>(&data) {
-                    quotes.push(quote);
+                match serde_json::from_str::<crate::domain::Quote>(&data) {
+                    Ok(quote) => quotes.push(quote),
+                    Err(e) => log::warn!(
+                        "Failed to deserialize cached quote (skipping): {}",
+                        e
+                    ),
                 }
             }
         }

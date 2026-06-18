@@ -32,28 +32,44 @@ function handleContextMenu(e: MouseEvent, row: WatchItem) {
 
 async function handleDelete() {
   if (!ctxMenuItem.value) return;
-  await watchlist.removeStock(ctxMenuItem.value.code, ctxMenuItem.value.market);
+  try {
+    await watchlist.removeStock(ctxMenuItem.value.code, ctxMenuItem.value.market);
+  } catch (e) {
+    console.error('removeStock failed:', e);
+  }
   showCtxMenu.value = false;
 }
 
 async function handleMoveTop() {
   if (!ctxMenuItem.value) return;
-  await invoke('move_watch_top', { id: ctxMenuItem.value.id });
-  await watchlist.fetchWatchlist();
+  try {
+    await invoke('move_watch_top', { id: ctxMenuItem.value.id });
+    await watchlist.fetchWatchlist();
+  } catch (e) {
+    console.error('move_watch_top failed:', e);
+  }
   showCtxMenu.value = false;
 }
 
 async function handleMoveUp() {
   if (!ctxMenuItem.value) return;
-  await invoke('move_watch_up', { id: ctxMenuItem.value.id });
-  await watchlist.fetchWatchlist();
+  try {
+    await invoke('move_watch_up', { id: ctxMenuItem.value.id });
+    await watchlist.fetchWatchlist();
+  } catch (e) {
+    console.error('move_watch_up failed:', e);
+  }
   showCtxMenu.value = false;
 }
 
 async function handleMoveDown() {
   if (!ctxMenuItem.value) return;
-  await invoke('move_watch_down', { id: ctxMenuItem.value.id });
-  await watchlist.fetchWatchlist();
+  try {
+    await invoke('move_watch_down', { id: ctxMenuItem.value.id });
+    await watchlist.fetchWatchlist();
+  } catch (e) {
+    console.error('move_watch_down failed:', e);
+  }
   showCtxMenu.value = false;
 }
 
@@ -152,11 +168,12 @@ const columns: DataTableColumns<WatchItem> = [
     },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
-      if (!q || !q.volume) return '--';
+      if (!q || q.volume == null) return '--';
       // volume is in shares; 1 手 = 100 shares
       const shou = q.volume / 100;
       if (shou >= 10000) return h('span', `${(shou / 10000).toFixed(2)}万手`);
-      return h('span', `${shou.toFixed(0)}手`);
+      if (shou > 0) return h('span', `${shou.toFixed(0)}手`);
+      return h('span', '0手');
     }
   },
   {
@@ -168,11 +185,12 @@ const columns: DataTableColumns<WatchItem> = [
     },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
-      if (!q || !q.turnover) return '--';
+      if (!q || q.turnover == null) return '--';
       // turnover is in 元; display in 万元 or 亿元
       const wan = q.turnover / 10000;
       if (wan >= 10000) return h('span', `${(wan / 10000).toFixed(2)}亿`);
-      return h('span', `${wan.toFixed(2)}万`);
+      if (wan > 0) return h('span', `${wan.toFixed(2)}万`);
+      return h('span', '0');
     }
   },
   {
@@ -195,13 +213,18 @@ const columns: DataTableColumns<WatchItem> = [
   <div class="watchlist-container">
     <div class="watchlist-header">
       <h2 class="section-title">自选股</h2>
-      <NButton size="small" type="primary" @click="showAddDialog = true" class="add-btn">
+      <NButton size="small" type="primary" @click="showAddDialog = true" class="add-btn" aria-label="添加自选股票">
         + 添加
       </NButton>
     </div>
 
     <div v-if="watchlist.items.length === 0" class="empty-state">
-      <span class="empty-icon">📋</span>
+      <svg class="empty-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
+        <rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="4" y1="12" x2="28" y2="12" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="10" y1="16" x2="14" y2="16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="10" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
       <p class="empty-text">暂无自选股票</p>
       <p class="empty-hint">点击「+ 添加」搜索并添加股票</p>
     </div>
@@ -278,7 +301,7 @@ const columns: DataTableColumns<WatchItem> = [
   gap: var(--space-2);
   color: var(--color-text-tertiary);
 }
-.empty-icon { font-size: 2rem; opacity: 0.4; }
+.empty-icon { color: var(--color-text-tertiary); opacity: 0.4; }
 .empty-text { font-size: var(--text-md); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); }
 .empty-hint { font-size: var(--text-xs); }
 

@@ -29,14 +29,19 @@ export const useSettingsStore = defineStore('settings', () => {
   async function switchDatasource(name: string) {
     await invoke('switch_datasource', { name });
     activeDatasource.value = name;
-    emit('datasource-changed', { datasource: name }).catch(() => {});
+    settings.value['active_datasource'] = name;
+    emit('datasource-changed', { datasource: name }).catch((e) => {
+      console.error('[settings] Failed to emit datasource-changed:', e);
+    });
   }
 
-  function toggleTheme() {
+  async function toggleTheme() {
     theme.value = theme.value === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', theme.value);
-    setSetting('theme', theme.value);
-    emit('theme-changed', { theme: theme.value }).catch(() => {});
+    await setSetting('theme', theme.value);
+    emit('theme-changed', { theme: theme.value }).catch((e) => {
+      console.error('[settings] Failed to emit theme-changed:', e);
+    });
   }
 
   function applyTheme(t: 'dark' | 'light') {

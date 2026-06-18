@@ -134,7 +134,7 @@ function barWidth(vol: number, max: number): string {
   padding: var(--space-3) 0;
   text-align: center;
 }
-.depth-placeholder.error { color: var(--color-up); }
+.depth-placeholder.error { color: var(--color-error); }
 
 .depth-body {
   display: flex;

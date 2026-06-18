@@ -8,23 +8,31 @@ export const useQuoteStore = defineStore('quote', () => {
   const quotes = ref<Map<string, Quote>>(new Map());
   const indices = ref<IndexQuote[]>([]);
   const lastUpdate = ref<number>(0);
+  const error = ref<string | null>(null);
 
   let unlistenQuotes: UnlistenFn | null = null;
   let unlistenIndices: UnlistenFn | null = null;
 
   async function startListening() {
-    unlistenQuotes = await listen<Quote[]>('quotes-updated', (event) => {
-      const map = new Map<string, Quote>();
-      for (const q of event.payload) {
-        map.set(`${q.market}:${q.code}`, q);
-      }
-      quotes.value = map;
-      lastUpdate.value = Date.now();
-    });
+    try {
+      unlistenQuotes = await listen<Quote[]>('quotes-updated', (event) => {
+        const map = new Map<string, Quote>();
+        for (const q of event.payload) {
+          map.set(`${q.market}:${q.code}`, q);
+        }
+        quotes.value = map;
+        lastUpdate.value = Date.now();
+      });
 
-    unlistenIndices = await listen<IndexQuote[]>('indices-updated', (event) => {
-      indices.value = event.payload;
-    });
+      unlistenIndices = await listen<IndexQuote[]>('indices-updated', (event) => {
+        indices.value = event.payload;
+      });
+
+      error.value = null;
+    } catch (e) {
+      error.value = `行情监听启动失败: ${e}`;
+      console.error('[quote store] Failed to start listeners:', e);
+    }
   }
 
   function stopListening() {
@@ -36,5 +44,5 @@ export const useQuoteStore = defineStore('quote', () => {
     return quotes.value.get(`${market}:${code}`);
   }
 
-  return { quotes, indices, lastUpdate, startListening, stopListening, getQuote };
+  return { quotes, indices, lastUpdate, error, startListening, stopListening, getQuote };
 });

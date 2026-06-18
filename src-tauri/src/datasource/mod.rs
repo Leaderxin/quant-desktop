@@ -85,9 +85,11 @@ impl DataSourceManager {
     pub fn set_active(&self, name: &str) -> Result<(), String> {
         if self.sources.contains_key(name) {
             *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.to_string();
+            log::info!("Data source switched to: {}", name);
             self.wakeup.notify_one();
             Ok(())
         } else {
+            log::warn!("Attempted to switch to unregistered data source: {}", name);
             Err(format!("Data source '{}' is not registered", name))
         }
     }

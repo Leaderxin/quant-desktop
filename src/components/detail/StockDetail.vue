@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { WatchItem } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import StockSummary from './StockSummary.vue';
@@ -9,12 +10,12 @@ const props = defineProps<{
   item: WatchItem;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   close: [];
 }>();
 
 const quoteStore = useQuoteStore();
-const quote = quoteStore.getQuote(props.item.code, props.item.market);
+const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.market));
 </script>
 
 <template>
@@ -24,7 +25,7 @@ const quote = quoteStore.getQuote(props.item.code, props.item.market);
         <span class="detail-name">{{ item.name }}</span>
         <span class="detail-code">{{ item.code }}</span>
       </div>
-      <button class="detail-close" @click="$emit('close')">&times;</button>
+      <button class="detail-close" @click="emit('close')" aria-label="关闭详情">&times;</button>
     </div>
 
     <div class="detail-content">

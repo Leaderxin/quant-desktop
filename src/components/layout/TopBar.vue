@@ -73,6 +73,7 @@ function handleDsSelect(key: string) {
             size="small"
             @click="settings.toggleTheme()"
             class="theme-toggle"
+            :aria-label="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
           >
             <template #icon>
               <svg v-if="settings.theme === 'dark'" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
@@ -129,7 +130,7 @@ function handleDsSelect(key: string) {
   height: 20px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
-  background: rgba(88, 166, 255, 0.12);
+  background: var(--color-accent-dim);
   color: var(--color-accent);
   font-size: var(--text-xs);
   cursor: pointer;
@@ -138,7 +139,7 @@ function handleDsSelect(key: string) {
   -webkit-app-region: no-drag;
 }
 .ds-tag:hover {
-  background: rgba(88, 166, 255, 0.2);
+  filter: brightness(1.4);
 }
 .ds-label {
   line-height: 1;

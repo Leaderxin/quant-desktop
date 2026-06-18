@@ -45,24 +45,36 @@ impl QuoteCache {
         }
     }
 
-    /// Update cache with fresh quotes (DB write is outside the lock scope)
+    /// Update in-memory cache only (fast, no I/O)
+    pub fn update_quotes_memory(&self, quotes: &[Quote]) {
+        let mut cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
+        let now = std::time::Instant::now();
+        for q in quotes {
+            let key = format!("{}:{}", q.market, q.code);
+            cache.insert(
+                key,
+                CachedQuote {
+                    data: q.clone(),
+                    cached_at: now,
+                },
+            );
+        }
+    }
+
+    /// Persist quotes to SQLite (call via spawn_blocking to avoid blocking tokio)
+    pub fn persist_quotes(&self, quotes: &[Quote]) {
+        if let Err(e) = self.db.cache_quotes(quotes) {
+            log::warn!("Failed to persist quotes to DB: {}", e);
+        }
+    }
+
+    /// Update cache with fresh quotes (combines memory update + best-effort DB write)
+    /// Prefer update_quotes_memory + spawn_blocking persist_quotes in async contexts.
     pub fn update_quotes(&self, quotes: &[Quote]) {
-        {
-            let mut cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
-            let now = std::time::Instant::now();
-            for q in quotes {
-                let key = format!("{}:{}", q.market, q.code);
-                cache.insert(
-                    key,
-                    CachedQuote {
-                        data: q.clone(),
-                        cached_at: now,
-                    },
-                );
-            }
-        } // lock released here — DB I/O happens outside
-        // Best-effort async write to SQLite
-        let _ = self.db.cache_quotes(quotes);
+        self.update_quotes_memory(quotes);
+        // Best-effort sync write — use update_quotes_memory + spawn_blocking persist_quotes
+        // in async contexts to avoid blocking tokio worker threads.
+        self.persist_quotes(quotes);
     }
 
     /// Get all cached quotes
@@ -127,10 +139,12 @@ impl Scheduler {
                     let new_interval = session.recommended_interval();
                     interval = tokio::time::interval(Duration::from_secs(new_interval));
                     last_session = session;
-                    let _ = app_handle.emit("market-session-changed", serde_json::json!({
+                    if let Err(e) = app_handle.emit("market-session-changed", serde_json::json!({
                         "session": session.name(),
                         "interval_secs": new_interval,
-                    }));
+                    })) {
+                        log::warn!("Failed to emit market-session-changed: {}", e);
+                    }
                 }
 
                 Self::fetch_once(&data_manager, &cache, &db, &app_handle).await;
@@ -141,16 +155,29 @@ impl Scheduler {
     /// Run one fetch cycle — used by both the interval loop and on-demand wakeups
     async fn fetch_once(
         manager: &crate::datasource::DataSourceManager,
-        cache: &QuoteCache,
-        db: &crate::db::Database,
+        cache: &Arc<QuoteCache>,
+        db: &std::sync::Arc<crate::db::Database>,
         app_handle: &tauri::AppHandle,
     ) {
         let session = MarketSession::current();
 
-        // 1. Get watchlist codes
-        let codes = match db.get_watch_codes() {
-            Ok(c) if !c.is_empty() => c,
-            _ => {
+        // 1. Get watchlist codes (use spawn_blocking to avoid blocking tokio worker)
+        let db_for_codes = db.clone();
+        let codes = match tokio::task::spawn_blocking(move || db_for_codes.get_watch_codes()).await
+        {
+            Ok(Ok(c)) if !c.is_empty() => c,
+            Ok(Ok(_)) => {
+                // Empty watchlist — skip quote fetch
+                Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+                return;
+            }
+            Ok(Err(e)) => {
+                log::warn!("Failed to read watchlist from DB: {}", e);
+                Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+                return;
+            }
+            Err(join_err) => {
+                log::warn!("spawn_blocking join error for get_watch_codes: {}", join_err);
                 Self::fetch_and_emit_indices(manager, cache, app_handle).await;
                 return;
             }
@@ -168,7 +195,9 @@ impl Scheduler {
         if session == MarketSession::Closed {
             let cached = cache.get_all_quotes();
             if !cached.is_empty() {
-                let _ = app_handle.emit("quotes-updated", &cached);
+                if let Err(e) = app_handle.emit("quotes-updated", &cached) {
+                    log::warn!("Failed to emit quotes-updated (cached): {}", e);
+                }
             }
             Self::fetch_and_emit_indices(manager, cache, app_handle).await;
             return;
@@ -178,13 +207,24 @@ impl Scheduler {
             if let Some(source) = manager.active_source() {
                 match source.fetch_realtime(&cn_codes, "CN").await {
                     Ok(quotes) => {
-                        cache.update_quotes(&quotes);
-                        let _ = app_handle.emit("quotes-updated", &quotes);
+                        cache.update_quotes_memory(&quotes);
+                        if let Err(e) = app_handle.emit("quotes-updated", &quotes) {
+                            log::warn!("Failed to emit quotes-updated: {}", e);
+                        }
+                        // Persist to DB via spawn_blocking to avoid blocking tokio
+                        let cache_for_persist = cache.clone();
+                        let quotes_for_db = quotes.to_vec();
+                        tokio::task::spawn_blocking(move || {
+                            cache_for_persist.persist_quotes(&quotes_for_db);
+                        });
                     }
-                    Err(_e) => {
+                    Err(e) => {
+                        log::warn!("Quote fetch failed, serving cached data: {}", e);
                         let cached = cache.get_all_quotes();
                         if !cached.is_empty() {
-                            let _ = app_handle.emit("quotes-updated", &cached);
+                            if let Err(e) = app_handle.emit("quotes-updated", &cached) {
+                                log::warn!("Failed to emit quotes-updated (fallback): {}", e);
+                            }
                         }
                     }
                 }
@@ -197,13 +237,15 @@ impl Scheduler {
 
     async fn fetch_and_emit_indices(
         manager: &crate::datasource::DataSourceManager,
-        cache: &QuoteCache,
+        cache: &Arc<QuoteCache>,
         app_handle: &tauri::AppHandle,
     ) {
         if let Some(source) = manager.active_source() {
             if let Ok(indices) = source.fetch_indices().await {
                 cache.update_indices(indices.clone());
-                let _ = app_handle.emit("indices-updated", &indices);
+                if let Err(e) = app_handle.emit("indices-updated", &indices) {
+                    log::warn!("Failed to emit indices-updated: {}", e);
+                }
             }
         }
     }

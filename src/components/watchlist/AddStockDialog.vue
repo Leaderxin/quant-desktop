@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onUnmounted } from 'vue';
 import { NModal, NCard, NInput, NButton, NSpace, useMessage } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
@@ -14,6 +14,13 @@ const keyword = ref('');
 const results = ref<StockBrief[]>([]);
 const searching = ref(false);
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+onUnmounted(() => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+});
 
 watch(() => keyword.value, (val) => {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -63,7 +70,10 @@ async function handleAdd(stock: StockBrief) {
           size="medium"
         >
           <template #prefix>
-            <span style="color:var(--color-text-tertiary);font-size:14px;">🔍</span>
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-text-tertiary)">
+              <circle cx="7" cy="7" r="5"/>
+              <path d="M11 11l2.5 2.5"/>
+            </svg>
           </template>
         </NInput>
 

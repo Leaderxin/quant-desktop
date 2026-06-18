@@ -17,6 +17,10 @@
   --color-surface-2: #1c2333;      /* Elevated surface (hover, table header) */
   --color-surface-3: #252d3f;      /* Highest elevation (modals) */
 
+  /* Derived surface tokens (used by detail panel, table rows) */
+  --color-bg-elevated: rgba(255, 255, 255, 0.04);  /* Subtle lift above surface-0 */
+  --color-bg-card: rgba(255, 255, 255, 0.06);       /* Card/panel fill */
+
   /* ── Border System ── */
   --color-border-0: #1e293b;       /* Default border */
   --color-border-1: #30363d;       /* Stronger border */
@@ -31,6 +35,10 @@
   --color-up-bg: rgba(248, 81, 73, 0.12);
   --color-down: #3fb950;
   --color-down-bg: rgba(63, 185, 80, 0.12);
+
+  /* Semantic: error / danger (distinct from --color-up which means "price rose") */
+  --color-error: #f85149;
+  --color-error-bg: rgba(248, 81, 73, 0.08);
 
   /* ── Brand / Accent ── */
   --color-accent: #58a6ff;
@@ -109,8 +117,14 @@
   --color-down: #1a7f64;
   --color-down-bg: rgba(26, 127, 100, 0.08);
 
+  --color-error: #d1242f;
+  --color-error-bg: rgba(209, 36, 47, 0.06);
+
   --color-accent: #0969da;
   --color-accent-dim: rgba(9, 105, 218, 0.08);
+
+  --color-bg-elevated: rgba(0, 0, 0, 0.04);
+  --color-bg-card: rgba(0, 0, 0, 0.04);
 
   --shadow-sm: 0 1px 3px rgba(31,35,40,0.08);
   --shadow-md: 0 4px 16px rgba(31,35,40,0.10);

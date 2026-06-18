@@ -1,7 +1,8 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest::Client;
-use encoding::{Encoding, DecoderTrap};
-use encoding::all::GBK;
+use encoding_rs::GBK;
 use crate::domain::*;
 use super::DataSource;
 
@@ -17,8 +18,9 @@ impl TencentAdapter {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
+                .timeout(Duration::from_secs(10))
                 .build()
-                .unwrap_or_default(),
+                .expect("Failed to build reqwest Client — TLS backend may be missing"),
         }
     }
 
@@ -147,8 +149,7 @@ impl DataSource for TencentAdapter {
             .map_err(|e| format!("Tencent request failed: {:#}", e))?;
 
         let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Tencent GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let quotes: Vec<Quote> = body
             .lines()
@@ -170,8 +171,7 @@ impl DataSource for TencentAdapter {
             .map_err(|e| format!("Tencent indices request failed: {:#}", e))?;
 
         let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Tencent GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let indices: Vec<IndexQuote> = body
             .lines()
@@ -197,8 +197,7 @@ impl DataSource for TencentAdapter {
                 .await
                 .map_err(|e| format!("Tencent search request failed: {:#}", e))?;
             let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
-            let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-                .map_err(|e| format!("Tencent GBK decode failed: {}", e))?;
+            let (body, _, _) = GBK.decode(&body_bytes);
 
             for line in body.lines() {
                 if let Some(quote) = Self::parse_quote_line(line) {
@@ -300,8 +299,7 @@ impl DataSource for TencentAdapter {
             .map_err(|e| format!("Tencent depth request failed: {:#}", e))?;
 
         let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Tencent GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let mut bids = Vec::new();
         let mut asks = Vec::new();

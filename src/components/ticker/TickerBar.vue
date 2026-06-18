@@ -17,15 +17,22 @@ let unlistenDatasource: UnlistenFn | null = null;
 
 let watchlistPollTimer: ReturnType<typeof setInterval> | null = null;
 
+const initFailed = ref(false);
+
 onMounted(async () => {
-  await settings.fetchSettings();
-  settings.applyTheme(settings.theme);
-  await watchlist.fetchWatchlist();
-  await quoteStore.startListening();
-  startCycle();
-  startThemeListen();
-  startDatasourceListen();
-  startWatchlistPoll();
+  try {
+    await settings.fetchSettings();
+    settings.applyTheme(settings.theme);
+    await watchlist.fetchWatchlist();
+    await quoteStore.startListening();
+    startCycle();
+    startThemeListen();
+    startDatasourceListen();
+    startWatchlistPoll();
+  } catch (e) {
+    initFailed.value = true;
+    console.error('[TickerBar] init failed:', e);
+  }
 });
 
 onUnmounted(() => {
@@ -48,7 +55,9 @@ function startThemeListen() {
     settings.applyTheme(t);
   }).then((unlisten) => {
     unlistenTheme = unlisten;
-  }).catch(() => {});
+  }).catch((e) => {
+    console.error('[TickerBar] Failed to listen theme-changed:', e);
+  });
 }
 
 function startDatasourceListen() {
@@ -56,7 +65,9 @@ function startDatasourceListen() {
     settings.activeDatasource = event.payload.datasource;
   }).then((unlisten) => {
     unlistenDatasource = unlisten;
-  }).catch(() => {});
+  }).catch((e) => {
+    console.error('[TickerBar] Failed to listen datasource-changed:', e);
+  });
 }
 
 function startCycle() {
@@ -99,11 +110,21 @@ async function handleClick() {
 <template>
   <div
     class="ticker-bar"
+    role="button"
+    tabindex="0"
+    aria-label="显示主界面"
+    @keydown.enter="handleClick"
+    @keydown.space.prevent="handleClick"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
     @click="handleClick"
   >
-    <template v-if="visibleItems.length > 0">
+    <template v-if="initFailed">
+      <div class="ticker-row ticker-error-row">
+        <span class="ticker-error-text">QuantDesktop</span>
+      </div>
+    </template>
+    <template v-else-if="visibleItems.length > 0">
       <div v-for="item in visibleItems" :key="item.code" class="ticker-row">
         <span class="ticker-name">{{ item.name }}</span>
         <span
@@ -186,5 +207,14 @@ async function handleClick() {
   font-size: var(--text-xs);
   text-align: center;
   width: 100%;
+}
+.ticker-error-row {
+  justify-content: center;
+}
+.ticker-error-text {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.05em;
 }
 </style>

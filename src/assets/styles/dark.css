@@ -3,5 +3,5 @@
 /* Scrollbar theming */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-border-1); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb { background: var(--color-border-1); border-radius: var(--radius-full, 9999px); }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }

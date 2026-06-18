@@ -1,7 +1,8 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest::Client;
-use encoding::{Encoding, DecoderTrap};
-use encoding::all::GBK;
+use encoding_rs::GBK;
 use crate::domain::*;
 use super::DataSource;
 
@@ -17,8 +18,9 @@ impl SinaAdapter {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
+                .timeout(Duration::from_secs(10))
                 .build()
-                .unwrap_or_default(),
+                .expect("Failed to build reqwest Client — TLS backend may be missing"),
         }
     }
 
@@ -50,7 +52,7 @@ impl SinaAdapter {
         } else {
             "CN"
         };
-        let code = code_raw[2..].to_string();
+        let code = if code_raw.len() >= 3 { code_raw[2..].to_string() } else { code_raw.to_string() };
 
         // Extract data between quotes
         let quote_start = line[eq_pos + 1..].find('"')? + eq_pos + 2;
@@ -170,8 +172,7 @@ impl DataSource for SinaAdapter {
             .bytes()
             .await
             .map_err(|e| format!("Sina read body failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let quotes: Vec<Quote> = body
             .lines()
@@ -198,8 +199,7 @@ impl DataSource for SinaAdapter {
             .bytes()
             .await
             .map_err(|e| format!("Sina read body failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let indices: Vec<IndexQuote> = body
             .lines()
@@ -227,8 +227,7 @@ impl DataSource for SinaAdapter {
                 .await
                 .map_err(|e| format!("Sina search request failed: {:#}", e))?;
             let body_bytes = resp.bytes().await.map_err(|e| format!("Sina read failed: {:#}", e))?;
-            let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-                .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+            let (body, _, _) = GBK.decode(&body_bytes);
 
             // Parse the response to extract name
             for line in body.lines() {
@@ -333,8 +332,7 @@ impl DataSource for SinaAdapter {
             .map_err(|e| format!("Sina depth (via Tencent) request failed: {:#}", e))?;
 
         let body_bytes = resp.bytes().await.map_err(|e| format!("Read failed: {:#}", e))?;
-        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("GBK decode failed: {}", e))?;
+        let (body, _, _) = GBK.decode(&body_bytes);
 
         let mut bids = Vec::new();
         let mut asks = Vec::new();
