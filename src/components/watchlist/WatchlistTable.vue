@@ -167,7 +167,7 @@ const columns: DataTableColumns<WatchItem> = [
       if (!q) return '--';
       const v = q.change;
       return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
-        `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+        `${v >= 0 ? '+' : ''}${formatPrice(v)}`);
     }
   },
   {

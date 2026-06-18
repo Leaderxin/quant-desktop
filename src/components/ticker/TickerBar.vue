@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
+import { formatPrice } from '@/utils/format';
 
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
@@ -166,7 +167,7 @@ async function handleClick() {
           v-if="item.price !== null"
           class="ticker-price tabular-nums"
           :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
-        >{{ item.price.toFixed(2) }}</span>
+        >{{ formatPrice(item.price) }}</span>
         <span v-else class="ticker-na">--</span>
         <span
           v-if="item.changePct !== null"

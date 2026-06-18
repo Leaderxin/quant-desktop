@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { IndexQuote } from '@/types';
 import { computed } from 'vue';
+import { formatPrice } from '@/utils/format';
 
 const props = defineProps<{
   index: IndexQuote;
@@ -31,10 +32,10 @@ const isUp = computed(() => props.index.change_pct >= 0);
   >
     <span class="index-name">{{ index.name }}</span>
     <span class="index-price tabular-nums" :class="isUp ? 'up' : 'down'">
-      {{ index.price.toFixed(2) }}
+      {{ formatPrice(index.price) }}
     </span>
     <div class="index-change-row tabular-nums">
-      <span :class="isUp ? 'up' : 'down'">{{ isUp ? '+' : '' }}{{ index.change.toFixed(2) }}</span>
+      <span :class="isUp ? 'up' : 'down'">{{ isUp ? '+' : '' }}{{ formatPrice(index.change) }}</span>
       <span :class="isUp ? 'up' : 'down'">{{ isUp ? '+' : '' }}{{ index.change_pct.toFixed(2) }}%</span>
     </div>
   </div>
