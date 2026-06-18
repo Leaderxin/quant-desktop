@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Quote } from '@/types';
-import { formatPrice } from '@/utils/format';
+import { formatPrice, formatVolume } from '@/utils/format';
 
 const props = defineProps<{
   quote: Quote;
@@ -10,7 +10,7 @@ const items = [
   { label: '开盘', value: formatPrice(props.quote.open) },
   { label: '最高', value: formatPrice(props.quote.high) },
   { label: '最低', value: formatPrice(props.quote.low) },
-  { label: '成交量', value: (props.quote.volume / 10000).toFixed(0) + '万手' },
+  { label: '成交量', value: formatVolume(props.quote.volume) },
   { label: '成交额', value: (props.quote.turnover / 100000000).toFixed(2) + '亿' },
   {
     label: '换手率',

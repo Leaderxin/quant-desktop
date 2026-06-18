@@ -20,3 +20,14 @@ export function formatPrice(price: number | null | undefined, fallback = '--'): 
   if (price == null || isNaN(price)) return fallback;
   return price.toFixed(getPricePrecision(price));
 }
+
+/**
+ * 格式化成交量（输入为股，输出为手/万手）
+ */
+export function formatVolume(volume: number | null | undefined, fallback = '--'): string {
+  if (volume == null || isNaN(volume)) return fallback;
+  const shou = volume / 100; // 股 → 手
+  if (shou >= 10000) return (shou / 10000).toFixed(2) + '万手';
+  if (shou > 0) return shou.toFixed(0) + '手';
+  return '0手';
+}

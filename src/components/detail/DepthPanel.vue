@@ -2,7 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { Depth, Level } from '@/types';
-import { getPricePrecision } from '@/utils/format';
+import { getPricePrecision, formatVolume } from '@/utils/format';
 
 const props = defineProps<{
   code: string;
@@ -48,14 +48,6 @@ const levels = computed(() => {
   return { bids, asks, maxVol };
 });
 
-function formatVol(v: number): string {
-  // v is in 股 (shares), convert to 手 (1手=100股)
-  const shou = v / 100;
-  if (shou >= 10000) return (shou / 10000).toFixed(2) + '万手';
-  if (shou > 0) return shou.toFixed(0) + '手';
-  return '0手';
-}
-
 function barWidth(vol: number, max: number): string {
   return `${Math.max((vol / max) * 100, 2)}%`;
 }
@@ -87,7 +79,7 @@ function barWidth(vol: number, max: number): string {
             ></span>
           </span>
           <span class="depth-price bid-price">{{ level ? level.price.toFixed(getPricePrecision(level.price)) : '--' }}</span>
-          <span class="depth-vol">{{ level ? formatVol(level.volume) : '--' }}</span>
+          <span class="depth-vol">{{ level ? formatVolume(level.volume) : '--' }}</span>
         </div>
       </div>
 
@@ -109,7 +101,7 @@ function barWidth(vol: number, max: number): string {
             ></span>
           </span>
           <span class="depth-price ask-price">{{ level ? level.price.toFixed(getPricePrecision(level.price)) : '--' }}</span>
-          <span class="depth-vol">{{ level ? formatVol(level.volume) : '--' }}</span>
+          <span class="depth-vol">{{ level ? formatVolume(level.volume) : '--' }}</span>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import type { WatchItem } from '@/types';
-import { formatPrice } from '@/utils/format';
+import { formatPrice, formatVolume } from '@/utils/format';
 import AddStockDialog from './AddStockDialog.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
@@ -180,11 +180,7 @@ const columns: DataTableColumns<WatchItem> = [
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
       if (!q || q.volume == null) return '--';
-      // volume is in shares; 1 手 = 100 shares
-      const shou = q.volume / 100;
-      if (shou >= 10000) return h('span', `${(shou / 10000).toFixed(2)}万手`);
-      if (shou > 0) return h('span', `${shou.toFixed(0)}手`);
-      return h('span', '0手');
+      return h('span', formatVolume(q.volume));
     }
   },
   {
