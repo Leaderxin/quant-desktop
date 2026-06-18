@@ -103,7 +103,7 @@ const statCards = computed(() => [
   border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
   background: var(--color-surface-0);
   padding: 12px 16px;
-  max-height: 420px;
+  max-height: calc(100vh - 140px);
   overflow-y: auto;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
