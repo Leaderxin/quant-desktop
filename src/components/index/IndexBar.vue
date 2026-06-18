@@ -4,7 +4,7 @@ import { useQuoteStore } from '@/stores/quote';
 import type { IndexQuote } from '@/types';
 import IndexCard from './IndexCard.vue';
 import IndexDetail from '@/components/detail/IndexDetail.vue';
-import { CLEAR_INDEX_DETAIL_KEY } from '@/components/layout/AppLayout.vue';
+import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
 const quote = useQuoteStore();
 

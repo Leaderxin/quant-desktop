@@ -9,7 +9,7 @@ import type { WatchItem } from '@/types';
 import { formatPrice } from '@/utils/format';
 import AddStockDialog from './AddStockDialog.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
-import { CLEAR_INDEX_DETAIL_KEY } from '@/components/layout/AppLayout.vue';
+import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
