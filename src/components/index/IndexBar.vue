@@ -68,6 +68,7 @@ defineExpose({
 <style scoped>
 .index-section {
   flex-shrink: 0;
+  position: relative;
   border-bottom: 1px solid var(--color-border-0);
 }
 
