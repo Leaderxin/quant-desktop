@@ -74,11 +74,12 @@ defineExpose({
 
 .index-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface-0);
+  overflow-x: auto;
 }
 
 .index-placeholder {
