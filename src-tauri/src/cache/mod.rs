@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::Emitter;
 use crate::domain::{Quote, IndexQuote};
@@ -118,15 +119,19 @@ impl Scheduler {
             let mut interval = tokio::time::interval(Duration::from_secs(base_interval_secs));
             let mut last_session = MarketSession::current();
 
+            // Fetch guard — prevents concurrent fetch_once calls from the two loops
+            let fetching = Arc::new(AtomicBool::new(false));
+
             // Background wakeup listener — triggered on datasource switch for immediate refresh
             let dm = data_manager.clone();
             let c = cache.clone();
             let d = db.clone();
             let ah = app_handle.clone();
+            let fg = fetching.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     dm.wakeup.notified().await;
-                    Self::fetch_once(&dm, &c, &d, &ah).await;
+                    Self::fetch_once(&dm, &c, &d, &ah, &fg).await;
                 }
             });
 
@@ -147,18 +152,27 @@ impl Scheduler {
                     }
                 }
 
-                Self::fetch_once(&data_manager, &cache, &db, &app_handle).await;
+                Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching).await;
             }
         });
     }
 
-    /// Run one fetch cycle — used by both the interval loop and on-demand wakeups
+    /// Run one fetch cycle — used by both the interval loop and on-demand wakeups.
+    /// The `fetching` guard prevents concurrent fetches from the two loops.
     async fn fetch_once(
         manager: &crate::datasource::DataSourceManager,
         cache: &Arc<QuoteCache>,
         db: &std::sync::Arc<crate::db::Database>,
         app_handle: &tauri::AppHandle,
+        fetching: &AtomicBool,
     ) {
+        // Skip if a fetch is already in progress (prevents duplicate API calls)
+        if fetching.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        // Ensure the flag is cleared on exit (including early returns)
+        let _guard = FetchGuard(fetching);
+
         let session = MarketSession::current();
 
         // 1. Get watchlist codes (use spawn_blocking to avoid blocking tokio worker)
@@ -248,5 +262,14 @@ impl Scheduler {
                 }
             }
         }
+    }
+}
+
+/// RAII guard that clears the fetch-in-progress flag on drop.
+struct FetchGuard<'a>(&'a AtomicBool);
+
+impl<'a> Drop for FetchGuard<'a> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }

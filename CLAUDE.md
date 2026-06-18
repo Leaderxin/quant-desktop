@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (use ci for deterministic installs)
+npm ci
 
 # Run in development mode (starts Vite dev server, then Tauri)
 npm run tauri dev
@@ -52,7 +52,7 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 - `MinuteData` — intraday minute bar (time, price, open, high, low, volume, avg_price)
 - `StockBrief` — minimal stock identifier for search results
 
-**`db/mod.rs`** — SQLite database (via `rusqlite` with bundled SQLite). Three tables: `watchlist`, `settings` (key-value), `quote_cache`. Database is stored at `{app_data_dir}/quant-desktop.db`. Auto-creates tables and default settings on first open. `init_defaults()` forces `active_datasource` to `sina` on every startup as a safety reset.
+**`db/mod.rs`** — SQLite database (via `rusqlite` with bundled SQLite). Three tables: `watchlist`, `settings` (key-value), `quote_cache`. Database is stored at `{app_data_dir}/quant-desktop.db`. Auto-creates tables and default settings on first open. `init_defaults()` inserts default settings only on first run (when key does not exist); user preferences persist across restarts.
 
 **`datasource/mod.rs`** — Pluggable data source architecture. The `DataSource` trait defines `fetch_realtime()`, `fetch_indices()`, `search()`, `fetch_depth()`, `fetch_minute_data()`, `health_check()`. `DataSourceManager` holds a registry of adapters and an `active` name, supporting runtime switching. A `tokio::sync::Notify` wakeup mechanism triggers immediate refresh on data source switch.
 - `sina.rs` — Sina Finance (新浪财经) adapter, the **default** data source. GBK-encoded responses, parsed from `var hq_str_xxx="..."` format. Handles code-to-exchange mapping (sh/sz prefix). Search only supports exact 6-digit code lookup. Depth data fetched via Tencent API fallback (Sina's native depth endpoint is dead). Minute data from `money.finance.sina.com.cn` 5-min K-line endpoint. Covers 7 major indices.
@@ -117,7 +117,7 @@ DataSource switching triggers a `Notify` wakeup → Scheduler immediately refres
 
 ### Key dependencies
 
-- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding` (GBK decoding), `async-trait`
+- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging)
 - **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `vite`, `vue-tsc`, `klinecharts` (v10 beta)
 
 ### Default settings (auto-inserted on first run)
@@ -139,8 +139,9 @@ Main window position/size is saved to SQLite `settings` table on move/resize/clo
 |-------|--------|-------|
 | Phase 1 (MVP) | ✅ Complete | Scaffold, Sina adapter, tray, ticker, watchlist CRUD, index bar, dark theme |
 | Phase 2 (Experience) | ✅ Complete | Detail panel (minute chart + depth + summary), Tencent adapter, column sorting, window position memory, market_clock dynamic polling |
-| Phase 3 (Enhancement) | 📋 Planned | K-line chart (daily/weekly/monthly) + technical indicators (MA/BOLL/MACD), price alerts, import/export (JSON/CSV), auto-start, packaging polish |
-| Phase 4 (Extension) | 🔮 Future | HK/US market support, professional data sources (Wind/Tushare), auto-update, macOS/Linux adaptation |
+| Phase 3 (Quality) | ✅ v0.3.1 | Code review fixes (36 items): logging, error handling, spawn_blocking, CSS tokens, accessibility, CSP, encoding_rs migration, design system, dead code cleanup |
+| Phase 4 (Enhancement) | 📋 Planned | K-line chart (daily/weekly/monthly) + technical indicators (MA/BOLL/MACD), price alerts, import/export (JSON/CSV), auto-start, packaging polish |
+| Phase 5 (Extension) | 🔮 Future | HK/US market support, professional data sources (Wind/Tushare), auto-update, macOS/Linux adaptation |
 
 ## CI/CD
 

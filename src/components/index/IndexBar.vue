@@ -47,4 +47,7 @@ const quote = useQuoteStore();
   0%, 100% { opacity: 0.3; }
   50% { opacity: 1; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .placeholder-dot { animation: none; opacity: 0.5; }
+}
 </style>

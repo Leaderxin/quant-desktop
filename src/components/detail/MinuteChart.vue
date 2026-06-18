@@ -18,6 +18,7 @@ const chartRef = ref<HTMLElement | null>(null);
 let chart: Chart | null = null;
 const loading = ref(false);
 const error = ref('');
+let abortController: AbortController | null = null;
 
 function applyChartStyles() {
   if (!chart) return;
@@ -98,10 +99,21 @@ const dataLoader: DataLoader = {
 };
 
 async function loadData() {
+  // Abort any in-flight request from a previous code change
+  if (abortController) {
+    abortController.abort();
+  }
+  abortController = new AbortController();
+  const { signal } = abortController;
+
   loading.value = true;
   error.value = '';
   try {
     const data = await invoke<MinuteData[]>('get_intraday', { code: props.code, market: props.market });
+
+    // Discard stale response if aborted or code changed while fetching
+    if (signal.aborted) return;
+
     if (!data.length) {
       // No data yet (e.g., market not open) — not an error, chart stays empty
       return;
@@ -127,14 +139,19 @@ async function loadData() {
       };
     });
 
+    if (signal.aborted) return;
+
     if (chart) {
       chart.setDataLoader(dataLoader);
     }
   } catch (e) {
+    if (signal.aborted) return;
     error.value = `加载分时数据失败: ${String(e).slice(0, 80)}`;
     console.error('[MinuteChart] failed:', e);
   } finally {
-    loading.value = false;
+    if (!signal.aborted) {
+      loading.value = false;
+    }
   }
 }
 

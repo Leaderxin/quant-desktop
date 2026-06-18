@@ -102,7 +102,30 @@ const visibleItems = computed(() => {
   return result;
 });
 
+const retryHintVisible = ref(false);
+
 async function handleClick() {
+  if (initFailed.value) {
+    // Double-click to retry initialization in the tiny ticker window
+    initFailed.value = false;
+    retryHintVisible.value = true;
+    try {
+      await settings.fetchSettings();
+      settings.applyTheme(settings.theme);
+      await watchlist.fetchWatchlist();
+      await quoteStore.startListening();
+      startCycle();
+      startThemeListen();
+      startDatasourceListen();
+      startWatchlistPoll();
+      retryHintVisible.value = false;
+    } catch (e) {
+      initFailed.value = true;
+      retryHintVisible.value = false;
+      console.error('[TickerBar] retry failed:', e);
+    }
+    return;
+  }
   await invoke('show_main_window').catch(() => {});
 }
 </script>
@@ -121,7 +144,13 @@ async function handleClick() {
   >
     <template v-if="initFailed">
       <div class="ticker-row ticker-error-row">
-        <span class="ticker-error-text">QuantDesktop</span>
+        <span class="ticker-error-text" :title="'点击重试'">QuantDesktop</span>
+        <span class="ticker-retry-hint">· 点击重试</span>
+      </div>
+    </template>
+    <template v-else-if="retryHintVisible">
+      <div class="ticker-row ticker-error-row">
+        <span class="ticker-error-text">重连中...</span>
       </div>
     </template>
     <template v-else-if="visibleItems.length > 0">
@@ -216,5 +245,10 @@ async function handleClick() {
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
   letter-spacing: 0.05em;
+}
+.ticker-retry-hint {
+  color: var(--color-warning);
+  font-size: 9px;
+  opacity: 0.7;
 }
 </style>

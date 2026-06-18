@@ -13,6 +13,7 @@ const watchlist = useWatchlistStore();
 const keyword = ref('');
 const results = ref<StockBrief[]>([]);
 const searching = ref(false);
+const searchError = ref('');
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 onUnmounted(() => {
@@ -26,14 +27,17 @@ watch(() => keyword.value, (val) => {
   if (debounceTimer) clearTimeout(debounceTimer);
   if (!val || val.trim().length === 0) {
     results.value = [];
+    searchError.value = '';
     return;
   }
   debounceTimer = setTimeout(async () => {
     searching.value = true;
+    searchError.value = '';
     try {
       results.value = await invoke<StockBrief[]>('search_stocks', { keyword: val.trim() });
-    } catch {
+    } catch (e) {
       results.value = [];
+      searchError.value = `搜索失败: ${String(e).slice(0, 60)}`;
     } finally {
       searching.value = false;
     }
@@ -95,6 +99,13 @@ async function handleAdd(stock: StockBrief) {
             </div>
           </div>
 
+          <div v-else-if="searchError" class="search-error" role="alert">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" class="search-error-icon">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span>{{ searchError }}</span>
+          </div>
           <div v-else-if="keyword && !searching" class="no-results">
             未找到匹配标的
           </div>
@@ -146,5 +157,19 @@ async function handleAdd(stock: StockBrief) {
   padding: var(--space-6);
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
+}
+.search-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--space-4) var(--space-3);
+  color: var(--color-warning);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+.search-error-icon {
+  flex-shrink: 0;
+  color: var(--color-warning);
 }
 </style>

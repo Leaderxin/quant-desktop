@@ -60,22 +60,22 @@ const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.mar
 .detail-name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-text-primary, #e0e0e0);
+  color: var(--color-text-primary);
 }
 .detail-code {
   font-size: 12px;
-  color: var(--color-text-tertiary, #888);
+  color: var(--color-text-tertiary);
 }
 .detail-close {
   background: none;
   border: none;
-  color: var(--color-text-tertiary, #888);
+  color: var(--color-text-tertiary);
   font-size: 20px;
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
 }
-.detail-close:hover { color: var(--color-text-primary, #e0e0e0); }
+.detail-close:hover { color: var(--color-text-primary); }
 .detail-content {
   display: flex;
   gap: 16px;

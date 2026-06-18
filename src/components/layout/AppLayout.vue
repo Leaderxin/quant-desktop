@@ -69,8 +69,8 @@ defineEmits<{
 
 /* --- Error banner (blocking) --- */
 .error-banner {
-  background: rgba(255, 166, 87, 0.08);
-  border-bottom: 1px solid rgba(255, 166, 87, 0.2);
+  background: var(--color-warning-bg);
+  border-bottom: 1px solid var(--color-warning-border);
   flex-shrink: 0;
 }
 .error-banner-content {
@@ -81,14 +81,14 @@ defineEmits<{
   max-width: 100%;
 }
 .error-icon {
-  color: #ffa657;
+  color: var(--color-warning);
   flex-shrink: 0;
 }
 .error-text {
   flex: 1;
   min-width: 0;
   font-size: var(--text-xs);
-  color: #ffa657;
+  color: var(--color-warning);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -99,24 +99,25 @@ defineEmits<{
   gap: 4px;
   flex-shrink: 0;
   padding: 2px 8px;
-  border: 1px solid rgba(255, 166, 87, 0.3);
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius-sm);
-  background: rgba(255, 166, 87, 0.08);
-  color: #ffa657;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
   font-size: var(--text-xs);
   font-family: var(--font-sans);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 .error-retry-btn:hover {
-  background: rgba(255, 166, 87, 0.16);
+  filter: brightness(1.2);
 }
 
 /* --- Warning banner (non-blocking, quote error) --- */
 .warning-banner {
-  background: rgba(255, 166, 87, 0.04);
-  border-bottom: 1px solid rgba(255, 166, 87, 0.1);
+  background: var(--color-warning-bg);
+  border-bottom: 1px solid var(--color-warning-border);
   flex-shrink: 0;
+  opacity: 0.7;
 }
 .warning-banner-content {
   display: flex;
@@ -125,11 +126,11 @@ defineEmits<{
   padding: 4px 12px;
 }
 .warning-icon {
-  color: #d29922;
+  color: var(--color-warning);
   flex-shrink: 0;
 }
 .warning-text {
   font-size: 11px;
-  color: #d29922;
+  color: var(--color-warning);
 }
 </style>

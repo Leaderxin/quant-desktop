@@ -40,6 +40,11 @@
   --color-error: #f85149;
   --color-error-bg: rgba(248, 81, 73, 0.08);
 
+  /* Semantic: warning / caution (amber — distinct from error-red and up-red) */
+  --color-warning: #d29922;
+  --color-warning-bg: rgba(210, 153, 34, 0.08);
+  --color-warning-border: rgba(210, 153, 34, 0.2);
+
   /* ── Brand / Accent ── */
   --color-accent: #58a6ff;
   --color-accent-dim: rgba(88, 166, 255, 0.12);
@@ -73,6 +78,7 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-full: 9999px;
 
   /* ── Shadows ── */
   --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
@@ -85,6 +91,14 @@
   /* ── Layout Tokens ── */
   --header-height: 40px;
   --index-bar-height: 52px;
+
+  /* ── Z-Index Scale ── */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
 
   /* Backward compat aliases */
   --color-bg: var(--color-surface-0);
@@ -119,6 +133,10 @@
 
   --color-error: #d1242f;
   --color-error-bg: rgba(209, 36, 47, 0.06);
+
+  --color-warning: #9a6700;
+  --color-warning-bg: rgba(154, 103, 0, 0.06);
+  --color-warning-border: rgba(154, 103, 0, 0.15);
 
   --color-accent: #0969da;
   --color-accent-dim: rgba(9, 105, 218, 0.08);

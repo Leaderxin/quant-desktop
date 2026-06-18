@@ -4,10 +4,9 @@ use async_trait::async_trait;
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
-use super::DataSource;
+use super::{DataSource, USER_AGENT, INDEX_CODES};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 pub struct TencentAdapter {
     client: Client,
@@ -159,7 +158,7 @@ impl DataSource for TencentAdapter {
     }
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
-        let index_codes = "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
+        let index_codes = INDEX_CODES;
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
         let resp = self

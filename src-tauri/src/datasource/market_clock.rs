@@ -28,10 +28,10 @@ impl MarketSession {
 
         let time = now.time();
 
-        let morning_start = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
-        let morning_end = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
-        let afternoon_start = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
-        let afternoon_end = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
+        let morning_start = NaiveTime::from_hms_opt(9, 30, 0).expect("valid time constant");
+        let morning_end = NaiveTime::from_hms_opt(11, 30, 0).expect("valid time constant");
+        let afternoon_start = NaiveTime::from_hms_opt(13, 0, 0).expect("valid time constant");
+        let afternoon_end = NaiveTime::from_hms_opt(15, 0, 0).expect("valid time constant");
 
         if time < morning_start {
             Self::PreOpen

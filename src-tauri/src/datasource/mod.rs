@@ -4,6 +4,20 @@ use std::sync::RwLock;
 use tokio::sync::Notify;
 use crate::domain::*;
 
+// ── Shared constants across data source adapters ──
+
+/// Major A-share index codes (Shanghai + Shenzhen)
+pub const INDEX_CODES: &str =
+    "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
+
+/// Default User-Agent for HTTP requests
+pub const USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+/// Ticker window default dimensions
+pub const TICKER_WIDTH: u32 = 230;
+pub const TICKER_HEIGHT: u32 = 38;
+
 /// Abstract data source trait — all market data adapters implement this
 #[async_trait]
 pub trait DataSource: Send + Sync {
@@ -109,6 +123,14 @@ impl DataSourceManager {
     /// Get a reference to a specific data source by name
     pub fn get_source(&self, name: &str) -> Option<&dyn DataSource> {
         self.sources.get(name).map(|s| s.as_ref())
+    }
+
+    /// Iterate over all registered data sources (name, source)
+    pub fn all_sources(&self) -> Vec<(String, &dyn DataSource)> {
+        self.sources
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_ref()))
+            .collect()
     }
 
     /// List all registered data sources (id, display_name)

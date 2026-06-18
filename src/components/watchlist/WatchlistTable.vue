@@ -218,7 +218,11 @@ const columns: DataTableColumns<WatchItem> = [
       </NButton>
     </div>
 
-    <div v-if="watchlist.items.length === 0" class="empty-state">
+    <div v-if="watchlist.error" class="error-state" role="alert">
+      <p class="error-text">{{ watchlist.error }}</p>
+      <NButton size="tiny" @click="watchlist.fetchWatchlist()">重试</NButton>
+    </div>
+    <div v-else-if="watchlist.items.length === 0" class="empty-state">
       <svg class="empty-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
         <rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/>
         <line x1="4" y1="12" x2="28" y2="12" stroke="currentColor" stroke-width="1.5"/>
@@ -285,7 +289,7 @@ const columns: DataTableColumns<WatchItem> = [
   font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: -0.01em;
 }
 .add-btn {
   font-size: var(--text-xs);
@@ -304,6 +308,20 @@ const columns: DataTableColumns<WatchItem> = [
 .empty-icon { color: var(--color-text-tertiary); opacity: 0.4; }
 .empty-text { font-size: var(--text-md); font-weight: var(--font-weight-medium); color: var(--color-text-secondary); }
 .empty-hint { font-size: var(--text-xs); }
+.error-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.error-text {
+  font-size: var(--text-sm);
+  color: var(--color-warning);
+  text-align: center;
+  max-width: 300px;
+}
 
 :deep(.watchlist-table) {
   flex: 1;

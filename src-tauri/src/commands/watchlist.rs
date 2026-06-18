@@ -98,13 +98,18 @@ pub async fn search_stocks(
         String::new()
     };
 
-    // Fallback to other data source if active source returns empty
+    // Fallback to other registered data sources if active source returns empty
     if results.is_empty() {
-        let fallback = if active_name == "sina" { "tencent" } else { "sina" };
-        if let Some(fb) = manager.get_source(fallback) {
-            match fb.search(&keyword, "CN").await {
-                Ok(fb_results) => results = fb_results,
-                Err(e) => log::warn!("Fallback search via {} failed: {}", fallback, e),
+        for (name, source) in manager.all_sources() {
+            if name != active_name {
+                match source.search(&keyword, "CN").await {
+                    Ok(fb_results) if !fb_results.is_empty() => {
+                        results = fb_results;
+                        break;
+                    }
+                    Ok(_) => {} // empty result, try next source
+                    Err(e) => log::warn!("Fallback search via {} failed: {}", name, e),
+                }
             }
         }
     }

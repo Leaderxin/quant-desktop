@@ -34,11 +34,5 @@ export const useWatchlistStore = defineStore('watchlist', () => {
     await fetchWatchlist();
   }
 
-  async function reorder(ids: number[]) {
-    error.value = null;
-    await invoke('reorder_watch', { ids });
-    await fetchWatchlist();
-  }
-
-  return { items, loading, error, fetchWatchlist, addStock, removeStock, reorder };
+  return { items, loading, error, fetchWatchlist, addStock, removeStock };
 });
