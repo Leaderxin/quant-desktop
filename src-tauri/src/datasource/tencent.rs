@@ -215,6 +215,139 @@ impl DataSource for TencentAdapter {
         Ok(vec![])
     }
 
+    async fn fetch_minute_data(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+        let tc_code = Self::code_to_tencent(code, market);
+        // Use 5-min K-line endpoint — same as Sina, returns multi-day data
+        let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m5,,240", tc_code);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://gu.qq.com")
+            .header("User-Agent", USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("Tencent kline request failed: {:#}", e))?;
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Tencent kline parse failed: {}", e))?;
+
+        // Format: [["202606180935","open","close","high","low","volume",{},"rate"], ...]
+        let lines = body
+            .pointer("/data")
+            .and_then(|d| d.as_object())
+            .and_then(|obj| obj.values().next())
+            .and_then(|stock| stock.get("m5"))
+            .and_then(|arr| arr.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let data: Vec<crate::domain::MinuteData> = lines
+            .iter()
+            .filter_map(|pt| {
+                let arr = pt.as_array()?;
+                if arr.len() < 6 { return None; }
+                let time_raw = arr[0].as_str()?;
+                // "202606180935" → "09:35"
+                let time = if time_raw.len() >= 12 {
+                    format!("{}:{}", &time_raw[8..10], &time_raw[10..12])
+                } else {
+                    time_raw.to_string()
+                };
+                let open: f64 = arr[1].as_str()?.parse().ok()?;
+                let close: f64 = arr[2].as_str()?.parse().ok()?;
+                let high: f64 = arr[3].as_str()?.parse().unwrap_or(close);
+                let low: f64 = arr[4].as_str()?.parse().unwrap_or(close);
+                // Tencent volume is in 手, convert to 股
+                let volume: u64 = arr[5].as_str()?.parse().unwrap_or(0);
+                Some(crate::domain::MinuteData {
+                    time,
+                    price: close,
+                    open,
+                    high,
+                    low,
+                    volume: volume * 100,
+                    avg_price: open,
+                })
+            })
+            .collect();
+
+        Ok(data)
+    }
+
+    async fn fetch_depth(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<crate::domain::Depth, String> {
+        use crate::domain::Level;
+
+        let tc_code = Self::code_to_tencent(code, market);
+        let url = format!("{}{}", TENCENT_URL, tc_code);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://gu.qq.com")
+            .send()
+            .await
+            .map_err(|e| format!("Tencent depth request failed: {:#}", e))?;
+
+        let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
+        let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
+            .map_err(|e| format!("Tencent GBK decode failed: {}", e))?;
+
+        let mut bids = Vec::new();
+        let mut asks = Vec::new();
+
+        for line in body.lines() {
+            if let Some(eq_pos) = line.find('=') {
+                let qs = line[eq_pos + 1..].find('"').unwrap_or(0) + eq_pos + 2;
+                let qe = line[qs..].find('"').unwrap_or(0);
+                let data = &line[qs..qs + qe];
+                let fields: Vec<&str> = data.split('~').collect();
+
+                if fields.len() >= 29 {
+                    // Bids: fields 9-18 (price,vol alternating)
+                    for i in 0..5 {
+                        let pi = 9 + i * 2;
+                        let vi = pi + 1;
+                        if let (Ok(price), Ok(vol)) = (
+                            fields[pi].parse::<f64>(),
+                            fields[vi].parse::<u64>(),
+                        ) {
+                            if price > 0.0 && vol > 0 {
+                                bids.push(Level { price, volume: vol * 100 }); // 手→股
+                            }
+                        }
+                    }
+                    // Asks: fields 19-28
+                    for i in 0..5 {
+                        let pi = 19 + i * 2;
+                        let vi = pi + 1;
+                        if let (Ok(price), Ok(vol)) = (
+                            fields[pi].parse::<f64>(),
+                            fields[vi].parse::<u64>(),
+                        ) {
+                            if price > 0.0 && vol > 0 {
+                                asks.push(Level { price, volume: vol * 100 });
+                            }
+                        }
+                    }
+                }
+                break; // Only first line matters
+            }
+        }
+
+        Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
+    }
+
     async fn health_check(&self) -> Result<bool, String> {
         let codes = vec!["000001".to_string()];
         self.fetch_realtime(&codes, "CN")

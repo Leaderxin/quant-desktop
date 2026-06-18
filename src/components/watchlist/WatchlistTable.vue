@@ -94,9 +94,9 @@ function handleCtxSelect(key: string) {
 }
 
 const columns: DataTableColumns<WatchItem> = [
-  { title: '代码', key: 'code', width: 80 },
+  { title: '代码', key: 'code', width: 68 },
   {
-    title: '名称', key: 'name', width: 100, ellipsis: true,
+    title: '名称', key: 'name', width: 120, ellipsis: true,
     sorter: (a: WatchItem, b: WatchItem) => a.name.localeCompare(b.name),
   },
   {

@@ -33,7 +33,7 @@ const quote = quoteStore.getQuote(props.item.code, props.item.market);
         <DepthPanel :code="item.code" :market="item.market" />
       </div>
       <div class="detail-right">
-        <MinuteChart :code="item.code" :market="item.market" />
+        <MinuteChart :code="item.code" :market="item.market" :name="item.name" />
       </div>
     </div>
   </div>
@@ -88,5 +88,7 @@ const quote = quoteStore.getQuote(props.item.code, props.item.market);
 .detail-right {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 </style>

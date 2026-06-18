@@ -75,6 +75,9 @@ pub struct Level {
 pub struct MinuteData {
     pub time: String,
     pub price: f64,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
     pub volume: u64,
     pub avg_price: f64,
 }

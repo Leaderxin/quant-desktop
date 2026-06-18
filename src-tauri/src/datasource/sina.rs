@@ -246,16 +246,15 @@ impl DataSource for SinaAdapter {
         Ok(vec![])
     }
 
-    async fn fetch_depth(
+    async fn fetch_minute_data(
         &self,
         code: &str,
         market: &str,
-    ) -> Result<crate::domain::Depth, String> {
-        let sina_code = Self::code_to_sina(code, market);
-        let url = format!("{}{},{}",
-            SINA_URL,
-            format!("buy_{}", sina_code),
-            format!("sell_{}", sina_code),
+    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+        let symbol = Self::code_to_sina(code, market);
+        let url = format!(
+            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale=5&datalen=240",
+            symbol
         );
 
         let resp = self
@@ -264,42 +263,116 @@ impl DataSource for SinaAdapter {
             .header("Referer", "https://finance.sina.com.cn")
             .send()
             .await
-            .map_err(|e| format!("Sina depth request failed: {:#}", e))?;
+            .map_err(|e| format!("Sina minute request failed: {:#}", e))?;
 
-        let body_bytes = resp.bytes().await.map_err(|e| format!("Sina read failed: {:#}", e))?;
+        let body_text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Sina minute read failed: {:#}", e))?;
+
+        // Sina's response ends with a JS callback comment; strip it
+        let json_str = body_text.trim_end_matches(|c| c != ']').trim();
+        let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
+            .map_err(|e| format!("Sina minute parse failed: {} — body: {}", e, &body_text[..body_text.len().min(100)]))?;
+
+
+        let data: Vec<crate::domain::MinuteData> = raw
+            .iter()
+            .filter_map(|pt| {
+                let time_raw = pt.get("day")?.as_str()?;
+                let time = if time_raw.len() >= 16 {
+                    time_raw[11..16].to_string()
+                } else {
+                    time_raw.to_string()
+                };
+                let open = pt.get("open")?.as_str()?.parse().ok()?;
+                let close = pt.get("close")?.as_str()?.parse().ok()?;
+                let high = pt.get("high")?.as_str()?.parse().unwrap_or(close);
+                let low = pt.get("low")?.as_str()?.parse().unwrap_or(close);
+                Some(crate::domain::MinuteData {
+                    time,
+                    price: close,
+                    open,
+                    high,
+                    low,
+                    volume: pt.get("volume")?.as_str()?.parse().unwrap_or(0),
+                    avg_price: open,
+                })
+            })
+            .collect();
+
+        Ok(data)
+    }
+
+    async fn fetch_depth(
+        &self,
+        code: &str,
+        market: &str,
+    ) -> Result<crate::domain::Depth, String> {
+        // Sina's buy_/sell_ depth API is dead — fall back to Tencent's
+        // quote endpoint which embeds 5-level depth in fields 9-28.
+        use crate::domain::Level;
+
+        let tc_code = if market == "CN" {
+            if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
+                format!("sh{}", code)
+            } else {
+                format!("sz{}", code)
+            }
+        } else {
+            code.to_string()
+        };
+        let url = format!("http://qt.gtimg.cn/q={}", tc_code);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://gu.qq.com")
+            .send()
+            .await
+            .map_err(|e| format!("Sina depth (via Tencent) request failed: {:#}", e))?;
+
+        let body_bytes = resp.bytes().await.map_err(|e| format!("Read failed: {:#}", e))?;
         let body = GBK.decode(&body_bytes, DecoderTrap::Replace)
-            .map_err(|e| format!("Sina GBK decode failed: {}", e))?;
+            .map_err(|e| format!("GBK decode failed: {}", e))?;
 
         let mut bids = Vec::new();
         let mut asks = Vec::new();
 
         for line in body.lines() {
             if let Some(eq_pos) = line.find('=') {
-                let var_part = &line[..eq_pos];
-                let quote_start = line[eq_pos + 1..].find('"').map(|p| eq_pos + 1 + p + 1);
-                if let Some(start) = quote_start {
-                    let quote_end = line[start..].find('"').unwrap_or(0);
-                    let data = &line[start..start + quote_end];
-                    let fields: Vec<&str> = data.split(',').collect();
-                    if var_part.contains("buy_") && fields.len() >= 2 {
-                        let price = fields[0].parse::<f64>().unwrap_or(0.0);
-                        let volume = fields[1].parse::<u64>().unwrap_or(0);
-                        if price > 0.0 {
-                            bids.push(crate::domain::Level { price, volume });
+                let qs = line[eq_pos + 1..].find('"').unwrap_or(0) + eq_pos + 2;
+                let qe = line[qs..].find('"').unwrap_or(0);
+                let data = &line[qs..qs + qe];
+                let fields: Vec<&str> = data.split('~').collect();
+
+                if fields.len() >= 29 {
+                    for i in 0..5 {
+                        let pi = 9 + i * 2;
+                        if let (Ok(price), Ok(vol)) = (
+                            fields[pi].parse::<f64>(),
+                            fields[pi + 1].parse::<u64>(),
+                        ) {
+                            if price > 0.0 && vol > 0 {
+                                bids.push(Level { price, volume: vol * 100 });
+                            }
                         }
-                    } else if var_part.contains("sell_") && fields.len() >= 2 {
-                        let price = fields[0].parse::<f64>().unwrap_or(0.0);
-                        let volume = fields[1].parse::<u64>().unwrap_or(0);
-                        if price > 0.0 {
-                            asks.push(crate::domain::Level { price, volume });
+                    }
+                    for i in 0..5 {
+                        let pi = 19 + i * 2;
+                        if let (Ok(price), Ok(vol)) = (
+                            fields[pi].parse::<f64>(),
+                            fields[pi + 1].parse::<u64>(),
+                        ) {
+                            if price > 0.0 && vol > 0 {
+                                asks.push(Level { price, volume: vol * 100 });
+                            }
                         }
                     }
                 }
+                break;
             }
         }
-
-        bids.sort_by(|a, b| b.price.partial_cmp(&a.price).unwrap_or(std::cmp::Ordering::Equal));
-        asks.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
 
         Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
     }

@@ -54,6 +54,9 @@ export interface Depth {
 export interface MinuteData {
   time: string;
   price: number;
+  open: number;
+  high: number;
+  low: number;
   volume: number;
   avg_price: number;
 }
