@@ -73,11 +73,13 @@ defineExpose({
 }
 
 .index-bar {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-4);
   background: var(--color-surface-0);
+  overflow-x: auto;
 }
 
 .index-placeholder {

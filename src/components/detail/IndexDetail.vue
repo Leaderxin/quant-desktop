@@ -153,7 +153,7 @@ const statCards = computed(() => [
 /* 摘要卡片网格 */
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
 }
 
