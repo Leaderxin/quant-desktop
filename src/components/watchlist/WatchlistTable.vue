@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import type { WatchItem } from '@/types';
+import { formatPrice } from '@/utils/format';
 import AddStockDialog from './AddStockDialog.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
 
@@ -124,7 +125,7 @@ const columns: DataTableColumns<WatchItem> = [
     },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
-      return q?.price?.toFixed(2) ?? '--';
+      return formatPrice(q?.price);
     }
   },
   {
