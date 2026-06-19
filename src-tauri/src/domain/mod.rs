@@ -57,6 +57,17 @@ pub struct MinuteData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KLineData {
+    pub date: String,
+    pub open: f64,
+    pub high: f64,
+    pub low: f64,
+    pub close: f64,
+    pub volume: f64,
+    pub turnover: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockBrief {
     pub code: String,
     pub market: String,
