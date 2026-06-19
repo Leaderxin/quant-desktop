@@ -60,3 +60,15 @@ export interface MinuteData {
   volume: number;
   avg_price: number;
 }
+
+export interface KLineData {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  turnover: number;
+}
+
+export type PeriodType = 'minute' | 'daily' | 'weekly' | 'monthly';
