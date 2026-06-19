@@ -33,7 +33,7 @@ export function useChart(options: {
   function applyChartStyles() {
     if (!chart) return;
     const isDark = settings.theme === 'dark';
-    const lineColor = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.35)';
+    const lineColor = isDark ? '#58a6ff' : '#0969da';
     const gridHColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
     const gridVColor = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
     const axisColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
