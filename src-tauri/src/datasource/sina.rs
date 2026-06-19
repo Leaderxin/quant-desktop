@@ -342,12 +342,12 @@ impl DataSource for SinaAdapter {
             .header("Referer", "https://finance.sina.com.cn")
             .send()
             .await
-            .map_err(|e| format!("Sina kline request failed: {}", e))?;
+            .map_err(|e| format!("Sina kline request failed: {:#}", e))?;
 
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Sina kline read failed: {}", e))?;
+            .map_err(|e| format!("Sina kline read failed: {:#}", e))?;
 
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
