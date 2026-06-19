@@ -145,9 +145,9 @@ export function useChart(options: {
       chart.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
     }
 
+    applyChartStyles();
     if (period === 'minute') {
       chart.setPeriod({ type: 'minute', span: 5 });
-      applyChartStyles();
     } else {
       chart.setPeriod({ type: 'day', span: 1 });
       applyCandlestickStyles();
