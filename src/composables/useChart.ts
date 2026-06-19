@@ -17,6 +17,7 @@ export function useChart(options: {
   const loading = ref(false);
   const error = ref('');
   let abortController: AbortController | null = null;
+  const currentPeriod = ref<PeriodType>('minute');
 
   const klineData = ref<KCLineData[]>([]);
 
@@ -30,25 +31,31 @@ export function useChart(options: {
     },
   };
 
+  function themeColors() {
+    const isDark = settings.theme === 'dark';
+    return {
+      lineColor: isDark ? '#58a6ff' : '#0969da',
+      gridHColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
+      gridVColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
+      axisColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
+      tickColor: isDark ? '#8b949e' : '#656d76',
+      tooltipBg: isDark ? 'rgba(22,27,34,0.95)' : 'rgba(255,255,255,0.95)',
+      tooltipText: isDark ? '#c9d1d9' : '#24292f',
+      separatorColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      crosshairBg: isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)',
+      crosshairText: isDark ? '#c9d1d9' : '#e6edf3',
+    };
+  }
+
   function applyChartStyles() {
     if (!chart) return;
-    const isDark = settings.theme === 'dark';
-    const lineColor = isDark ? '#58a6ff' : '#0969da';
-    const gridHColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
-    const gridVColor = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
-    const axisColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
-    const tickColor = isDark ? '#8b949e' : '#656d76';
-    const tooltipBg = isDark ? 'rgba(22,27,34,0.95)' : 'rgba(255,255,255,0.95)';
-    const tooltipText = isDark ? '#c9d1d9' : '#24292f';
-    const separatorColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-    const crosshairBg = isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)';
-    const crosshairText = isDark ? '#c9d1d9' : '#e6edf3';
+    const c = themeColors();
 
     chart.setStyles({
       grid: {
         show: true,
-        horizontal: { show: true, color: gridHColor, size: 1, dashedValue: [2, 2] },
-        vertical: { show: true, color: gridVColor, size: 1, dashedValue: [2, 2] },
+        horizontal: { show: true, color: c.gridHColor, size: 1, dashedValue: [2, 2] },
+        vertical: { show: true, color: c.gridVColor, size: 1, dashedValue: [2, 2] },
       },
       candle: {
         type: 'area',
@@ -57,8 +64,8 @@ export function useChart(options: {
         tooltip: {
           labels: ['时间', '开', '高', '低', '收', '量', '额'],
           title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: tooltipBg } as any,
-          text: { size: 11, color: tooltipText, family: 'var(--font-sans)' } as any,
+          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
+          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
         } as any,
         priceMark: {
           high: { show: false } as any,
@@ -70,33 +77,35 @@ export function useChart(options: {
         ohlc: { upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' },
         bars: [] as any,
         lastValueMark: { show: false } as any,
-        tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: tooltipText } } as any,
+        tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any,
       },
       xAxis: {
         show: true,
         size: 'auto',
-        axisLine: { show: true, color: axisColor, size: 1 },
+        axisLine: { show: true, color: c.axisColor, size: 1 },
         tickLine: { show: false } as any,
-        tickText: { size: 10, color: tickColor, family: 'var(--font-sans)', marginStart: 0, marginEnd: 0 } as any,
+        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)', marginStart: 0, marginEnd: 0 } as any,
       },
       yAxis: {
         show: true,
         size: 'auto',
         axisLine: { show: false } as any,
         tickLine: { show: false } as any,
-        tickText: { size: 10, color: tickColor, family: 'var(--font-sans)' } as any,
+        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)' } as any,
       },
-      separator: { size: 1, color: separatorColor, fill: false, activeBackgroundColor: 'rgba(255,255,255,0.02)' },
+      separator: { size: 1, color: c.separatorColor, fill: false, activeBackgroundColor: 'rgba(255,255,255,0.02)' },
       crosshair: {
         show: true,
-        horizontal: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: crosshairText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
-        vertical: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: crosshairText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
+        horizontal: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
+        vertical: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
       },
     });
   }
 
   function applyCandlestickStyles() {
     if (!chart) return;
+    const c = themeColors();
+
     chart.setStyles({
       candle: {
         type: 'candle_solid',
@@ -105,8 +114,8 @@ export function useChart(options: {
         tooltip: {
           labels: ['日期', '开', '高', '低', '收', '量', '额'],
           title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: '#161b22' } as any,
-          text: { size: 11, color: '#c9d1d9', family: 'var(--font-sans)' } as any,
+          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
+          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
         } as any,
         priceMark: {
           high: { show: false } as any,
@@ -117,6 +126,22 @@ export function useChart(options: {
     });
   }
 
+  function reapplyStyles() {
+    applyChartStyles();
+    if (currentPeriod.value !== 'minute') {
+      applyCandlestickStyles();
+    }
+  }
+
+  function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
+    switch (period) {
+      case 'minute': return { type: 'minute', span: 5 };
+      case 'weekly': return { type: 'week', span: 1 };
+      case 'monthly': return { type: 'month', span: 1 };
+      default: return { type: 'day', span: 1 };
+    }
+  }
+
   async function initChart(period: PeriodType) {
     if (!options.chartRef.value) return;
     if (!chart) {
@@ -124,7 +149,10 @@ export function useChart(options: {
         locale: 'zh-CN',
         layout: { basicParams: { yAxisInside: true } },
       });
-      if (!chart) return;
+      if (!chart) {
+        error.value = '图表初始化失败';
+        return;
+      }
 
       chart.overrideIndicator({
         name: 'VOL',
@@ -145,11 +173,10 @@ export function useChart(options: {
       chart.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
     }
 
+    currentPeriod.value = period;
+    chart.setPeriod(periodToKlinecharts(period) as any);
     applyChartStyles();
-    if (period === 'minute') {
-      chart.setPeriod({ type: 'minute', span: 5 });
-    } else {
-      chart.setPeriod({ type: 'day', span: 1 });
+    if (period !== 'minute') {
       applyCandlestickStyles();
     }
   }
@@ -221,7 +248,7 @@ export function useChart(options: {
       }
     } catch (e) {
       if (signal.aborted) return;
-      error.value = `加载数据失败: ${String(e).slice(0, 80)}`;
+      error.value = `加载数据失败: ${String(e).slice(0, 160)}`;
       console.error('[useChart] loadData failed:', e);
     } finally {
       if (!signal.aborted) {
@@ -241,15 +268,9 @@ export function useChart(options: {
     }
   }
 
-  // Watch for code/market changes and reload
-  watch(
-    () => [unref(options.code), unref(options.market)] as const,
-    () => { loadData('minute'); },
-  );
-
-  // Watch for theme changes
+  // Theme change: reapply the correct style set for the current period
   watch(() => settings.theme, () => {
-    applyChartStyles();
+    reapplyStyles();
   });
 
   onUnmounted(() => {
@@ -264,7 +285,6 @@ export function useChart(options: {
     initChart,
     loadData,
     disposeChart,
-    applyTheme: applyChartStyles,
-    applyCandlestickStyles,
+    applyTheme: reapplyStyles,
   };
 }
