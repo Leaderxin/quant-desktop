@@ -312,6 +312,77 @@ impl DataSource for SinaAdapter {
         Ok(data)
     }
 
+    async fn fetch_kline(
+        &self,
+        code: &str,
+        market: &str,
+        period: &str,
+    ) -> Result<Vec<crate::domain::KLineData>, String> {
+        let symbol = if code.starts_with("s_") {
+            code[2..].to_string()
+        } else {
+            Self::code_to_sina(code, market)
+        };
+
+        // Map period to Sina API scale parameter
+        let scale = match period {
+            "weekly" => "120",
+            "monthly" => "60",
+            _ => "240",
+        };
+
+        let url = format!(
+            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=200",
+            symbol, scale
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://finance.sina.com.cn")
+            .send()
+            .await
+            .map_err(|e| format!("Sina kline request failed: {}", e))?;
+
+        let body_text = resp
+            .text()
+            .await
+            .map_err(|e| format!("Sina kline read failed: {}", e))?;
+
+        let json_str = body_text.trim_end_matches(|c| c != ']').trim();
+        let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
+            .map_err(|e| format!("Sina kline parse failed: {} — body: {}", e, &body_text[..body_text.len().min(100)]))?;
+
+        if raw.is_empty() {
+            log::warn!("Sina kline empty for code={} period={}", symbol, scale);
+        }
+
+        let data: Vec<crate::domain::KLineData> = raw
+            .iter()
+            .filter_map(|pt| {
+                let date = pt.get("day")?.as_str()?.to_string();
+                let open: f64 = pt.get("open")?.as_str()?.parse().ok()?;
+                let high: f64 = pt.get("high")?.as_str()?.parse().ok()?;
+                let low: f64 = pt.get("low")?.as_str()?.parse().ok()?;
+                let close: f64 = pt.get("close")?.as_str()?.parse().ok()?;
+                let volume: u64 = pt.get("volume")?.as_str()?.parse().unwrap_or(0u64);
+                // Sina doesn't provide turnover in K-line data, default to 0
+                let turnover: f64 = 0.0;
+                Some(crate::domain::KLineData {
+                    date,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    turnover,
+                })
+            })
+            .collect();
+
+        Ok(data)
+    }
+
     async fn fetch_depth(
         &self,
         code: &str,
