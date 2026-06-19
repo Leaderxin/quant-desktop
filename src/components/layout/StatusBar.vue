@@ -9,7 +9,7 @@ withDefaults(defineProps<{
 }>(), {
   version: '0.5.3',
   copyright: '© 2026 QuantDesktop',
-  contactEmail: 'biz@example.com',
+  contactEmail: 'shazhoulen@outlook.com',
   qrcodeSrc: '',
 });
 </script>
