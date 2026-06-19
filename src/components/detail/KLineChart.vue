@@ -62,6 +62,9 @@ watch(() => [props.code, props.market, props.period], async () => {
 }
 .chart-container :deep(canvas) {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg stroke='%2358a6ff' stroke-width='2' stroke-linecap='round'%3E%3Cline x1='12' y1='1' x2='12' y2='9'/%3E%3Cline x1='12' y1='15' x2='12' y2='23'/%3E%3Cline x1='1' y1='12' x2='9' y2='12'/%3E%3Cline x1='15' y1='12' x2='23' y2='12'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='2' fill='none' stroke='%23ffffff' stroke-width='1.5' opacity='.9'/%3E%3C/svg%3E") 12 12, crosshair !important;
+  will-change: transform;
+  transform: translateZ(0);
+  image-rendering: optimizeSpeed;
 }
 .chart-overlay {
   position: absolute;
