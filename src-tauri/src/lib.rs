@@ -268,8 +268,14 @@ pub fn run() {
                     })
                     .unwrap_or((1920, 1080));
 
-                let default_w: u32 = 1388;
-                let default_h: u32 = 1009;
+                // Read default window size from tauri.conf.json
+                let (default_w, default_h) = app.config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|w| w.label == "main")
+                    .map(|w| (w.width as u32, w.height as u32))
+                    .unwrap_or((1388, 1009));
                 let (mut saved_w, mut saved_h) = (0u32, 0u32);
                 if let Ok(Some(w)) = db.get_setting("window_width") {
                     if let Ok(Some(h)) = db.get_setting("window_height") {
