@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { WatchItem } from '@/types';
+import { ref, computed } from 'vue';
+import type { WatchItem, PeriodType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import StockSummary from './StockSummary.vue';
 import DepthPanel from './DepthPanel.vue';
 import MinuteChart from './MinuteChart.vue';
+import KLineChart from './KLineChart.vue';
+import ChartSwitcher from './ChartSwitcher.vue';
 
 const props = defineProps<{
   item: WatchItem;
@@ -16,6 +18,8 @@ const emit = defineEmits<{
 
 const quoteStore = useQuoteStore();
 const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.market));
+
+const activePeriod = ref<PeriodType>('minute');
 </script>
 
 <template>
@@ -34,7 +38,20 @@ const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.mar
         <DepthPanel :code="item.code" :market="item.market" />
       </div>
       <div class="detail-right">
-        <MinuteChart :code="item.code" :market="item.market" :name="item.name" />
+        <ChartSwitcher v-model="activePeriod" />
+        <MinuteChart
+          v-if="activePeriod === 'minute'"
+          :code="item.code"
+          :market="item.market"
+          :name="item.name"
+        />
+        <KLineChart
+          v-else
+          :code="item.code"
+          :market="item.market"
+          :name="item.name"
+          :period="activePeriod"
+        />
       </div>
     </div>
   </div>
@@ -91,5 +108,6 @@ const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.mar
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 8px;
 }
 </style>
