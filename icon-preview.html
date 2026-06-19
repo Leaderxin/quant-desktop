@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuantDesktop Icon Design Preview</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --surface: #111827;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --accent: #22d3ee;
+    --red: #ef4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #22d3ee, #67e8f9, #ef4444);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  .header p {
+    color: var(--text-muted);
+    font-size: 14px;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  .concepts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 32px;
+    max-width: 1400px;
+    margin: 0 auto 60px;
+  }
+
+  .concept-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .concept-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.08);
+  }
+
+  .concept-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .concept-title {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .concept-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(34, 211, 238, 0.1);
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  .concept-desc {
+    padding: 0 24px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .size-grid {
+    padding: 20px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .size-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .size-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .size-preview {
+    background: #0f172a;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .size-preview.svg-16 { width: 16px; height: 16px; }
+  .size-preview.svg-24 { width: 24px; height: 24px; }
+  .size-preview.svg-32 { width: 32px; height: 32px; border-radius: 10px; }
+  .size-preview.svg-48 { width: 48px; height: 48px; border-radius: 12px; }
+  .size-preview.svg-64 { width: 64px; height: 64px; border-radius: 14px; }
+  .size-preview.svg-128 { width: 128px; height: 128px; border-radius: 18px; }
+  .size-preview.svg-256 { width: 256px; height: 256px; border-radius: 24px; }
+  .size-preview.svg-512 { width: 512px; height: 512px; border-radius: 32px; }
+
+  .size-preview svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .divider { margin: 0 8px; }
+
+  .section-title {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #64748b;
+    text-transform: uppercase;
+    padding: 0 24px 4px;
+  }
+
+  /* Voting / selection note */
+  .footer-note {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 40px;
+    padding: 24px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>QuantDesktop Icon Design Preview</h1>
+  <p>
+    4 套图标设计方案，每套展示 16px ~ 256px 多尺寸效果。
+    设计主题：A 股行情监控 · 科技感 · 暗色主题。
+  </p>
+</div>
+
+<div class="concepts">
+
+  <!-- ==================== CONCEPT 1: K-Line Ascend ==================== -->
+  <div class="concept-card">
+    <div class="concept-header">
+      <span class="concept-title">方案一 · K线上升</span>
+      <span class="concept-badge">经典金融</span>
+    </div>
+    <div class="concept-desc">
+      三根带影线的标准 K 线蜡烛柱，从左到右依次升高。青色柱体 + 红色最高柱（A股红涨），
+      顶部青色箭头强化上升趋势。侧边数据条在 64px+ 显现，增强量化数据感。
+    </div>
+    <div class="size-grid">
+      <div class="size-item">
+        <div class="size-preview svg-16" style="background:#0f172a; border-radius:3px">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/></svg>
+        </div>
+        <span class="size-label">16px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-32">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><polygon points="650,80 610,140 690,140" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">32px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-48">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><polygon points="650,80 610,140 690,140" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">48px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-64">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><polygon points="650,80 610,140 690,140" fill="#67e8f9"/><rect x="130" y="620" width="22" height="80" rx="11" fill="#22d3ee" opacity="0.35"/></svg>
+        </div>
+        <span class="size-label">64px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-128">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><polygon points="650,80 610,140 690,140" fill="#67e8f9"/><rect x="130" y="620" width="22" height="80" rx="11" fill="#22d3ee" opacity="0.35"/><rect x="730" y="540" width="22" height="120" rx="11" fill="#22d3ee" opacity="0.25"/></svg>
+        </div>
+        <span class="size-label">128px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-256">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><line x1="230" y1="580" x2="230" y2="480" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="170" y="480" width="120" height="120" rx="14" fill="#22d3ee"/><line x1="440" y1="520" x2="440" y2="360" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="380" y="360" width="120" height="220" rx="14" fill="#0891b2"/><line x1="650" y1="440" x2="650" y2="200" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><rect x="590" y="200" width="120" height="340" rx="14" fill="#ef4444"/><line x1="650" y1="200" x2="650" y2="140" stroke="#94a3b8" stroke-width="20" stroke-linecap="round"/><polygon points="650,80 610,140 690,140" fill="#67e8f9"/><rect x="130" y="620" width="22" height="80" rx="11" fill="#22d3ee" opacity="0.35"/><rect x="730" y="540" width="22" height="120" rx="11" fill="#22d3ee" opacity="0.25"/></svg>
+        </div>
+        <span class="size-label">256px</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CONCEPT 2: Candlestick Q ==================== -->
+  <div class="concept-card">
+    <div class="concept-header">
+      <span class="concept-title">方案二 · K线 Q</span>
+      <span class="concept-badge">品牌识别</span>
+    </div>
+    <div class="concept-desc">
+      左侧青色光环 = 字母 Q 的圆圈（Quant 首字母）。右侧红色 K 线蜡烛柱 = Q 的尾部，
+      两者通过斜线自然衔接。蜡烛柱带上下影线和顶部箭头，股市特征一目了然。
+      16px 下即呈现「圈+柱」的 Q 字轮廓，识别度极高。
+    </div>
+    <div class="size-grid">
+      <div class="size-item">
+        <div class="size-preview svg-16" style="background:#0f172a; border-radius:3px">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/></svg>
+        </div>
+        <span class="size-label">16px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-32">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><polygon points="664,40 600,120 728,120" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">32px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-48">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><polygon points="664,40 600,120 728,120" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">48px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-64">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><polygon points="664,40 600,120 728,120" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">64px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-128">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><polygon points="664,40 600,120 728,120" fill="#67e8f9"/><rect x="240" y="680" width="28" height="100" rx="14" fill="#22d3ee" opacity="0.35"/></svg>
+        </div>
+        <span class="size-label">128px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-256">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><circle cx="310" cy="380" r="210" fill="none" stroke="#22d3ee" stroke-width="72"/><line x1="480" y1="520" x2="620" y2="400" stroke="#22d3ee" stroke-width="72" stroke-linecap="round"/><line x1="664" y1="100" x2="664" y2="240" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><rect x="570" y="240" width="188" height="400" rx="22" fill="#ef4444"/><line x1="664" y1="640" x2="664" y2="720" stroke="#94a3b8" stroke-width="36" stroke-linecap="round"/><polygon points="664,40 600,120 728,120" fill="#67e8f9"/><rect x="240" y="680" width="28" height="100" rx="14" fill="#22d3ee" opacity="0.35"/><rect x="770" y="560" width="28" height="140" rx="14" fill="#22d3ee" opacity="0.2"/></svg>
+        </div>
+        <span class="size-label">256px</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CONCEPT 3: Pulse Monitor ==================== -->
+  <div class="concept-card">
+    <div class="concept-header">
+      <span class="concept-title">方案三 · 数据脉搏</span>
+      <span class="concept-badge">科技极简</span>
+    </div>
+    <div class="concept-desc">
+      心电图式上升波形 + 终端 K 线蜡烛柱。线条从左侧低点波动攀升至右侧蜡烛顶点，
+      暗含「行情监控」的实时数据流概念。前卫极简，在众多股票 App 中极具差异化。
+    </div>
+    <div class="size-grid">
+      <div class="size-item">
+        <div class="size-preview svg-16" style="background:#0f172a; border-radius:3px">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/></svg>
+        </div>
+        <span class="size-label">16px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-32">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><polygon points="660,100 610,160 710,160" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">32px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-48">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><polygon points="660,100 610,160 710,160" fill="#67e8f9"/></svg>
+        </div>
+        <span class="size-label">48px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-64">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><polygon points="660,100 610,160 710,160" fill="#67e8f9"/><line x1="180" y1="760" x2="600" y2="760" stroke="#22d3ee" stroke-width="4" opacity="0.15"/></svg>
+        </div>
+        <span class="size-label">64px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-128">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><polygon points="660,100 610,160 710,160" fill="#67e8f9"/><line x1="180" y1="760" x2="600" y2="760" stroke="#22d3ee" stroke-width="4" opacity="0.15"/></svg>
+        </div>
+        <span class="size-label">128px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-256">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polyline points="80,680 200,620 300,650 480,460 600,300" fill="none" stroke="#22d3ee" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><line x1="660" y1="160" x2="660" y2="240" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><rect x="580" y="240" width="160" height="380" rx="20" fill="#ef4444"/><line x1="660" y1="620" x2="660" y2="700" stroke="#94a3b8" stroke-width="28" stroke-linecap="round"/><polygon points="660,100 610,160 710,160" fill="#67e8f9"/><line x1="180" y1="760" x2="600" y2="760" stroke="#22d3ee" stroke-width="4" opacity="0.15"/></svg>
+        </div>
+        <span class="size-label">256px</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== CONCEPT 4: Hex Tech ==================== -->
+  <div class="concept-card">
+    <div class="concept-header">
+      <span class="concept-title">方案四 · 蜂巢数据</span>
+      <span class="concept-badge">科技前卫</span>
+    </div>
+    <div class="concept-desc">
+      六边形蜂巢网格象征数据科技与量化分析。三个核心六边形沿对角线排列，
+      颜色从暗灰→青色→红色递进，形成上升趋势线。独特的几何美感，适合"量化"品牌调性。
+    </div>
+    <div class="size-grid">
+      <div class="size-item">
+        <div class="size-preview svg-16" style="background:#0f172a; border-radius:3px">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">16px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-32">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">32px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-48">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">48px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-64">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">64px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-128">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">128px</span>
+      </div>
+      <div class="size-item">
+        <div class="size-preview svg-256">
+          <svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" rx="224" fill="#0f172a"/><polygon points="512,140 620,200 620,320 512,380 404,320 404,200" fill="none" stroke="#1e293b" stroke-width="12"/><polygon points="404,380 512,320 620,380 620,500 512,560 404,500" fill="#22d3ee" opacity="0.9"/><polygon points="512,500 620,440 728,500 728,620 620,680 512,620" fill="#ef4444"/></svg>
+        </div>
+        <span class="size-label">256px</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer-note">
+  在浏览器中查看此页面，选择一个方案后告诉我（方案一/二/三/四），我会基于该方案优化细节并生成最终的 SVG + 全平台图标文件。
+</div>
+
+</body>
+</html>

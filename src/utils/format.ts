@@ -22,12 +22,20 @@ export function formatPrice(price: number | null | undefined, fallback = '--'): 
 }
 
 /**
- * 格式化成交量（输入为股，输出为手/万手）
+ * 格式化成交量（输入为股，输出为手/万手/亿手）
+ * Stock and index volume are normalized to shares (股) by data source adapters.
+ * Display: < 1万手 → "1234手"; ≥ 1万手 → "12.34万手";
+ *          ≥ 100万手 → "1234万手"; ≥ 1亿手 → "12.34亿手"
  */
 export function formatVolume(volume: number | null | undefined, fallback = '--'): string {
   if (volume == null || isNaN(volume)) return fallback;
   const shou = volume / 100; // 股 → 手
-  if (shou >= 10000) return (shou / 10000).toFixed(2) + '万手';
+  if (shou >= 10000) {
+    const wan = shou / 10000;
+    if (wan >= 10000) return (wan / 10000).toFixed(2) + '亿手';
+    if (wan >= 100) return wan.toFixed(0) + '万手';
+    return wan.toFixed(2) + '万手';
+  }
   if (shou > 0) return shou.toFixed(0) + '手';
   return '0手';
 }

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { getCurrentWindow, LogicalPosition } from '@tauri-apps/api/window';
+import { availableMonitors, getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -43,6 +43,9 @@ onUnmounted(() => {
   if (unlistenTheme) unlistenTheme();
   if (unlistenDatasource) unlistenDatasource();
   if (watchlistPollTimer) clearInterval(watchlistPollTimer);
+  // Clean up any lingering document-level drag listeners
+  document.removeEventListener('mousemove', onDocMouseMove);
+  document.removeEventListener('mouseup', onDocMouseUp);
 });
 
 function startWatchlistPoll() {
@@ -106,49 +109,107 @@ const visibleItems = computed(() => {
 
 const retryHintVisible = ref(false);
 
-// Manual window dragging via Tauri position API (works reliably on all platforms).
-// Track mouse down/move/up to distinguish click from drag (4px threshold).
+// ── Dragging ─────────────────────────────────────────────────────
+// Uses document-level listeners so drag continues even when cursor
+// leaves the tiny 230×38 window.  Keeps the ticker inside the desktop
+// work area (union of all monitors).  Throttled via rAF.
+// ──────────────────────────────────────────────────────────────────
 let dragging = false;
 let dragScreenX = 0;
 let dragScreenY = 0;
-let winStartX = 0;
-let winStartY = 0;
+let winStartPhysicalX = 0;
+let winStartPhysicalY = 0;
+let scaleFactor = 1;
+let setPosPending = false;
 
-async function onMouseDown(e: MouseEvent) {
-  dragScreenX = e.screenX;
-  dragScreenY = e.screenY;
-  dragging = false;
-  try {
-    const pos = await getCurrentWindow().outerPosition();
-    winStartX = pos.x;
-    winStartY = pos.y;
-  } catch { /* ignore */ }
+let clampMinX = 0;
+let clampMinY = 0;
+let clampMaxX = Infinity;
+let clampMaxY = Infinity;
+let tickerPhysicalW = 230;
+let tickerPhysicalH = 38;
+
+function clamp(val: number, min: number, max: number): number {
+  return val < min ? min : val > max ? max : val;
 }
 
-function onMouseMove(e: MouseEvent) {
+function onDocMouseMove(e: MouseEvent) {
   if (e.buttons !== 1) return;
   const dx = Math.abs(e.screenX - dragScreenX);
   const dy = Math.abs(e.screenY - dragScreenY);
   if (!dragging && (dx > 4 || dy > 4)) {
     dragging = true;
   }
-  if (dragging) {
-    const newX = winStartX + (e.screenX - dragScreenX);
-    const newY = winStartY + (e.screenY - dragScreenY);
-    getCurrentWindow().setPosition(new LogicalPosition(newX, newY));
+  if (dragging && !setPosPending) {
+    setPosPending = true;
+    const physicalDx = Math.round((e.screenX - dragScreenX) * scaleFactor);
+    const physicalDy = Math.round((e.screenY - dragScreenY) * scaleFactor);
+    const newX = clamp(winStartPhysicalX + physicalDx, clampMinX, clampMaxX - tickerPhysicalW);
+    const newY = clamp(winStartPhysicalY + physicalDy, clampMinY, clampMaxY - tickerPhysicalH);
+    getCurrentWindow().setPosition(new PhysicalPosition(newX, newY));
+    requestAnimationFrame(() => { setPosPending = false; });
   }
 }
 
-function onMouseUp() {
+function onDocMouseUp(_e: MouseEvent) {
   if (!dragging) {
     handleClick();
   }
   dragging = false;
+  setPosPending = false;
+  document.removeEventListener('mousemove', onDocMouseMove);
+  document.removeEventListener('mouseup', onDocMouseUp);
+}
+
+async function onMouseDown(e: MouseEvent) {
+  dragScreenX = e.screenX;
+  dragScreenY = e.screenY;
+  dragging = false;
+  setPosPending = false;
+
+  try {
+    const win = getCurrentWindow();
+    const pos = await win.outerPosition();
+    winStartPhysicalX = pos.x;
+    winStartPhysicalY = pos.y;
+    scaleFactor = await win.scaleFactor();
+
+    const monitors = await availableMonitors();
+    if (monitors.length > 0) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const m of monitors) {
+        const mPos = m.position;
+        const mSize = m.size;
+        if (mPos.x < minX) minX = mPos.x;
+        if (mPos.y < minY) minY = mPos.y;
+        if (mPos.x + mSize.width > maxX) maxX = mPos.x + mSize.width;
+        if (mPos.y + mSize.height > maxY) maxY = mPos.y + mSize.height;
+      }
+      clampMinX = minX;
+      clampMinY = minY;
+      clampMaxX = maxX;
+      clampMaxY = maxY;
+    }
+    tickerPhysicalW = Math.round(230 * scaleFactor);
+    tickerPhysicalH = Math.round(38 * scaleFactor);
+  } catch {
+    winStartPhysicalX = 0;
+    winStartPhysicalY = 0;
+    scaleFactor = 1;
+    clampMinX = 0;
+    clampMinY = 0;
+    clampMaxX = Infinity;
+    clampMaxY = Infinity;
+  }
+
+  document.removeEventListener('mousemove', onDocMouseMove);
+  document.removeEventListener('mouseup', onDocMouseUp);
+  document.addEventListener('mousemove', onDocMouseMove);
+  document.addEventListener('mouseup', onDocMouseUp);
 }
 
 async function handleClick() {
   if (initFailed.value) {
-    // Clean up any stale timers/listeners from failed init before retrying
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
     if (unlistenDatasource) { unlistenDatasource(); unlistenDatasource = null; }
@@ -189,8 +250,6 @@ async function handleClick() {
     @mouseenter="paused = true"
     @mouseleave="paused = false"
     @mousedown="onMouseDown"
-    @mousemove="onMouseMove"
-    @mouseup="onMouseUp"
   >
     <template v-if="initFailed">
       <div class="ticker-row ticker-error-row">

@@ -125,6 +125,11 @@ impl SinaAdapter {
         let change_pct = fields[3].parse::<f64>().unwrap_or(0.0);
         let volume = fields[4].parse::<u64>().unwrap_or(0);
         let turnover = fields[5].parse::<f64>().unwrap_or(0.0);
+        // Sina index API returns volume in 手 and turnover in 万元.
+        // Normalize: volume 手→股 (×100), turnover 万元→元 (×10000),
+        // matching Tencent adapter and stock Quote conventions.
+        let volume_shares = volume * 100;
+        let turnover_yuan = turnover * 10000.0;
 
         Some(IndexQuote {
             code,
@@ -132,8 +137,8 @@ impl SinaAdapter {
             price,
             change,
             change_pct,
-            volume,
-            turnover,
+            volume: volume_shares,
+            turnover: turnover_yuan,
         })
     }
 }

@@ -1,0 +1,39 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    QuantDesktop App Icon — "K-Line Q"
+    Visual center aligned to canvas center (512, 512).
+    Left: cyan ring (Q loop) → Right: red candlestick (Q tail + K-line).
+    Ring and candle are tightly coupled for a clean Q silhouette at all sizes.
+  -->
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="#0f172a"/>
+
+  <!-- Q Circle (cyan ring) -->
+  <circle cx="430" cy="560" r="200" fill="none" stroke="#22d3ee" stroke-width="80"/>
+
+  <!-- Q Tail connector (diagonal from ring bottom-right to candle top-left) -->
+  <line x1="630" y1="690" x2="690" y2="560" stroke="#22d3ee" stroke-width="80" stroke-linecap="round"/>
+
+  <!-- Candlestick: Top wick -->
+  <line x1="765" y1="240" x2="765" y2="400" stroke="#94a3b8" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- Candlestick: Body (red = A-share UP) -->
+  <rect x="680" y="400" width="170" height="380" rx="20" fill="#ef4444"/>
+
+  <!-- Candlestick: Body top highlight (depth at larger sizes) -->
+  <rect x="680" y="400" width="170" height="34" rx="20" fill="#f87171" opacity="0.5"/>
+
+  <!-- Candlestick: Bottom wick -->
+  <line x1="765" y1="780" x2="765" y2="840" stroke="#94a3b8" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- Upward arrow (above wick) -->
+  <polygon points="765,176 710,260 820,260" fill="#67e8f9"/>
+
+  <!-- Left tech accent bar (left of Q ring, visible 64px+) -->
+  <rect x="140" y="720" width="28" height="110" rx="14" fill="#22d3ee" opacity="0.35"/>
+
+  <!-- Right tech accent bar (right of candle, visible 64px+) -->
+  <rect x="875" y="620" width="28" height="150" rx="14" fill="#22d3ee" opacity="0.2"/>
+
+</svg>

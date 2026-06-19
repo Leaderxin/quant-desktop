@@ -112,7 +112,7 @@ function barWidth(vol: number, max: number): string {
 .depth-panel {
   min-width: 280px;
   padding: 10px var(--space-3);
-  background: var(--color-surface-1);
+  background: var(--color-surface-2);
   border: 1px solid var(--color-border-0);
   border-radius: var(--radius-md);
 }

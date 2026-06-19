@@ -43,7 +43,7 @@ const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.mar
 <style scoped>
 .stock-detail {
   border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
-  background: var(--color-bg-elevated, rgba(255,255,255,0.02));
+  background: var(--color-surface-1);
   padding: 12px 16px;
 }
 .detail-header {

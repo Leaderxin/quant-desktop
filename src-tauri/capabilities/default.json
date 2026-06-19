@@ -5,6 +5,9 @@
   "windows": ["main", "ticker"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "core:window:allow-set-position",
+    "core:window:allow-outer-position",
+    "core:window:allow-scale-factor"
   ]
 }

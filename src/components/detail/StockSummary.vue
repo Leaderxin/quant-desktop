@@ -34,7 +34,7 @@ const items = [
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   padding: 12px;
-  background: var(--color-bg-card, rgba(255,255,255,0.04));
+  background: var(--color-surface-2);
   border-radius: 6px;
 }
 .summary-row {

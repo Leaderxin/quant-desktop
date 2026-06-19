@@ -23,7 +23,7 @@ let abortController: AbortController | null = null;
 function applyChartStyles() {
   if (!chart) return;
   const isDark = settings.theme === 'dark';
-  const lineColor = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)';
+  const lineColor = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.35)';
   const gridHColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
   const gridVColor = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
   const axisColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
@@ -31,7 +31,10 @@ function applyChartStyles() {
   const tooltipBg = isDark ? 'rgba(22,27,34,0.95)' : 'rgba(255,255,255,0.95)';
   const tooltipText = isDark ? '#c9d1d9' : '#24292f';
   const separatorColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const crosshairBg = isDark ? 'rgba(22,27,34,0.9)' : 'rgba(255,255,255,0.9)';
+  // Crosshair labels use an inverted scheme in light mode (dark bg + light text)
+  // so they stand out clearly against the white/light chart background.
+  const crosshairBg = isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)';
+  const crosshairText = isDark ? '#c9d1d9' : '#e6edf3';
 
   chart.setStyles({
     grid: {
@@ -78,8 +81,8 @@ function applyChartStyles() {
     separator: { size: 1, color: separatorColor, fill: false, activeBackgroundColor: 'rgba(255,255,255,0.02)' },
     crosshair: {
       show: true,
-      horizontal: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: tooltipText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
-      vertical: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: tooltipText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
+      horizontal: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: crosshairText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
+      vertical: { show: true, line: { show: true, color: lineColor, size: 1 }, text: { show: true, size: 10, color: crosshairText, family: 'var(--font-mono)', backgroundColor: crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
     },
   });
 }
@@ -235,7 +238,7 @@ watch(() => settings.theme, () => { applyChartStyles(); });
   align-items: center;
   justify-content: center;
   z-index: 2;
-  background: var(--color-surface-0);
+  background: var(--color-surface-1);
 }
 .chart-status-text {
   font-size: 12px;
@@ -245,7 +248,7 @@ watch(() => settings.theme, () => { applyChartStyles(); });
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  background: var(--color-surface-0);
+  background: var(--color-surface-1);
 }
 .chart-error-icon {
   color: var(--color-warning);

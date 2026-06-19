@@ -299,24 +299,11 @@ pub fn run() {
                 let _ = main.set_focus();
             }
 
-            // Ticker window: save position on move, restore on startup
+            // Ticker window: save position on move (clamped), restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
 
-                // Save ticker position on move
-                let db_clone = db.clone();
-                let _ = ticker.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Moved(pos) = event {
-                        if let Err(e) = db_clone.set_setting("ticker_x", &pos.x.to_string()) {
-                            log::warn!("Failed to save ticker_x: {}", e);
-                        }
-                        if let Err(e) = db_clone.set_setting("ticker_y", &pos.y.to_string()) {
-                            log::warn!("Failed to save ticker_y: {}", e);
-                        }
-                    }
-                });
-
-                // Restore saved position, fall back to bottom-right
+                // Capture monitor bounds and ticker size for clamping on move
                 let mon = ticker.primary_monitor().ok().flatten();
                 let (mon_w, mon_h) = mon
                     .as_ref()
@@ -329,6 +316,23 @@ pub fn run() {
                 let tw = ticker_size.width as i32;
                 let th = ticker_size.height as i32;
 
+                // Save ticker position on move — clamp to monitor bounds so
+                // the entire window stays on screen and is always restorable.
+                let db_clone = db.clone();
+                let _ = ticker.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Moved(pos) = event {
+                        let clamped_x = pos.x.max(0).min(mon_w - tw);
+                        let clamped_y = pos.y.max(0).min(mon_h - th);
+                        if let Err(e) = db_clone.set_setting("ticker_x", &clamped_x.to_string()) {
+                            log::warn!("Failed to save ticker_x: {}", e);
+                        }
+                        if let Err(e) = db_clone.set_setting("ticker_y", &clamped_y.to_string()) {
+                            log::warn!("Failed to save ticker_y: {}", e);
+                        }
+                    }
+                });
+
+                // Restore saved position, fall back to bottom-right
                 let (mut saved_x, mut saved_y) = (0i32, 0i32);
                 let mut has_pos = false;
                 if let Ok(Some(x)) = db.get_setting("ticker_x") {

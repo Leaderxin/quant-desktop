@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { IndexQuote } from '@/types';
-import { formatPrice } from '@/utils/format';
+import { formatPrice, formatVolume } from '@/utils/format';
 import MinuteChart from './MinuteChart.vue';
 
 const props = defineProps<{
@@ -33,9 +33,7 @@ const statCards = computed(() => [
   },
   {
     label: '成交量',
-    value: props.index.volume >= 10000
-      ? (props.index.volume / 10000).toFixed(0) + '万手'
-      : props.index.volume.toLocaleString() + '手',
+    value: formatVolume(props.index.volume),
     up: undefined,
   },
   {
@@ -101,7 +99,7 @@ const statCards = computed(() => [
   right: 0;
   z-index: 10;
   border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
-  background: var(--color-surface-0);
+  background: var(--color-surface-1);
   padding: 12px 16px;
   max-height: calc(100vh - 140px);
   overflow-y: auto;
@@ -163,7 +161,7 @@ const statCards = computed(() => [
   gap: 2px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  background: var(--color-surface-1);
+  background: var(--color-surface-2);
   border: 1px solid var(--color-border-0);
   transition: background var(--transition-fast);
 }

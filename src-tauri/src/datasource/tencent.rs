@@ -86,8 +86,10 @@ impl TencentAdapter {
     }
 
     fn parse_index_line(line: &str) -> Option<IndexQuote> {
-        // Tencent index format: v_s_sh000001="market~name~code~price~change~change_pct~...~ZS~"
-        // Fields are separated by '~', typically 11 fields for indices.
+        // Tencent index format: v_sh000001="market~name~code~price~change~change_pct~volume~turnover~..."
+        // Fields are separated by '~', 11+ fields for indices.
+        //   [0]=market  [1]=name  [2]=code  [3]=price  [4]=change
+        //   [5]=change%  [6]=volume(手)  [7]=turnover(万元)
         let eq_pos = line.find('=')?;
         let var_part = &line[..eq_pos];
         let name_raw = var_part.strip_prefix("v_")?;
@@ -104,8 +106,11 @@ impl TencentAdapter {
         let change = fields[4].parse::<f64>().unwrap_or(0.0);
         let change_pct = fields[5].parse::<f64>().unwrap_or(0.0);
         let volume = fields[6].parse::<u64>().unwrap_or(0);
-        let turnover = if fields.len() > 9 {
-            fields[9].parse::<f64>().unwrap_or(0.0)
+        // Tencent index format (11+ fields):
+        //   [0]=market [1]=name [2]=code [3]=price [4]=change
+        //   [5]=change% [6]=volume(手) [7]=turnover(万元) [8..]=...
+        let turnover = if fields.len() > 7 {
+            fields[7].parse::<f64>().unwrap_or(0.0)
         } else {
             0.0
         };
@@ -116,8 +121,8 @@ impl TencentAdapter {
             price,
             change,
             change_pct,
-            volume: volume * 100,
-            turnover,
+            volume: volume * 100, // 手 → 股
+            turnover: turnover * 10000.0, // 万元 → 元
         })
     }
 }
