@@ -235,11 +235,17 @@ pub fn run() {
                             }
                         }
                         tauri::WindowEvent::Resized(size) => {
-                            if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
-                                log::warn!("Failed to save window_width on resize: {}", e);
-                            }
-                            if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
-                                log::warn!("Failed to save window_height on resize: {}", e);
+                            if !main_clone.is_minimized().unwrap_or(false)
+                                && main_clone.is_visible().unwrap_or(false)
+                                && size.width > 0
+                                && size.height > 0
+                            {
+                                if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
+                                    log::warn!("Failed to save window_width on resize: {}", e);
+                                }
+                                if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
+                                    log::warn!("Failed to save window_height on resize: {}", e);
+                                }
                             }
                         }
                         _ => {}
