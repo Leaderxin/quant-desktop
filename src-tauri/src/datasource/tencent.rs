@@ -289,6 +289,88 @@ impl DataSource for TencentAdapter {
         Ok(data)
     }
 
+    async fn fetch_kline(
+        &self,
+        code: &str,
+        market: &str,
+        period: &str,
+    ) -> Result<Vec<crate::domain::KLineData>, String> {
+        let tc_code = if code.starts_with("s_") {
+            code[2..].to_string()
+        } else {
+            Self::code_to_tencent(code, market)
+        };
+
+        // Map period to Tencent API parameter
+        let period_param = match period {
+            "weekly" => "week",
+            "monthly" => "month",
+            _ => "day",
+        };
+
+        let url = format!(
+            "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={},{},,,200,qfq",
+            tc_code, period_param
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Referer", "https://gu.qq.com")
+            .header("User-Agent", USER_AGENT)
+            .send()
+            .await
+            .map_err(|e| format!("Tencent kline request failed: {:#}", e))?;
+
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Tencent kline parse failed: {}", e))?;
+
+        // Extract K-line data array
+        // Format: { "data": { "sh600519": { "day": [...] or "qfqday": [...] } } }
+        let stock_data = body
+            .pointer("/data")
+            .and_then(|d| d.as_object())
+            .and_then(|obj| obj.values().next());
+
+        let klines = stock_data
+            .and_then(|stock| {
+                stock.get(period_param)
+                    .or_else(|| stock.get(&format!("qfq{}", period_param)))
+            })
+            .and_then(|arr| arr.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let data: Vec<crate::domain::KLineData> = klines
+            .iter()
+            .filter_map(|pt| {
+                let arr = pt.as_array()?;
+                if arr.len() < 6 { return None; }
+                // Format: ["2026-06-19", "open", "close", "high", "low", "volume", ...]
+                let date = arr[0].as_str()?.to_string();
+                let open: f64 = arr[1].as_str()?.parse().ok()?;
+                let close: f64 = arr[2].as_str()?.parse().ok()?;
+                let high: f64 = arr[3].as_str()?.parse().ok()?;
+                let low: f64 = arr[4].as_str()?.parse().ok()?;
+                let volume: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+                let turnover: f64 = arr.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+                Some(crate::domain::KLineData {
+                    date,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    turnover,
+                })
+            })
+            .collect();
+
+        Ok(data)
+    }
+
     async fn fetch_depth(
         &self,
         code: &str,
