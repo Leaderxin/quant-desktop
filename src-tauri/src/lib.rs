@@ -276,19 +276,40 @@ pub fn run() {
                     .find(|w| w.label == "main")
                     .map(|w| (w.width as u32, w.height as u32))
                     .unwrap_or((1388, 1009));
+
+                // Restore saved geometry if valid
                 let (mut saved_w, mut saved_h) = (0u32, 0u32);
+                let (mut saved_x, mut saved_y) = (0i32, 0i32);
+                let mut has_size = false;
+                let mut has_pos = false;
+
                 if let Ok(Some(w)) = db.get_setting("window_width") {
                     if let Ok(Some(h)) = db.get_setting("window_height") {
                         if let (Ok(w_val), Ok(h_val)) = (w.parse::<u32>(), h.parse::<u32>()) {
-                            saved_w = w_val;
-                            saved_h = h_val;
+                            if w_val >= 400 && w_val <= mon_w as u32
+                                && h_val >= 300 && h_val <= mon_h as u32
+                            {
+                                saved_w = w_val;
+                                saved_h = h_val;
+                                has_size = true;
+                            }
                         }
                     }
                 }
-                let w = if saved_w >= 400 && saved_w <= mon_w as u32 { saved_w } else { default_w };
-                let h = if saved_h >= 300 && saved_h <= mon_h as u32 { saved_h } else { default_h };
+                if let Ok(Some(x)) = db.get_setting("window_x") {
+                    if let Ok(Some(y)) = db.get_setting("window_y") {
+                        if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                            if x_val + 200 < mon_w && x_val > -50
+                                && y_val + 100 < mon_h && y_val > -50
+                            {
+                                saved_x = x_val.max(0);
+                                saved_y = y_val.max(0);
+                                has_pos = true;
+                            }
+                        }
+                    }
+                }
 
-                // Check if the window was maximized last session
                 let was_max = db.get_setting("window_maximized")
                     .ok()
                     .flatten()
@@ -299,29 +320,19 @@ pub fn run() {
                 // geometry (required for correct sizing on macOS).
                 let _ = main.show();
                 if was_max {
+                    let w = if has_size { saved_w } else { default_w };
+                    let h = if has_size { saved_h } else { default_h };
                     let _ = main.set_size(tauri::PhysicalSize::new(w, h));
                     let _ = main.maximize();
-                } else {
+                } else if has_pos {
+                    let w = if has_size { saved_w } else { default_w };
+                    let h = if has_size { saved_h } else { default_h };
                     let _ = main.set_size(tauri::PhysicalSize::new(w, h));
-                    let (mut saved_x, mut saved_y) = (0i32, 0i32);
-                    let mut has_pos = false;
-                    if let Ok(Some(x)) = db.get_setting("window_x") {
-                        if let Ok(Some(y)) = db.get_setting("window_y") {
-                            if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                                saved_x = x_val;
-                                saved_y = y_val;
-                                has_pos = true;
-                            }
-                        }
-                    }
-                    if has_pos
-                        && saved_x + 200 < mon_w
-                        && saved_y + 100 < mon_h
-                        && saved_x > -50
-                        && saved_y > -50
-                    {
-                        let _ = main.set_position(tauri::PhysicalPosition::new(saved_x.max(0), saved_y.max(0)));
-                    }
+                    let _ = main.set_position(tauri::PhysicalPosition::new(saved_x, saved_y));
+                } else {
+                    // No saved geometry: use config defaults and center
+                    let _ = main.set_size(tauri::PhysicalSize::new(default_w, default_h));
+                    let _ = main.center();
                 }
                 let _ = main.set_focus();
             }
