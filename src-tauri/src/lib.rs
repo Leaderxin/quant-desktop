@@ -365,6 +365,7 @@ pub fn run() {
             commands::quote::get_indices,
             commands::quote::get_depth,
             commands::quote::get_intraday,
+            commands::quote::get_kline,
             commands::watchlist::get_watchlist,
             commands::watchlist::add_watch,
             commands::watchlist::remove_watch,

@@ -2,7 +2,7 @@ use tauri::State;
 use std::sync::Arc;
 use crate::cache::QuoteCache;
 use crate::datasource::DataSourceManager;
-use crate::domain::{Quote, IndexQuote, Depth, MinuteData};
+use crate::domain::{Quote, IndexQuote, Depth, MinuteData, KLineData};
 
 #[tauri::command]
 pub fn get_quotes(cache: State<'_, Arc<QuoteCache>>) -> Vec<Quote> {
@@ -34,4 +34,16 @@ pub async fn get_intraday(
     let source = manager.active_source()
         .ok_or("No active data source")?;
     source.fetch_minute_data(&code, &market).await
+}
+
+#[tauri::command]
+pub async fn get_kline(
+    code: String,
+    market: String,
+    period: String,
+    manager: State<'_, Arc<DataSourceManager>>,
+) -> Result<Vec<KLineData>, String> {
+    let source = manager.active_source()
+        .ok_or("No active data source")?;
+    source.fetch_kline(&code, &market, &period).await
 }
