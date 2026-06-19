@@ -66,6 +66,16 @@ pub trait DataSource: Send + Sync {
         Ok(vec![])
     }
 
+    /// Fetch K-line data for charting (daily/weekly/monthly)
+    async fn fetch_kline(
+        &self,
+        _code: &str,
+        _market: &str,
+        _period: &str,
+    ) -> Result<Vec<crate::domain::KLineData>, String> {
+        Ok(vec![])
+    }
+
     /// Health check
     async fn health_check(&self) -> Result<bool, String>;
 }
