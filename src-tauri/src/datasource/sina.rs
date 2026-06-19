@@ -324,12 +324,11 @@ impl DataSource for SinaAdapter {
             Self::code_to_sina(code, market)
         };
 
-        // Map period to Sina API scale parameter
-        let scale = match period {
-            "weekly" => "120",
-            "monthly" => "60",
-            _ => "240",
-        };
+        // Sina only supports daily K-line; weekly/monthly are not available
+        if period != "daily" && period != "minute" {
+            return Err("新浪数据源不支持周K/月K，请切换到腾讯数据源查看".into());
+        }
+        let scale = "240";
 
         let url = format!(
             "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=200",
@@ -348,6 +347,11 @@ impl DataSource for SinaAdapter {
             .text()
             .await
             .map_err(|e| format!("Sina kline read failed: {:#}", e))?;
+
+        if body_text.is_empty() || body_text == "null" {
+            log::warn!("Sina kline empty body for code={}", symbol);
+            return Ok(vec![]);
+        }
 
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
