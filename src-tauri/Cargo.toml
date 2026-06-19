@@ -1,6 +1,6 @@
 [package]
 name = "quant-desktop"
-version = "0.5.2"
+version = "1.0.0"
 description = "A Tauri App"
 authors = ["Leaderxin"]
 edition = "2021"
