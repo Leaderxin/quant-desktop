@@ -320,7 +320,7 @@ impl DataSource for TencentAdapter {
             .header("User-Agent", USER_AGENT)
             .send()
             .await
-            .map_err(|e| format!("Tencent kline request failed: {:#}", e))?;
+            .map_err(|e| format!("Tencent kline request failed: {}", e))?;
 
         let body: serde_json::Value = resp
             .json()
@@ -343,6 +343,10 @@ impl DataSource for TencentAdapter {
             .cloned()
             .unwrap_or_default();
 
+        if klines.is_empty() {
+            log::warn!("Tencent kline empty for code={} period={}", tc_code, period_param);
+        }
+
         let data: Vec<crate::domain::KLineData> = klines
             .iter()
             .filter_map(|pt| {
@@ -354,7 +358,8 @@ impl DataSource for TencentAdapter {
                 let close: f64 = arr[2].as_str()?.parse().ok()?;
                 let high: f64 = arr[3].as_str()?.parse().ok()?;
                 let low: f64 = arr[4].as_str()?.parse().ok()?;
-                let volume: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+                let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+                let volume: u64 = (volume_hands * 100.0) as u64;
                 let turnover: f64 = arr.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
                 Some(crate::domain::KLineData {
                     date,

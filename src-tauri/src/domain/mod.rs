@@ -63,7 +63,7 @@ pub struct KLineData {
     pub high: f64,
     pub low: f64,
     pub close: f64,
-    pub volume: f64,
+    pub volume: u64,
     pub turnover: f64,
 }
 
