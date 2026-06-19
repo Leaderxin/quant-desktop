@@ -2,6 +2,7 @@
 import TopBar from './TopBar.vue';
 import IndexBar from '@/components/index/IndexBar.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
+import StatusBar from './StatusBar.vue';
 import { provide, ref } from 'vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
@@ -61,6 +62,7 @@ defineEmits<{
     <main class="main-content">
       <WatchlistTable />
     </main>
+    <StatusBar />
   </div>
 </template>
 
