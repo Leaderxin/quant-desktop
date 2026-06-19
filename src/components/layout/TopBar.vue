@@ -25,23 +25,6 @@ function handleDsSelect(key: string) {
 <template>
   <header class="top-bar">
     <div class="top-left">
-      <div class="brand">
-        <svg class="brand-icon" viewBox="0 0 32 32" fill="none">
-          <rect x="3" y="10" width="3" height="10" rx="0.5" fill="#f85149"/>
-          <line x1="4.5" y1="6" x2="4.5" y2="10" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="4.5" y1="20" x2="4.5" y2="24" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"/>
-          <rect x="10" y="14" width="3" height="7" rx="0.5" fill="#3fb950"/>
-          <line x1="11.5" y1="8" x2="11.5" y2="14" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="11.5" y1="21" x2="11.5" y2="25" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round"/>
-          <rect x="17" y="8" width="3" height="14" rx="0.5" fill="#f85149"/>
-          <line x1="18.5" y1="4" x2="18.5" y2="8" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"/>
-          <line x1="18.5" y1="22" x2="18.5" y2="27" stroke="#f85149" stroke-width="1.5" stroke-linecap="round"/>
-          <polyline points="24,22 24,8 28,8" stroke="#58a6ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          <line x1="19" y1="13" x2="24" y2="8" stroke="#58a6ff" stroke-width="2" stroke-linecap="round"/>
-          <line x1="2" y1="28" x2="30" y2="28" stroke="#30363d" stroke-width="1" stroke-linecap="round"/>
-        </svg>
-        <span class="brand-name">QuantDesktop</span>
-      </div>
       <n-dropdown
         trigger="click"
         :options="dsOptions"
@@ -108,21 +91,7 @@ function handleDsSelect(key: string) {
   align-items: center;
   gap: var(--space-3);
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.brand-icon {
-  width: 20px;
-  height: 20px;
-}
-.brand-name {
-  font-weight: var(--font-weight-semibold);
-  font-size: var(--text-md);
-  color: var(--color-text-primary);
-  letter-spacing: -0.01em;
-}
+
 .ds-tag {
   display: inline-flex;
   align-items: center;
