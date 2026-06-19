@@ -10,7 +10,7 @@ withDefaults(defineProps<{
   version: '0.5.3',
   copyright: '© 2026 QuantDesktop',
   contactEmail: 'shazhoulen@outlook.com',
-  qrcodeSrc: '',
+  qrcodeSrc: '/qrcode.png',
 });
 </script>
 
