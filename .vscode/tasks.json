@@ -1,0 +1,72 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo: build dev",
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--manifest-path=./src-tauri/Cargo.toml"
+      ],
+      "problemMatcher": ["$rustc"],
+      "group": "build"
+    },
+    {
+      "label": "cargo: build release",
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--manifest-path=./src-tauri/Cargo.toml",
+        "--release"
+      ],
+      "problemMatcher": ["$rustc"],
+      "group": "build"
+    },
+    {
+      "label": "vite: dev server",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "typescript",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "Local:"
+        }
+      }
+    },
+    {
+      "label": "tauri: dev",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "tauri", "dev"],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "rust",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "."
+        }
+      }
+    },
+    {
+      "label": "npm: type-check",
+      "type": "shell",
+      "command": "npx",
+      "args": ["vue-tsc", "--noEmit"],
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    }
+  ]
+}
