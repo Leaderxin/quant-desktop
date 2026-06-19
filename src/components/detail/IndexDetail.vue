@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import type { IndexQuote } from '@/types';
+import { ref, computed } from 'vue';
+import type { IndexQuote, PeriodType } from '@/types';
 import { formatPrice, formatVolume } from '@/utils/format';
 import MinuteChart from './MinuteChart.vue';
+import KLineChart from './KLineChart.vue';
+import ChartSwitcher from './ChartSwitcher.vue';
 
 const props = defineProps<{
   index: IndexQuote;
@@ -13,6 +15,8 @@ const emit = defineEmits<{
 }>();
 
 const isUp = computed(() => props.index.change_pct >= 0);
+
+const activePeriod = ref<PeriodType>('minute');
 
 // 指数摘要卡片 (5 items — no open/high/low from API)
 const statCards = computed(() => [
@@ -79,12 +83,21 @@ const statCards = computed(() => [
         </div>
       </div>
 
-      <!-- 全宽分时图 -->
+      <!-- 全宽图表 -->
       <div class="chart-section">
+        <ChartSwitcher v-model="activePeriod" />
         <MinuteChart
+          v-if="activePeriod === 'minute'"
           :code="index.code"
           market="CN"
           :name="index.name"
+        />
+        <KLineChart
+          v-else
+          :code="index.code"
+          market="CN"
+          :name="index.name"
+          :period="activePeriod"
         />
       </div>
     </div>
