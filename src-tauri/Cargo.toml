@@ -15,7 +15,7 @@ name = "quant_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = ["isolation"] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
@@ -32,4 +32,6 @@ encoding_rs = "0.8"
 log = "0.4"
 simplelog = "0.12"
 thiserror = "2"
+tauri-plugin-updater = "2"
+semver = "1"
 
