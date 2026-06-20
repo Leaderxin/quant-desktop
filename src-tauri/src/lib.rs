@@ -3,6 +3,7 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
+pub mod updater;
 
 use std::fs::File;
 use std::sync::Arc;
