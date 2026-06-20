@@ -55,8 +55,8 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 **`db/mod.rs`** — SQLite database (via `rusqlite` with bundled SQLite). Three tables: `watchlist`, `settings` (key-value), `quote_cache`. Database is stored at `{app_data_dir}/quant-desktop.db`. Auto-creates tables and default settings on first open. `init_defaults()` inserts default settings only on first run (when key does not exist); user preferences persist across restarts.
 
 **`datasource/mod.rs`** — Pluggable data source architecture. The `DataSource` trait defines `fetch_realtime()`, `fetch_indices()`, `search()`, `fetch_depth()`, `fetch_minute_data()`, `health_check()`. `DataSourceManager` holds a registry of adapters and an `active` name, supporting runtime switching. A `tokio::sync::Notify` wakeup mechanism triggers immediate refresh on data source switch.
-- `sina.rs` — Sina Finance (新浪财经) adapter, the **default** data source. GBK-encoded responses, parsed from `var hq_str_xxx="..."` format. Handles code-to-exchange mapping (sh/sz prefix). Search only supports exact 6-digit code lookup. Depth data fetched via Tencent API fallback (Sina's native depth endpoint is dead). Minute data from `money.finance.sina.com.cn` 5-min K-line endpoint. Covers 7 major indices.
-- `tencent.rs` — Tencent Securities (腾讯证券) adapter, the backup source. GBK-encoded responses, `v_sh600519="..."` format with `~` separators. Full implementation: realtime quotes, 7 indices, exact-code search, minute data via `ifzq.gtimg.cn`, and depth from embedded bid/ask fields (positions 9-28). Volume converted from 手 to 股 (×100).
+- `sina.rs` — Sina Finance (新浪财经) adapter, the backup data source. GBK-encoded responses, parsed from `var hq_str_xxx="..."` format. Handles code-to-exchange mapping (sh/sz prefix). Search only supports exact 6-digit code lookup. Depth data fetched via Tencent API fallback (Sina's native depth endpoint is dead). Minute data from `money.finance.sina.com.cn` 5-min K-line endpoint. Covers 7 major indices.
+- `tencent.rs` — Tencent Securities (腾讯证券) adapter, the **default** data source. GBK-encoded responses, `v_sh600519="..."` format with `~` separators. Full implementation: realtime quotes, 7 indices, exact-code search, minute data via `ifzq.gtimg.cn`, and depth from embedded bid/ask fields (positions 9-28). Volume converted from 手 to 股 (×100).
 - `market_clock.rs` — Trading session detection. `MarketSession` enum: PreOpen/MorningTrade/LunchBreak/AfternoonTrade/Closed with weekend detection. `recommended_interval()`: 2s trading, 5s pre-open, 10s lunch, 30s closed. Scheduler uses this to dynamically adjust polling frequency.
 
 **`cache/mod.rs`** — `QuoteCache` provides in-memory `HashMap` storage with SQLite dual-write persistence. `restore_from_db()` on startup for instant quote display. `Scheduler` spawns a `tokio` background task that polls the active data source with dynamic interval (via `market_clock`), groups watchlist codes by market, fetches batch quotes, updates the cache, and emits three Tauri events: `quotes-updated`, `indices-updated`, and `market-session-changed`. A separate wakeup listener task triggers immediate refresh on data source switch. On fetch failure, falls back to cached data.
@@ -124,7 +124,7 @@ DataSource switching triggers a `Notify` wakeup → Scheduler immediately refres
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `active_datasource` | `sina` | Active market data provider (forced to sina on every startup) |
+| `active_datasource` | `tencent` | Active market data provider (default: Tencent, persisted per user preference) |
 | `refresh_interval` | `3` | Polling interval in seconds (overridden by market_clock dynamically) |
 | `theme` | `dark` | UI theme (dark/light) |
 | `ticker_visible` | `true` | Ticker bar visibility |

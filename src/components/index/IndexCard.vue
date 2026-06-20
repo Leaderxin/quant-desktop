@@ -51,10 +51,10 @@ const isUp = computed(() => props.index.change_pct >= 0);
   background: var(--color-surface-1);
   border: 1px solid var(--color-border-0);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-3);
   flex: 1;
   min-width: 0;
-  height: 60px;
+  height: 68px;
   flex-shrink: 0;
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -81,7 +81,7 @@ const isUp = computed(() => props.index.change_pct >= 0);
 }
 
 .index-name {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
   white-space: nowrap;

@@ -47,13 +47,14 @@ impl Database {
         Ok(())
     }
 
-    /// Insert default settings values (overwrites data source to ensure sina is default)
+    /// Insert default settings values (default data source is Tencent)
     pub fn init_defaults(&self) -> SqliteResult<()> {
         let defaults = [
-            ("active_datasource", "sina"),
+            ("active_datasource", "tencent"),
             ("refresh_interval", "3"),
             ("theme", "dark"),
             ("ticker_visible", "true"),
+            ("auto_launch", "false"),
         ];
         for (k, v) in defaults {
             if self.get_setting(k)?.is_none() {

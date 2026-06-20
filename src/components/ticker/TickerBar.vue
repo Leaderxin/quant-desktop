@@ -308,8 +308,9 @@ async function handleClick() {
 .ticker-name {
   flex: 1;
   min-width: 0;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

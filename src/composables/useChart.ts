@@ -4,6 +4,7 @@ import { init, dispose } from 'klinecharts';
 import type { Chart, KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData, KLineData, PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
+import { getPricePrecision } from '@/utils/format';
 
 export function useChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -181,6 +182,19 @@ export function useChart(options: {
     }
   }
 
+  function syncPrecision() {
+    if (!chart || klineData.value.length === 0) return;
+    const last = klineData.value[klineData.value.length - 1];
+    if (last.close != null && !isNaN(last.close) && last.close !== 0) {
+      chart.setSymbol({
+        ticker: unref(options.code),
+        name: unref(options.name) || unref(options.code),
+        pricePrecision: getPricePrecision(last.close),
+        volumePrecision: 0,
+      });
+    }
+  }
+
   async function loadData(period: PeriodType) {
     if (abortController) {
       abortController.abort();
@@ -245,6 +259,7 @@ export function useChart(options: {
       if (signal.aborted) return;
       if (chart) {
         chart.setDataLoader(dataLoader);
+        syncPrecision();
       }
     } catch (e) {
       if (signal.aborted) return;

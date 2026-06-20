@@ -20,6 +20,10 @@ use cache::QuoteCache;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None::<Vec<&str>>,
+        ))
         .setup(|app| {
             // Initialize database
             let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
@@ -45,10 +49,10 @@ pub fn run() {
             // Initialize data source manager (Sina registered first as default)
             let mut ds_manager = DataSourceManager::new();
             ds_manager.register(Box::new(
-                crate::datasource::sina::SinaAdapter::new(),
+                crate::datasource::tencent::TencentAdapter::new(),
             ));
             ds_manager.register(Box::new(
-                crate::datasource::tencent::TencentAdapter::new(),
+                crate::datasource::sina::SinaAdapter::new(),
             ));
 
             // Restore last used data source from settings

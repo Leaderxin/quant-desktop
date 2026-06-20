@@ -86,7 +86,25 @@ pub async fn search_stocks(
     manager: State<'_, Arc<DataSourceManager>>,
     keyword: String,
 ) -> Result<Vec<crate::domain::StockBrief>, String> {
-    // Try active source first
+    // ── Tier 1: Sina suggest API (name + fuzzy code search) ──
+    match crate::datasource::search::suggest_search(&keyword).await {
+        Ok(results) if !results.is_empty() => {
+            return Ok(results);
+        }
+        Ok(_) => log::info!("Sina suggest returned empty for '{}', trying Tencent", keyword),
+        Err(e) => log::warn!("Sina suggest failed: {}, falling back to Tencent", e),
+    }
+
+    // ── Tier 2: Tencent smartbox API (name + fuzzy code search) ──
+    match crate::datasource::search::tencent_suggest_search(&keyword).await {
+        Ok(results) if !results.is_empty() => {
+            return Ok(results);
+        }
+        Ok(_) => log::info!("Tencent smartbox returned empty for '{}', falling back to DataSource", keyword),
+        Err(e) => log::warn!("Tencent smartbox failed: {}, falling back to DataSource", e),
+    }
+
+    // ── Tier 3: DataSource-based exact-code search ──
     let mut results: Vec<crate::domain::StockBrief> = Vec::new();
     let active_name = if let Some(source) = manager.active_source() {
         match source.search(&keyword, "CN").await {
@@ -98,7 +116,6 @@ pub async fn search_stocks(
         String::new()
     };
 
-    // Fallback to other registered data sources if active source returns empty
     if results.is_empty() {
         for (name, source) in manager.all_sources() {
             if name != active_name {
@@ -107,7 +124,7 @@ pub async fn search_stocks(
                         results = fb_results;
                         break;
                     }
-                    Ok(_) => {} // empty result, try next source
+                    Ok(_) => {}
                     Err(e) => log::warn!("Fallback search via {} failed: {}", name, e),
                 }
             }

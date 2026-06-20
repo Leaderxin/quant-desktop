@@ -222,9 +222,12 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   <div class="watchlist-container">
     <div class="watchlist-header">
       <h2 class="section-title">自选股</h2>
-      <NButton size="small" type="primary" @click="showAddDialog = true" class="add-btn" aria-label="添加自选股票">
-        + 添加
-      </NButton>
+      <button class="add-btn" @click="showAddDialog = true" aria-label="添加自选股票">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <path d="M8.75 3.25a.75.75 0 00-1.5 0V7.5H3.25a.75.75 0 000 1.5h4v4.25a.75.75 0 001.5 0V9h4.25a.75.75 0 000-1.5h-4.25V3.25z"/>
+        </svg>
+        添加自选
+      </button>
     </div>
 
     <div v-if="watchlist.error" class="error-state" role="alert">
@@ -239,7 +242,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
         <line x1="10" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
       <p class="empty-text">暂无自选股票</p>
-      <p class="empty-hint">点击「+ 添加」搜索并添加股票</p>
+      <p class="empty-hint">点击「添加自选」搜索并添加股票</p>
     </div>
 
     <NDataTable
@@ -308,8 +311,26 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   letter-spacing: -0.01em;
 }
 .add-btn {
-  font-size: var(--text-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 12px;
   height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: filter var(--transition-fast);
+}
+.add-btn:hover {
+  filter: brightness(1.15);
+}
+.add-btn:active {
+  filter: brightness(0.9);
 }
 
 .empty-state {

@@ -92,6 +92,97 @@ impl QuoteCache {
     pub fn get_indices(&self) -> Vec<IndexQuote> {
         self.indices.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
+
+    /// Snapshot current prices (code→price) for change detection
+    pub fn get_price_snapshot(&self) -> HashMap<String, f64> {
+        let cache = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .iter()
+            .map(|(k, v)| (k.clone(), v.data.price))
+            .collect()
+    }
+}
+
+// ── Adaptive polling constants ──
+
+/// Number of probes at session start to detect if market is actually open
+const PROBE_COUNT: u32 = 3;
+/// Interval used during probing phase (seconds)
+const PROBE_INTERVAL: u64 = 2;
+/// Number of consecutive unchanged polls before switching to idle
+const STREAK_THRESHOLD: u32 = 5;
+/// Idle polling interval when market is detected as closed (seconds)
+const IDLE_INTERVAL: u64 = 30;
+
+/// Adaptive polling state machine — detects holidays via price stasis
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PollingState {
+    /// Probing at session start to determine if market is actually open
+    Probing { remaining: u32 },
+    /// Market is open, normal frequency. Tracks consecutive unchanged polls.
+    Normal { unchanged_streak: u32 },
+    /// Market detected as closed (holiday), throttled to idle frequency.
+    Idle,
+}
+
+impl PollingState {
+    fn new() -> Self {
+        Self::Probing { remaining: PROBE_COUNT }
+    }
+
+    /// Reset to probing when entering a trading session
+    fn on_session_enter(&mut self) {
+        *self = Self::Probing { remaining: PROBE_COUNT };
+    }
+
+    /// Update state based on fetch result. Returns the interval for the next cycle.
+    fn update(&mut self, prices_changed: bool, session: MarketSession) -> u64 {
+        match self {
+            Self::Probing { remaining } => {
+                if prices_changed {
+                    log::info!("Probe detected price change — market is open");
+                    *self = Self::Normal { unchanged_streak: 0 };
+                    return session.recommended_interval();
+                }
+                *remaining -= 1;
+                if *remaining == 0 {
+                    log::info!("All probes returned no price change — switching to idle (holiday/closure)");
+                    *self = Self::Idle;
+                    return IDLE_INTERVAL;
+                }
+                PROBE_INTERVAL
+            }
+            Self::Normal { unchanged_streak } => {
+                if prices_changed {
+                    *unchanged_streak = 0;
+                } else {
+                    *unchanged_streak += 1;
+                    if *unchanged_streak >= STREAK_THRESHOLD {
+                        log::info!(
+                            "{} consecutive polls with no price change — switching to idle",
+                            *unchanged_streak
+                        );
+                        *self = Self::Idle;
+                        return IDLE_INTERVAL;
+                    }
+                }
+                session.recommended_interval()
+            }
+            Self::Idle => {
+                if prices_changed {
+                    log::info!("Price change detected in idle mode — resuming normal polling");
+                    *self = Self::Normal { unchanged_streak: 0 };
+                    return session.recommended_interval();
+                }
+                IDLE_INTERVAL
+            }
+        }
+    }
+}
+
+/// Outcome of a fetch cycle — indicates whether quote prices changed vs the cache
+struct FetchOutcome {
+    prices_changed: bool,
 }
 
 /// Background polling scheduler
@@ -107,8 +198,10 @@ impl Scheduler {
         base_interval_secs: u64,
     ) {
         tauri::async_runtime::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(base_interval_secs));
+            let initial_interval = Duration::from_secs(base_interval_secs);
+            let mut interval = tokio::time::interval(initial_interval);
             let mut last_session = MarketSession::current();
+            let mut state = PollingState::new();
 
             // Fetch guard — prevents concurrent fetch_once calls from the two loops
             let fetching = Arc::new(AtomicBool::new(false));
@@ -122,7 +215,6 @@ impl Scheduler {
             tauri::async_runtime::spawn(async move {
                 loop {
                     dm.wakeup.notified().await;
-                    // force=true: bypass market-closed check so data source switch always refreshes
                     Self::fetch_once(&dm, &c, &d, &ah, &fg, true).await;
                 }
             });
@@ -130,28 +222,50 @@ impl Scheduler {
             loop {
                 interval.tick().await;
 
-                // Check market session and adjust interval dynamically
+                // ── Session transition handling ──
                 let session = MarketSession::current();
                 if session != last_session {
-                    let new_interval = session.recommended_interval();
-                    interval = tokio::time::interval(Duration::from_secs(new_interval));
+                    let is_trading_enter = matches!(
+                        (last_session, session),
+                        (MarketSession::PreOpen, MarketSession::MorningTrade)
+                            | (MarketSession::LunchBreak, MarketSession::AfternoonTrade)
+                    );
+
+                    if is_trading_enter {
+                        state.on_session_enter();
+                        log::info!(
+                            "Entering trading session ({:?}), starting probe",
+                            session
+                        );
+                    }
+
                     last_session = session;
                     if let Err(e) = app_handle.emit("market-session-changed", serde_json::json!({
                         "session": session.name(),
-                        "interval_secs": new_interval,
+                        "interval_secs": session.recommended_interval(),
                     })) {
                         log::warn!("Failed to emit market-session-changed: {}", e);
                     }
                 }
 
-                Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching, false).await;
+                // ── Fetch data ──
+                let outcome = Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching, false).await;
+
+                // ── Adaptive interval ──
+                // Only update the state machine when we have actual quote data.
+                // None means empty watchlist / error / closed market — no data to
+                // judge price changes, so fall back to market_clock recommendation.
+                let new_interval = match outcome {
+                    Some(o) => state.update(o.prices_changed, session),
+                    None => session.recommended_interval(),
+                };
+                interval = tokio::time::interval(Duration::from_secs(new_interval));
             }
         });
     }
 
-    /// Run one fetch cycle — used by both the interval loop and on-demand wakeups.
-    /// The `fetching` guard prevents concurrent fetches from the two loops.
-    /// When `force` is true (data source switch), bypass the market-closed check.
+    /// Run one fetch cycle. Returns `FetchOutcome` with price-change info,
+    /// or `None` if no quote data was fetched (empty watchlist, error, closed market).
     async fn fetch_once(
         manager: &crate::datasource::DataSourceManager,
         cache: &Arc<QuoteCache>,
@@ -159,35 +273,33 @@ impl Scheduler {
         app_handle: &tauri::AppHandle,
         fetching: &AtomicBool,
         force: bool,
-    ) {
+    ) -> Option<FetchOutcome> {
         // Skip if a fetch is already in progress (prevents duplicate API calls)
         if fetching.swap(true, Ordering::AcqRel) {
-            return;
+            return None;
         }
-        // Ensure the flag is cleared on exit (including early returns)
         let _guard = FetchGuard(fetching);
 
         let session = MarketSession::current();
 
-        // 1. Get watchlist codes (use spawn_blocking to avoid blocking tokio worker)
+        // 1. Get watchlist codes
         let db_for_codes = db.clone();
         let codes = match tokio::task::spawn_blocking(move || db_for_codes.get_watch_codes()).await
         {
             Ok(Ok(c)) if !c.is_empty() => c,
             Ok(Ok(_)) => {
-                // Empty watchlist — skip quote fetch
                 Self::fetch_and_emit_indices(manager, cache, app_handle).await;
-                return;
+                return None;
             }
             Ok(Err(e)) => {
                 log::warn!("Failed to read watchlist from DB: {}", e);
                 Self::fetch_and_emit_indices(manager, cache, app_handle).await;
-                return;
+                return None;
             }
             Err(join_err) => {
                 log::warn!("spawn_blocking join error for get_watch_codes: {}", join_err);
                 Self::fetch_and_emit_indices(manager, cache, app_handle).await;
-                return;
+                return None;
             }
         };
 
@@ -199,8 +311,8 @@ impl Scheduler {
             }
         }
 
-        // 3. Batch fetch quotes. When market is closed, skip API calls and emit cached
-        //    data — unless force=true (data source switch), in which case fetch anyway.
+        // 3. When market is Closed (after 15:00 or weekend), skip quote fetch
+        //    — unless force=true (data source switch).
         if session == MarketSession::Closed && !force {
             let cached = cache.get_all_quotes();
             if !cached.is_empty() {
@@ -209,39 +321,68 @@ impl Scheduler {
                 }
             }
             Self::fetch_and_emit_indices(manager, cache, app_handle).await;
-            return;
+            return None;
         }
 
         if !cn_codes.is_empty() {
             if let Some(source) = manager.active_source() {
+                // Snapshot prices before fetch for change detection
+                let prices_before = cache.get_price_snapshot();
+
                 match source.fetch_realtime(&cn_codes, "CN").await {
                     Ok(quotes) => {
                         cache.update_quotes_memory(&quotes);
                         if let Err(e) = app_handle.emit("quotes-updated", &quotes) {
                             log::warn!("Failed to emit quotes-updated: {}", e);
                         }
-                        // Persist to DB via spawn_blocking to avoid blocking tokio
                         let cache_for_persist = cache.clone();
                         let quotes_for_db = quotes.to_vec();
                         tokio::task::spawn_blocking(move || {
                             cache_for_persist.persist_quotes(&quotes_for_db);
                         });
+
+                        // Compare: did any price actually change?
+                        let changed = Self::any_price_changed(&prices_before, &quotes);
+
+                        Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+                        return Some(FetchOutcome { prices_changed: changed });
                     }
                     Err(e) => {
-                        log::warn!("Quote fetch failed, serving cached data: {}", e);
+                        log::warn!("Quote fetch failed (will retry): {}", e);
                         let cached = cache.get_all_quotes();
                         if !cached.is_empty() {
                             if let Err(e) = app_handle.emit("quotes-updated", &cached) {
                                 log::warn!("Failed to emit quotes-updated (fallback): {}", e);
                             }
                         }
+                        // Fetch failed — we can't determine price change, so return None
+                        // to keep the state machine from making a false decision.
+                        Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+                        return None;
                     }
                 }
             }
         }
 
-        // 4. Refresh indices
         Self::fetch_and_emit_indices(manager, cache, app_handle).await;
+        None
+    }
+
+    /// Check whether any quote price differs from the snapshot
+    fn any_price_changed(snapshot: &std::collections::HashMap<String, f64>, quotes: &[crate::domain::Quote]) -> bool {
+        for q in quotes {
+            let key = format!("{}:{}", q.market, q.code);
+            match snapshot.get(&key) {
+                Some(&prev_price) if (prev_price - q.price).abs() > f64::EPSILON => return true,
+                Some(_) => {} // same price
+                None => return true, // new stock added to watchlist
+            }
+        }
+        // Also check: were stocks removed from watchlist?
+        if snapshot.len() != quotes.len() {
+            return true;
+        }
+        false
     }
 
     async fn fetch_and_emit_indices(
@@ -250,11 +391,14 @@ impl Scheduler {
         app_handle: &tauri::AppHandle,
     ) {
         if let Some(source) = manager.active_source() {
-            if let Ok(indices) = source.fetch_indices().await {
-                cache.update_indices(indices.clone());
-                if let Err(e) = app_handle.emit("indices-updated", &indices) {
-                    log::warn!("Failed to emit indices-updated: {}", e);
+            match source.fetch_indices().await {
+                Ok(indices) => {
+                    cache.update_indices(indices.clone());
+                    if let Err(e) = app_handle.emit("indices-updated", &indices) {
+                        log::warn!("Failed to emit indices-updated: {}", e);
+                    }
                 }
+                Err(e) => log::warn!("Index fetch failed: {}", e),
             }
         }
     }

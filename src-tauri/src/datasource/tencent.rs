@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
-use super::{DataSource, USER_AGENT, INDEX_CODES};
+use super::{DataSource, INDEX_CODES, headers};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 
@@ -16,7 +16,6 @@ impl TencentAdapter {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .user_agent(USER_AGENT)
                 .timeout(Duration::from_secs(10))
                 .build()
                 .expect("Failed to build reqwest Client — TLS backend may be missing"),
@@ -144,10 +143,10 @@ impl DataSource for TencentAdapter {
             .collect();
         let url = format!("{}{}", TENCENT_URL, tenc_codes.join(","));
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Tencent request failed: {:#}", e))?;
@@ -166,10 +165,10 @@ impl DataSource for TencentAdapter {
         let index_codes = INDEX_CODES;
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Tencent indices request failed: {:#}", e))?;
@@ -193,10 +192,10 @@ impl DataSource for TencentAdapter {
         if trimmed.len() == 6 && trimmed.chars().all(|c| c.is_ascii_digit()) {
             let tc_code = Self::code_to_tencent(trimmed, market);
             let url = format!("{}{}", TENCENT_URL, tc_code);
-            let resp = self
-                .client
-                .get(&url)
-                .header("Referer", "https://gu.qq.com")
+            let resp = headers::with_browser_headers(
+                self.client.get(&url),
+                "https://gu.qq.com",
+            )
                 .send()
                 .await
                 .map_err(|e| format!("Tencent search request failed: {:#}", e))?;
@@ -232,11 +231,10 @@ impl DataSource for TencentAdapter {
         // Use 5-min K-line endpoint — same as Sina, returns multi-day data
         let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m5,,240", tc_code);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
-            .header("User-Agent", USER_AGENT)
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Tencent kline request failed: {:#}", e))?;
@@ -313,11 +311,10 @@ impl DataSource for TencentAdapter {
             tc_code, period_param
         );
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
-            .header("User-Agent", USER_AGENT)
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Tencent kline request failed: {}", e))?;
@@ -386,10 +383,10 @@ impl DataSource for TencentAdapter {
         let tc_code = Self::code_to_tencent(code, market);
         let url = format!("{}{}", TENCENT_URL, tc_code);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Tencent depth request failed: {:#}", e))?;

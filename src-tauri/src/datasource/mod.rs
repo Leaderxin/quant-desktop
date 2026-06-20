@@ -10,10 +10,6 @@ use crate::domain::*;
 pub const INDEX_CODES: &str =
     "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
 
-/// Default User-Agent for HTTP requests
-pub const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-
 /// Ticker window default dimensions
 pub const TICKER_WIDTH: u32 = 230;
 pub const TICKER_HEIGHT: u32 = 38;
@@ -155,3 +151,5 @@ impl DataSourceManager {
 pub mod sina;
 pub mod tencent;
 pub mod market_clock;
+pub mod search;
+pub mod headers;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue';
 import { NConfigProvider, darkTheme, lightTheme, NMessageProvider, type GlobalThemeOverrides } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -13,19 +13,24 @@ const quote = useQuoteStore();
 const initError = ref<string | null>(null);
 const initReady = ref(false);
 
-// Override Naive UI's default green accent with our blue
-const themeOverrides: GlobalThemeOverrides = {
-  common: {
-    primaryColor: '#58a6ff',
-    primaryColorHover: '#79b8ff',
-    primaryColorPressed: '#388bfd',
-    primaryColorSuppl: '#58a6ff',
-    infoColor: '#58a6ff',
-    infoColorHover: '#79b8ff',
-    infoColorPressed: '#388bfd',
-    infoColorSuppl: '#58a6ff',
-  },
-};
+// Naive UI primary color overrides — match our CSS --color-accent per theme
+const themeOverrides = computed<GlobalThemeOverrides>(() => {
+  const isDark = settings.theme === 'dark';
+  return {
+    common: {
+      primaryColor: isDark ? '#58a6ff' : '#0969da',
+      primaryColorHover: isDark ? '#79b8ff' : '#2180e0',
+      primaryColorPressed: isDark ? '#388bfd' : '#085bb8',
+      primaryColorSuppl: isDark ? '#58a6ff' : '#0969da',
+      infoColor: isDark ? '#58a6ff' : '#0969da',
+      infoColorHover: isDark ? '#79b8ff' : '#2180e0',
+      infoColorPressed: isDark ? '#388bfd' : '#085bb8',
+      infoColorSuppl: isDark ? '#58a6ff' : '#0969da',
+      borderColor: isDark ? '#1e293b' : '#d0d7de',
+      dividerColor: isDark ? '#1e293b' : '#d0d7de',
+    },
+  };
+});
 
 onMounted(async () => {
   try {

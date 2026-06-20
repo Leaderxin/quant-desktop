@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue';
-import { NModal, NCard, NInput, NButton, NSpace, useMessage } from 'naive-ui';
+import { NModal, NCard, NInput, NSpace, useMessage } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -93,9 +93,9 @@ async function handleAdd(stock: StockBrief) {
                 <span class="result-name">{{ s.name }}</span>
                 <span class="result-code tabular-nums">{{ s.code }}</span>
               </div>
-              <NButton size="tiny" type="primary" ghost @click.stop="handleAdd(s)">
-                添加
-              </NButton>
+              <button class="result-add-btn" @click.stop="handleAdd(s)">
+                添加自选
+              </button>
             </div>
           </div>
 
@@ -136,21 +136,37 @@ async function handleAdd(stock: StockBrief) {
 }
 .result-item:last-child { border-bottom: none; }
 .result-item:hover { background: var(--color-surface-2); }
+.result-add-btn {
+  padding: 2px 10px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition-fast), filter var(--transition-fast);
+}
+.result-add-btn:hover {
+  background: var(--color-accent-dim);
+}
 
 .result-info {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-3);
 }
 .result-name {
   font-size: var(--text-md);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
+  line-height: 1.4;
 }
 .result-code {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--color-text-tertiary);
+  line-height: 1.4;
 }
 .no-results {
   text-align: center;

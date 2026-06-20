@@ -110,6 +110,9 @@ function barWidth(vol: number, max: number): string {
 
 <style scoped>
 .depth-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   min-width: 280px;
   padding: 10px var(--space-3);
   background: var(--color-surface-2);
@@ -125,16 +128,20 @@ function barWidth(vol: number, max: number): string {
 }
 
 .depth-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
-  padding: var(--space-3) 0;
-  text-align: center;
 }
 .depth-placeholder.error { color: var(--color-error); }
 
 .depth-body {
+  flex: 1;
   display: flex;
   gap: var(--space-4);
+  align-content: flex-start;
 }
 
 .depth-side {

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
-use super::{DataSource, USER_AGENT, INDEX_CODES};
+use super::{DataSource, INDEX_CODES, headers};
 
 const SINA_URL: &str = "http://hq.sinajs.cn/list=";
 
@@ -16,7 +16,6 @@ impl SinaAdapter {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .user_agent(USER_AGENT)
                 .timeout(Duration::from_secs(10))
                 .build()
                 .expect("Failed to build reqwest Client — TLS backend may be missing"),
@@ -164,10 +163,10 @@ impl DataSource for SinaAdapter {
             .collect();
         let url = format!("{}{}", SINA_URL, sina_codes.join(","));
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://finance.sina.com.cn")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://finance.sina.com.cn",
+        )
             .send()
             .await
             .map_err(|e| format!("Sina request failed: {:#}", e))?;
@@ -191,10 +190,10 @@ impl DataSource for SinaAdapter {
         let index_codes = INDEX_CODES;
         let url = format!("{}{}", SINA_URL, index_codes);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://finance.sina.com.cn")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://finance.sina.com.cn",
+        )
             .send()
             .await
             .map_err(|e| format!("Sina indices request failed: {:#}", e))?;
@@ -223,10 +222,10 @@ impl DataSource for SinaAdapter {
         if trimmed.len() == 6 && trimmed.chars().all(|c| c.is_ascii_digit()) {
             let sina_code = Self::code_to_sina(trimmed, market);
             let url = format!("{}{}", SINA_URL, sina_code);
-            let resp = self
-                .client
-                .get(&url)
-                .header("Referer", "https://finance.sina.com.cn")
+            let resp = headers::with_browser_headers(
+                self.client.get(&url),
+                "https://finance.sina.com.cn",
+            )
                 .send()
                 .await
                 .map_err(|e| format!("Sina search request failed: {:#}", e))?;
@@ -265,10 +264,10 @@ impl DataSource for SinaAdapter {
             symbol
         );
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://finance.sina.com.cn")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://finance.sina.com.cn",
+        )
             .send()
             .await
             .map_err(|e| format!("Sina minute request failed: {:#}", e))?;
@@ -335,10 +334,10 @@ impl DataSource for SinaAdapter {
             symbol, scale
         );
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://finance.sina.com.cn")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://finance.sina.com.cn",
+        )
             .send()
             .await
             .map_err(|e| format!("Sina kline request failed: {:#}", e))?;
@@ -407,10 +406,10 @@ impl DataSource for SinaAdapter {
         };
         let url = format!("http://qt.gtimg.cn/q={}", tc_code);
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", "https://gu.qq.com")
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://gu.qq.com",
+        )
             .send()
             .await
             .map_err(|e| format!("Sina depth (via Tencent) request failed: {:#}", e))?;
