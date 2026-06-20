@@ -5,6 +5,8 @@ import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import AppLayout from '@/components/layout/AppLayout.vue';
+import UpdateDialog from '@/components/updater/UpdateDialog.vue';
+import { useUpdateCheck } from '@/composables/useUpdateCheck';
 
 const settings = useSettingsStore();
 const watchlist = useWatchlistStore();
@@ -55,6 +57,10 @@ onMounted(async () => {
     await watchlist.fetchWatchlist();
     await quote.startListening();
     initReady.value = true;
+
+    // Startup update check (non-blocking, gated by trading session)
+    const { performStartupCheck } = useUpdateCheck();
+    performStartupCheck();
   } catch (e) {
     initError.value = `应用启动失败: ${String(e).slice(0, 200)}`;
     console.error('[App] init failed:', e);
@@ -83,5 +89,6 @@ function handleRetry() {
         @dismiss-app-error="appError = null"
       />
     </NMessageProvider>
+    <UpdateDialog />
   </NConfigProvider>
 </template>
