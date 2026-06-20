@@ -107,6 +107,74 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
+  sign-and-publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: quant-desktop-*
+          merge-multiple: true
+
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Extract changelog for this version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          node scripts/extract-changelog.mjs "$VERSION" > changelog-notes.md
+          echo "=== Changelog ==="
+          cat changelog-notes.md
+
+      - name: Flatten installer files
+        run: |
+          mkdir -p release
+          find . -type f \( \
+            -name "*.exe" -o -name "*.msi" -o \
+            -name "*.dmg" -o \
+            -name "*.deb" -o -name "*.AppImage" \
+          \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Sign and generate latest.json
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          NOTES=$(jq -Rs '.' changelog-notes.md)
+          echo "VERSION=$VERSION"
+          echo "NOTES=$NOTES"
+
+          npx tauri signer sign \
+            --private-key <(echo "$TAURI_PRIVATE_KEY") \
+            --password "$TAURI_KEY_PASSWORD" \
+            --generate-latest-json \
+            --version "$VERSION" \
+            --notes "$NOTES" \
+            release/ \
+            -o latest.json
+
+          echo "=== latest.json ==="
+          cat latest.json
+
+      - name: Publish to public release repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: Leaderxin/QuantDesktopRelease
+          token: ${{ secrets.PUBLIC_REPO_PAT }}
+          files: |
+            release/*
+            latest.json
+          generate_release_notes: true
+
   release:
     needs: build
     runs-on: ubuntu-latest
