@@ -25,6 +25,11 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None::<Vec<&str>>,
         ))
+        .plugin(tauri_plugin_updater::Builder::new()
+            .endpoints(&[
+                "https://github.com/Leaderxin/QuantDesktopRelease/releases/latest/download/latest.json"
+            ])
+            .build())
         .setup(|app| {
             // Initialize database
             let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
@@ -417,6 +422,33 @@ pub fn run() {
                 }
             }
 
+            // ── Startup update check (non-blocking) ──
+            let update_handle = app.handle().clone();
+            let update_db = db.clone();
+            tokio::spawn(async move {
+                // Small delay to let the UI fully render first
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                match updater::commands::check_update(update_handle.clone()).await {
+                    Ok(Some(info)) => {
+                        log::info!(
+                            "[updater] Update available: {} -> {}",
+                            info.current_version,
+                            info.latest_version
+                        );
+                        // We do NOT emit "update-available" from the startup check.
+                        // The frontend composable handles startup dialog display with
+                        // trading-session gating.
+                    }
+                    Ok(None) => {
+                        log::info!("[updater] App is up to date");
+                    }
+                    Err(e) => {
+                        log::warn!("[updater] Startup check failed (non-critical): {}", e);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -438,6 +470,9 @@ pub fn run() {
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
             commands::window::show_main_window,
+            updater::commands::check_update,
+            updater::commands::install_update,
+            updater::commands::is_trading_session,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start application");
