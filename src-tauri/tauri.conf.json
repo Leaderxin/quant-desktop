@@ -37,11 +37,15 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' asset:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "pattern": {
+        "use": "isolation"
+      }
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -50,5 +54,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Leaderxin/QuantDesktopRelease/releases/latest/download/latest.json"
+      ],
+      "pubkey": "PASTE_YOUR_PUBLIC_KEY_HERE_AFTER_GENERATION",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
