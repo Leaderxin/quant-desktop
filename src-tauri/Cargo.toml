@@ -15,7 +15,7 @@ name = "quant_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = ["isolation"] }
+tauri-build = { version = "2" }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }

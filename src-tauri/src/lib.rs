@@ -11,7 +11,7 @@ use simplelog::{CombinedLogger, WriteLogger, TermLogger, LevelFilter, Config, Te
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 use db::Database;
 use datasource::DataSourceManager;
@@ -25,11 +25,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None::<Vec<&str>>,
         ))
-        .plugin(tauri_plugin_updater::Builder::new()
-            .endpoints(&[
-                "https://github.com/Leaderxin/QuantDesktopRelease/releases/latest/download/latest.json"
-            ])
-            .build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Initialize database
             let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
@@ -100,12 +96,14 @@ pub fn run() {
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
+            let check_update_item = MenuItemBuilder::with_id("check_update", "检查更新").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .item(&toggle_ticker)
                 .separator()
+                .item(&check_update_item)
                 .item(&quit_item)
                 .build()?;
 
@@ -169,6 +167,22 @@ pub fn run() {
                                     }
                                 }
                             }
+                        }
+                        "check_update" => {
+                            let handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                match crate::updater::commands::check_update(handle.clone()).await {
+                                    Ok(Some(info)) => {
+                                        let _ = handle.emit("update-available", &info);
+                                    }
+                                    Ok(None) => {
+                                        log::info!("[updater] Manual check: already up to date");
+                                    }
+                                    Err(e) => {
+                                        log::warn!("[updater] Manual check failed: {}", e);
+                                    }
+                                }
+                            });
                         }
                         "quit" => {
                             if let Some(w) = app.get_webview_window("main") { let _ = w.close(); }

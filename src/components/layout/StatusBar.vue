@@ -2,9 +2,13 @@
 import { ref, onMounted } from 'vue';
 import { NPopover } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
+import { useUpdaterStore } from '@/stores/updater';
+import { useUpdateCheck } from '@/composables/useUpdateCheck';
 import { getVersion } from '@tauri-apps/api/app';
 
 const settings = useSettingsStore();
+const updater = useUpdaterStore();
+const { manualCheck } = useUpdateCheck();
 const appVersion = ref('');
 
 withDefaults(defineProps<{
@@ -31,6 +35,13 @@ onMounted(async () => {
     <!-- Zone 1: System info -->
     <div class="sb-zone sb-info">
       <span class="sb-version" v-if="appVersion">v{{ appVersion }}</span>
+      <button
+        class="sb-check-btn"
+        :disabled="updater.updateStatus === 'checking'"
+        @click="manualCheck"
+      >
+        {{ updater.updateStatus === 'checking' ? '检查中...' : '检查更新' }}
+      </button>
       <span class="sb-sep">·</span>
       <span class="sb-copyright">{{ copyright }}</span>
     </div>
@@ -154,6 +165,27 @@ onMounted(async () => {
   font-weight: var(--font-weight-medium);
   color: var(--color-accent);
   font-family: var(--font-mono);
+}
+.sb-check-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.sb-check-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+  background: var(--color-bg-elevated);
+}
+.sb-check-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .sb-copyright {
   color: var(--color-text-tertiary);
