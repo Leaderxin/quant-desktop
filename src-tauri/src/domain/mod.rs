@@ -73,3 +73,53 @@ pub struct StockBrief {
     pub market: String,
     pub name: String,
 }
+
+// ── Structured Error Type ──
+
+/// Unified application error type replacing ad-hoc String errors.
+/// Implements `Display` via `thiserror` so `.to_string()` produces
+/// user-facing messages suitable for the Tauri IPC boundary.
+#[derive(Debug, thiserror::Error)]
+pub enum AppError {
+    #[error("数据库错误: {0}")]
+    Database(#[from] rusqlite::Error),
+
+    #[error("网络请求失败 ({origin}): {message}")]
+    Network {
+        origin: String,
+        message: String,
+    },
+
+    #[error("数据源不可用: {0}")]
+    DataSourceUnavailable(String),
+
+    #[error("不支持的操作: {0}")]
+    Unsupported(String),
+
+    #[error("未找到: {0}")]
+    NotFound(String),
+
+    #[error("数据解析失败 ({origin}): {message}")]
+    Parse {
+        origin: String,
+        message: String,
+    },
+}
+
+impl AppError {
+    /// Convenience: create a network error with origin label
+    pub fn network(origin: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Network {
+            origin: origin.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Convenience: create a parse error with origin label
+    pub fn parse(origin: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Parse {
+            origin: origin.into(),
+            message: message.into(),
+        }
+    }
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed, onErrorCaptured } from 'vue';
 import { NConfigProvider, darkTheme, lightTheme, NMessageProvider, type GlobalThemeOverrides } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -12,6 +12,22 @@ const quote = useQuoteStore();
 
 const initError = ref<string | null>(null);
 const initReady = ref(false);
+const appError = ref<string | null>(null);
+
+// 全局错误边界 — 捕获子组件中的未处理错误，防止静默崩溃
+onErrorCaptured((err, instance, info) => {
+  const componentName = instance?.$?.type?.__name
+    || (instance?.$ as any)?.type?.name
+    || 'Unknown';
+  const msg = `[${componentName}] ${String(err).slice(0, 200)}`;
+  console.error('[App] onErrorCaptured:', msg, info);
+
+  if (!appError.value) {
+    appError.value = `界面错误: ${msg}`;
+  }
+  // 阻止错误继续传播到浏览器控制台
+  return false;
+});
 
 // Naive UI primary color overrides — match our CSS --color-accent per theme
 const themeOverrides = computed<GlobalThemeOverrides>(() => {
@@ -62,7 +78,9 @@ function handleRetry() {
         :init-error="initError"
         :init-ready="initReady"
         :quote-error="quote.error"
+        :app-error="appError"
         @retry="handleRetry"
+        @dismiss-app-error="appError = null"
       />
     </NMessageProvider>
   </NConfigProvider>

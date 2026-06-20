@@ -1,8 +1,35 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
+use std::time::Duration;
 use tokio::sync::Notify;
+use reqwest::Client;
 use crate::domain::*;
+use crate::domain::AppError;
+
+// ── Shared HTTP Client ──
+// A single reqwest::Client shared across all data source adapters.
+// Client::clone() is a shallow copy — the connection pool, TLS config,
+// and timeout are all shared by every clone.
+
+static SHARED_CLIENT: OnceLock<Client> = OnceLock::new();
+
+/// Get or initialize the shared reqwest::Client.
+/// All adapters should call this and clone the handle.
+pub fn shared_client() -> &'static Client {
+    SHARED_CLIENT.get_or_init(|| {
+        Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent(concat!(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",
+                "AppleWebKit/537.36 (KHTML, like Gecko) ",
+                "Chrome/131.0.0.0 Safari/537.36"
+            ))
+            .pool_max_idle_per_host(10)
+            .build()
+            .expect("Failed to build shared reqwest Client — TLS backend may be missing")
+    })
+}
 
 // ── Shared constants across data source adapters ──
 
@@ -13,6 +40,26 @@ pub const INDEX_CODES: &str =
 /// Ticker window default dimensions
 pub const TICKER_WIDTH: u32 = 230;
 pub const TICKER_HEIGHT: u32 = 38;
+
+// ── Data Normalization ──
+
+/// 成交量归一化: 手 → 股 (×100)
+pub const VOLUME_HANDS_TO_SHARES: u64 = 100;
+
+/// 成交额归一化: 万元 → 元 (×10000)
+pub const TURNOVER_WAN_TO_YUAN: f64 = 10000.0;
+
+/// 将成交量从手转换为股
+#[inline]
+pub fn normalize_volume(volume_hands: u64) -> u64 {
+    volume_hands * VOLUME_HANDS_TO_SHARES
+}
+
+/// 将成交额从万元转换为元
+#[inline]
+pub fn normalize_turnover(turnover_wan: f64) -> f64 {
+    turnover_wan * TURNOVER_WAN_TO_YUAN
+}
 
 /// Abstract data source trait — all market data adapters implement this
 #[async_trait]
@@ -28,24 +75,24 @@ pub trait DataSource: Send + Sync {
         &self,
         codes: &[String],
         market: &str,
-    ) -> Result<Vec<Quote>, String>;
+    ) -> Result<Vec<Quote>, AppError>;
 
     /// Fetch major indices
-    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String>;
+    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, AppError>;
 
     /// Search stocks (fuzzy match code or name)
     async fn search(
         &self,
         keyword: &str,
         market: &str,
-    ) -> Result<Vec<StockBrief>, String>;
+    ) -> Result<Vec<StockBrief>, AppError>;
 
     /// Fetch 5-level depth (bid/ask order book)
     async fn fetch_depth(
         &self,
         _code: &str,
         _market: &str,
-    ) -> Result<crate::domain::Depth, String> {
+    ) -> Result<crate::domain::Depth, AppError> {
         Ok(crate::domain::Depth {
             code: _code.to_string(),
             bids: vec![],
@@ -58,7 +105,7 @@ pub trait DataSource: Send + Sync {
         &self,
         _code: &str,
         _market: &str,
-    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+    ) -> Result<Vec<crate::domain::MinuteData>, AppError> {
         Ok(vec![])
     }
 
@@ -68,12 +115,12 @@ pub trait DataSource: Send + Sync {
         _code: &str,
         _market: &str,
         _period: &str,
-    ) -> Result<Vec<crate::domain::KLineData>, String> {
+    ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         Ok(vec![])
     }
 
     /// Health check
-    async fn health_check(&self) -> Result<bool, String>;
+    async fn health_check(&self) -> Result<bool, AppError>;
 }
 
 /// Data source manager — registration, switching, unified dispatch

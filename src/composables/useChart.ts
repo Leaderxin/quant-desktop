@@ -27,7 +27,8 @@ export function useChart(options: {
       if (params.type === 'init') {
         params.callback(klineData.value, false);
       } else {
-        params.callback([], false);
+        // No more historical data available beyond initial load
+        params.callback([], true);
       }
     },
   };
@@ -145,7 +146,9 @@ export function useChart(options: {
 
   async function initChart(period: PeriodType) {
     if (!options.chartRef.value) return;
-    if (!chart) {
+
+    const isNew = !chart;
+    if (isNew) {
       chart = init(options.chartRef.value, {
         locale: 'zh-CN',
         layout: { basicParams: { yAxisInside: true } },
@@ -170,9 +173,11 @@ export function useChart(options: {
           { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: 'rgba(248,81,73,0.4)', downColor: 'rgba(63,185,80,0.4)' } } as any,
         ],
       } as any);
-
-      chart.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
     }
+
+    // Always update symbol and period on stock/period change (even for reused chart)
+    if (!chart) return;
+    chart.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
 
     currentPeriod.value = period;
     chart.setPeriod(periodToKlinecharts(period) as any);

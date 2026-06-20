@@ -358,11 +358,27 @@ pub fn run() {
                 let tw = ticker_size.width as i32;
                 let th = ticker_size.height as i32;
 
-                // Save ticker position on move — clamp to monitor bounds so
-                // the entire window stays on screen and is always restorable.
+                // Save ticker position on move.  Only persist if enough of the
+                // ticker is actually visible — if the user drags it way off
+                // screen, we skip saving so the next launch falls back to the
+                // default bottom-right position.
                 let db_clone = db.clone();
                 let _ = ticker.on_window_event(move |event| {
                     if let tauri::WindowEvent::Moved(pos) = event {
+                        // How much of the ticker is inside the monitor bounds?
+                        let visible_left = pos.x.max(0);
+                        let visible_right = (pos.x + tw).min(mon_w);
+                        let visible_w = (visible_right - visible_left).max(0);
+                        let visible_top = pos.y.max(0);
+                        let visible_bottom = (pos.y + th).min(mon_h);
+                        let visible_h = (visible_bottom - visible_top).max(0);
+
+                        // Require at least 50×20 px visible — otherwise it's
+                        // too far off-screen to be easily found.
+                        if visible_w < 50 || visible_h < 20 {
+                            return;
+                        }
+
                         let clamped_x = pos.x.max(0).min(mon_w - tw);
                         let clamped_y = pos.y.max(0).min(mon_h - th);
                         if let Err(e) = db_clone.set_setting("ticker_x", &clamped_x.to_string()) {

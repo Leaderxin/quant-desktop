@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
+use crate::domain::AppError;
 use super::{DataSource, INDEX_CODES, headers};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
@@ -15,10 +14,7 @@ pub struct TencentAdapter {
 impl TencentAdapter {
     pub fn new() -> Self {
         Self {
-            client: Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .expect("Failed to build reqwest Client — TLS backend may be missing"),
+            client: super::shared_client().clone(),
         }
     }
 
@@ -64,8 +60,8 @@ impl TencentAdapter {
         let volume = fields[6].parse::<u64>().unwrap_or(0);
         let turnover = fields[37].parse::<f64>().unwrap_or(0.0);
         let turnover_rate = fields.get(38).and_then(|s| s.parse::<f64>().ok());
-        // Tencent volume is in "手" (100 shares), convert to shares
-        let volume_shares = volume * 100;
+        // Tencent volume is in 手, turnover in 万元 — normalize to 股/元
+        let volume_shares = super::normalize_volume(volume);
 
         Some(Quote {
             code,
@@ -78,7 +74,7 @@ impl TencentAdapter {
             high,
             low,
             volume: volume_shares,
-            turnover: (turnover * 10000.0 * 100.0).round() / 100.0,
+            turnover: (super::normalize_turnover(turnover) * 100.0).round() / 100.0,
             turnover_rate,
             timestamp: chrono::Utc::now().timestamp(),
         })
@@ -120,8 +116,8 @@ impl TencentAdapter {
             price,
             change,
             change_pct,
-            volume: volume * 100, // 手 → 股
-            turnover: turnover * 10000.0, // 万元 → 元
+            volume: super::normalize_volume(volume),
+            turnover: super::normalize_turnover(turnover),
         })
     }
 }
@@ -136,7 +132,7 @@ impl DataSource for TencentAdapter {
         &self,
         codes: &[String],
         market: &str,
-    ) -> Result<Vec<Quote>, String> {
+    ) -> Result<Vec<Quote>, AppError> {
         let tenc_codes: Vec<String> = codes
             .iter()
             .map(|c| Self::code_to_tencent(c, market))
@@ -149,9 +145,9 @@ impl DataSource for TencentAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Tencent request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("请求失败: {:#}", e)))?;
 
-        let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
+        let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let quotes: Vec<Quote> = body
@@ -161,7 +157,7 @@ impl DataSource for TencentAdapter {
         Ok(quotes)
     }
 
-    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
+    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, AppError> {
         let index_codes = INDEX_CODES;
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
@@ -171,9 +167,9 @@ impl DataSource for TencentAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Tencent indices request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("指数请求失败: {:#}", e)))?;
 
-        let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
+        let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let indices: Vec<IndexQuote> = body
@@ -187,7 +183,7 @@ impl DataSource for TencentAdapter {
         &self,
         keyword: &str,
         market: &str,
-    ) -> Result<Vec<StockBrief>, String> {
+    ) -> Result<Vec<StockBrief>, AppError> {
         let trimmed = keyword.trim();
         if trimmed.len() == 6 && trimmed.chars().all(|c| c.is_ascii_digit()) {
             let tc_code = Self::code_to_tencent(trimmed, market);
@@ -198,8 +194,8 @@ impl DataSource for TencentAdapter {
             )
                 .send()
                 .await
-                .map_err(|e| format!("Tencent search request failed: {:#}", e))?;
-            let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
+                .map_err(|e| AppError::network("tencent", format!("搜索请求失败: {:#}", e)))?;
+            let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
             let (body, _, _) = GBK.decode(&body_bytes);
 
             for line in body.lines() {
@@ -221,7 +217,7 @@ impl DataSource for TencentAdapter {
         &self,
         code: &str,
         market: &str,
-    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+    ) -> Result<Vec<crate::domain::MinuteData>, AppError> {
         let tc_code = if code.starts_with("s_") {
             // Index codes already have exchange prefix: "s_sh000001" → "sh000001"
             code[2..].to_string()
@@ -237,12 +233,12 @@ impl DataSource for TencentAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Tencent kline request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("K线请求失败: {:#}", e)))?;
 
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| format!("Tencent kline parse failed: {}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("K线解析失败: {}", e)))?;
 
         // Format: [["202606180935","open","close","high","low","volume",{},"rate"], ...]
         let lines = body
@@ -270,7 +266,6 @@ impl DataSource for TencentAdapter {
                 let close: f64 = arr[2].as_str()?.parse().ok()?;
                 let high: f64 = arr[3].as_str()?.parse().unwrap_or(close);
                 let low: f64 = arr[4].as_str()?.parse().unwrap_or(close);
-                // Tencent volume is in 手, convert to 股
                 let volume: u64 = arr[5].as_str()?.parse().unwrap_or(0);
                 Some(crate::domain::MinuteData {
                     time,
@@ -278,7 +273,7 @@ impl DataSource for TencentAdapter {
                     open,
                     high,
                     low,
-                    volume: volume * 100,
+                    volume: super::normalize_volume(volume),
                     avg_price: open,
                 })
             })
@@ -292,7 +287,7 @@ impl DataSource for TencentAdapter {
         code: &str,
         market: &str,
         period: &str,
-    ) -> Result<Vec<crate::domain::KLineData>, String> {
+    ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         let tc_code = if code.starts_with("s_") {
             code[2..].to_string()
         } else {
@@ -317,12 +312,12 @@ impl DataSource for TencentAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Tencent kline request failed: {}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("K线请求失败: {}", e)))?;
 
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| format!("Tencent kline parse failed: {}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("K线解析失败: {}", e)))?;
 
         // Extract K-line data array
         // Format: { "data": { "sh600519": { "day": [...] or "qfqday": [...] } } }
@@ -356,7 +351,7 @@ impl DataSource for TencentAdapter {
                 let high: f64 = arr[3].as_str()?.parse().ok()?;
                 let low: f64 = arr[4].as_str()?.parse().ok()?;
                 let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
-                let volume: u64 = (volume_hands * 100.0) as u64;
+                let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
                 let turnover: f64 = arr.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
                 Some(crate::domain::KLineData {
                     date,
@@ -377,7 +372,7 @@ impl DataSource for TencentAdapter {
         &self,
         code: &str,
         market: &str,
-    ) -> Result<crate::domain::Depth, String> {
+    ) -> Result<crate::domain::Depth, AppError> {
         use crate::domain::Level;
 
         let tc_code = Self::code_to_tencent(code, market);
@@ -389,9 +384,9 @@ impl DataSource for TencentAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Tencent depth request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("tencent", format!("深度数据请求失败: {:#}", e)))?;
 
-        let body_bytes = resp.bytes().await.map_err(|e| format!("Tencent read failed: {:#}", e))?;
+        let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let mut bids = Vec::new();
@@ -414,7 +409,7 @@ impl DataSource for TencentAdapter {
                             fields[vi].parse::<u64>(),
                         ) {
                             if price > 0.0 && vol > 0 {
-                                bids.push(Level { price, volume: vol * 100 }); // 手→股
+                                bids.push(Level { price, volume: super::normalize_volume(vol) });
                             }
                         }
                     }
@@ -427,7 +422,7 @@ impl DataSource for TencentAdapter {
                             fields[vi].parse::<u64>(),
                         ) {
                             if price > 0.0 && vol > 0 {
-                                asks.push(Level { price, volume: vol * 100 });
+                                asks.push(Level { price, volume: super::normalize_volume(vol) });
                             }
                         }
                     }
@@ -439,7 +434,7 @@ impl DataSource for TencentAdapter {
         Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
     }
 
-    async fn health_check(&self) -> Result<bool, String> {
+    async fn health_check(&self) -> Result<bool, AppError> {
         let codes = vec!["000001".to_string()];
         self.fetch_realtime(&codes, "CN")
             .await

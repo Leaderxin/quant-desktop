@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{Emitter, State};
 use std::sync::Arc;
 use crate::db::{Database, WatchItem};
 use crate::datasource::DataSourceManager;
@@ -10,75 +10,73 @@ pub fn get_watchlist(db: State<'_, Arc<Database>>) -> Result<Vec<WatchItem>, Str
 
 #[tauri::command]
 pub fn add_watch(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     code: String,
     market: String,
     name: String,
 ) -> Result<(), String> {
     db.add_watch(&code, &market, &name)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn remove_watch(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     code: String,
     market: String,
 ) -> Result<(), String> {
     db.remove_watch(&code, &market)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn reorder_watch(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     ids: Vec<i64>,
 ) -> Result<(), String> {
-    db.reorder_watch(&ids).map_err(|e| e.to_string())
+    db.reorder_watch(&ids).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn move_watch_top(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     id: i64,
 ) -> Result<(), String> {
-    let items = db.get_watchlist().map_err(|e| e.to_string())?;
-    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
-    if let Some(pos) = ids.iter().position(|&x| x == id) {
-        ids.remove(pos);
-        ids.insert(0, id);
-    }
-    db.reorder_watch(&ids).map_err(|e| e.to_string())
+    db.move_watch_top(id).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn move_watch_up(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     id: i64,
 ) -> Result<(), String> {
-    let items = db.get_watchlist().map_err(|e| e.to_string())?;
-    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
-    if let Some(pos) = ids.iter().position(|&x| x == id) {
-        if pos > 0 {
-            ids.swap(pos, pos - 1);
-        }
-    }
-    db.reorder_watch(&ids).map_err(|e| e.to_string())
+    db.move_watch_up(id).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]
 pub fn move_watch_down(
+    app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     id: i64,
 ) -> Result<(), String> {
-    let items = db.get_watchlist().map_err(|e| e.to_string())?;
-    let mut ids: Vec<i64> = items.iter().map(|i| i.id).collect();
-    if let Some(pos) = ids.iter().position(|&x| x == id) {
-        if pos + 1 < ids.len() {
-            ids.swap(pos, pos + 1);
-        }
-    }
-    db.reorder_watch(&ids).map_err(|e| e.to_string())
+    db.move_watch_down(id).map_err(|e| e.to_string())?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
 }
 
 #[tauri::command]

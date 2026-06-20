@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 use async_trait::async_trait;
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
+use crate::domain::AppError;
 use super::{DataSource, INDEX_CODES, headers};
 
 const SINA_URL: &str = "http://hq.sinajs.cn/list=";
@@ -15,10 +14,7 @@ pub struct SinaAdapter {
 impl SinaAdapter {
     pub fn new() -> Self {
         Self {
-            client: Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-                .expect("Failed to build reqwest Client — TLS backend may be missing"),
+            client: super::shared_client().clone(),
         }
     }
 
@@ -124,11 +120,10 @@ impl SinaAdapter {
         let change_pct = fields[3].parse::<f64>().unwrap_or(0.0);
         let volume = fields[4].parse::<u64>().unwrap_or(0);
         let turnover = fields[5].parse::<f64>().unwrap_or(0.0);
-        // Sina index API returns volume in 手 and turnover in 万元.
-        // Normalize: volume 手→股 (×100), turnover 万元→元 (×10000),
+        // Normalize: volume 手→股, turnover 万元→元,
         // matching Tencent adapter and stock Quote conventions.
-        let volume_shares = volume * 100;
-        let turnover_yuan = turnover * 10000.0;
+        let volume_shares = super::normalize_volume(volume);
+        let turnover_yuan = super::normalize_turnover(turnover);
 
         Some(IndexQuote {
             code,
@@ -156,7 +151,7 @@ impl DataSource for SinaAdapter {
         &self,
         codes: &[String],
         market: &str,
-    ) -> Result<Vec<Quote>, String> {
+    ) -> Result<Vec<Quote>, AppError> {
         let sina_codes: Vec<String> = codes
             .iter()
             .map(|c| Self::code_to_sina(c, market))
@@ -169,12 +164,12 @@ impl DataSource for SinaAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Sina request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("请求失败: {:#}", e)))?;
 
         let body_bytes = resp
             .bytes()
             .await
-            .map_err(|e| format!("Sina read body failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("读取响应体失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let quotes: Vec<Quote> = body
@@ -185,7 +180,7 @@ impl DataSource for SinaAdapter {
         Ok(quotes)
     }
 
-    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, String> {
+    async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, AppError> {
         // Sina index codes
         let index_codes = INDEX_CODES;
         let url = format!("{}{}", SINA_URL, index_codes);
@@ -196,12 +191,12 @@ impl DataSource for SinaAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Sina indices request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("指数请求失败: {:#}", e)))?;
 
         let body_bytes = resp
             .bytes()
             .await
-            .map_err(|e| format!("Sina read body failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("读取响应体失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let indices: Vec<IndexQuote> = body
@@ -216,7 +211,7 @@ impl DataSource for SinaAdapter {
         &self,
         keyword: &str,
         market: &str,
-    ) -> Result<Vec<StockBrief>, String> {
+    ) -> Result<Vec<StockBrief>, AppError> {
         // If the keyword looks like a 6-digit stock code, try direct lookup
         let trimmed = keyword.trim();
         if trimmed.len() == 6 && trimmed.chars().all(|c| c.is_ascii_digit()) {
@@ -228,8 +223,8 @@ impl DataSource for SinaAdapter {
             )
                 .send()
                 .await
-                .map_err(|e| format!("Sina search request failed: {:#}", e))?;
-            let body_bytes = resp.bytes().await.map_err(|e| format!("Sina read failed: {:#}", e))?;
+                .map_err(|e| AppError::network("sina", format!("搜索请求失败: {:#}", e)))?;
+            let body_bytes = resp.bytes().await.map_err(|e| AppError::network("sina", format!("搜索读取失败: {:#}", e)))?;
             let (body, _, _) = GBK.decode(&body_bytes);
 
             // Parse the response to extract name
@@ -252,7 +247,7 @@ impl DataSource for SinaAdapter {
         &self,
         code: &str,
         market: &str,
-    ) -> Result<Vec<crate::domain::MinuteData>, String> {
+    ) -> Result<Vec<crate::domain::MinuteData>, AppError> {
         let symbol = if code.starts_with("s_") {
             // Index codes already have exchange prefix: "s_sh000001" → "sh000001"
             code[2..].to_string()
@@ -270,17 +265,17 @@ impl DataSource for SinaAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Sina minute request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("分钟数据请求失败: {:#}", e)))?;
 
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Sina minute read failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("分钟数据读取失败: {:#}", e)))?;
 
         // Sina's response ends with a JS callback comment; strip it
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
-            .map_err(|e| format!("Sina minute parse failed: {} — body: {}", e, &body_text[..body_text.len().min(100)]))?;
+            .map_err(|e| AppError::network("sina", format!("分钟数据解析失败: {}", e)))?;
 
 
         let data: Vec<crate::domain::MinuteData> = raw
@@ -316,7 +311,7 @@ impl DataSource for SinaAdapter {
         code: &str,
         market: &str,
         period: &str,
-    ) -> Result<Vec<crate::domain::KLineData>, String> {
+    ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         let symbol = if code.starts_with("s_") {
             code[2..].to_string()
         } else {
@@ -325,7 +320,7 @@ impl DataSource for SinaAdapter {
 
         // Sina only supports daily K-line; weekly/monthly are not available
         if period != "daily" && period != "minute" {
-            return Err("新浪数据源不支持周K/月K，请切换到腾讯数据源查看".into());
+            return Err(AppError::Unsupported("新浪数据源不支持周K/月K，请切换到腾讯数据源查看".into()));
         }
         let scale = "240";
 
@@ -340,12 +335,12 @@ impl DataSource for SinaAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Sina kline request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("K线请求失败: {:#}", e)))?;
 
         let body_text = resp
             .text()
             .await
-            .map_err(|e| format!("Sina kline read failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("K线读取失败: {:#}", e)))?;
 
         if body_text.is_empty() || body_text == "null" {
             log::warn!("Sina kline empty body for code={}", symbol);
@@ -354,7 +349,7 @@ impl DataSource for SinaAdapter {
 
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
-            .map_err(|e| format!("Sina kline parse failed: {} — body: {}", e, &body_text[..body_text.len().min(100)]))?;
+            .map_err(|e| AppError::network("sina", format!("K线解析失败: {}", e)))?;
 
         if raw.is_empty() {
             log::warn!("Sina kline empty for code={} period={}", symbol, scale);
@@ -390,7 +385,7 @@ impl DataSource for SinaAdapter {
         &self,
         code: &str,
         market: &str,
-    ) -> Result<crate::domain::Depth, String> {
+    ) -> Result<crate::domain::Depth, AppError> {
         // Sina's buy_/sell_ depth API is dead — fall back to Tencent's
         // quote endpoint which embeds 5-level depth in fields 9-28.
         use crate::domain::Level;
@@ -412,9 +407,9 @@ impl DataSource for SinaAdapter {
         )
             .send()
             .await
-            .map_err(|e| format!("Sina depth (via Tencent) request failed: {:#}", e))?;
+            .map_err(|e| AppError::network("sina", format!("深度数据(Tencent)请求失败: {:#}", e)))?;
 
-        let body_bytes = resp.bytes().await.map_err(|e| format!("Read failed: {:#}", e))?;
+        let body_bytes = resp.bytes().await.map_err(|e| AppError::network("sina", format!("深度数据读取失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
         let mut bids = Vec::new();
@@ -435,7 +430,7 @@ impl DataSource for SinaAdapter {
                             fields[pi + 1].parse::<u64>(),
                         ) {
                             if price > 0.0 && vol > 0 {
-                                bids.push(Level { price, volume: vol * 100 });
+                                bids.push(Level { price, volume: super::normalize_volume(vol) });
                             }
                         }
                     }
@@ -446,7 +441,7 @@ impl DataSource for SinaAdapter {
                             fields[pi + 1].parse::<u64>(),
                         ) {
                             if price > 0.0 && vol > 0 {
-                                asks.push(Level { price, volume: vol * 100 });
+                                asks.push(Level { price, volume: super::normalize_volume(vol) });
                             }
                         }
                     }
@@ -458,7 +453,7 @@ impl DataSource for SinaAdapter {
         Ok(crate::domain::Depth { code: code.to_string(), bids, asks })
     }
 
-    async fn health_check(&self) -> Result<bool, String> {
+    async fn health_check(&self) -> Result<bool, AppError> {
         let codes = vec!["000001".to_string()];
         self.fetch_realtime(&codes, "CN")
             .await

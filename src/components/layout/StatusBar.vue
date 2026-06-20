@@ -262,7 +262,7 @@ onMounted(async () => {
 }
 .qr-image {
   display: block;
-  max-width: 200px;
+  max-width: min(200px, calc(100vw - 80px));
   max-height: 200px;
   width: auto;
   height: auto;

@@ -185,6 +185,88 @@ impl Database {
         Ok(())
     }
 
+    // ── Atomic Watchlist Reorder Operations ──
+    // Each method acquires the DB lock once and completes the entire
+    // operation within that lock, preventing TOCTOU races.
+
+    /// Move a watchlist entry to the top (sort_order = 0).
+    /// All other entries are shifted down by one position.
+    pub fn move_watch_top(&self, id: i64) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare(
+            "SELECT id FROM watchlist ORDER BY sort_order ASC, id ASC"
+        )?;
+        let ids: Vec<i64> = stmt.query_map([], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        let mut sort_order = 0i32;
+        conn.execute(
+            "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+            params![sort_order, id],
+        )?;
+        sort_order += 1;
+        for other_id in &ids {
+            if *other_id != id {
+                conn.execute(
+                    "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+                    params![sort_order, other_id],
+                )?;
+                sort_order += 1;
+            }
+        }
+        Ok(())
+    }
+
+    /// Swap the target entry with the one above it (decrease sort_order).
+    pub fn move_watch_up(&self, id: i64) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare(
+            "SELECT id FROM watchlist ORDER BY sort_order ASC, id ASC"
+        )?;
+        let ids: Vec<i64> = stmt.query_map([], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        if let Some(pos) = ids.iter().position(|&x| x == id) {
+            if pos > 0 {
+                let prev_id = ids[pos - 1];
+                conn.execute(
+                    "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+                    params![pos as i32, id],
+                )?;
+                conn.execute(
+                    "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+                    params![(pos - 1) as i32, prev_id],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Swap the target entry with the one below it (increase sort_order).
+    pub fn move_watch_down(&self, id: i64) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare(
+            "SELECT id FROM watchlist ORDER BY sort_order ASC, id ASC"
+        )?;
+        let ids: Vec<i64> = stmt.query_map([], |row| row.get(0))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+
+        if let Some(pos) = ids.iter().position(|&x| x == id) {
+            if pos + 1 < ids.len() {
+                let next_id = ids[pos + 1];
+                conn.execute(
+                    "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+                    params![(pos + 1) as i32, id],
+                )?;
+                conn.execute(
+                    "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
+                    params![pos as i32, next_id],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn get_cached_quotes(&self) -> SqliteResult<Vec<crate::domain::Quote>> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare("SELECT data FROM quote_cache")?;

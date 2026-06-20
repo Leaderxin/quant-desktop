@@ -22,7 +22,7 @@ pub async fn get_depth(
 ) -> Result<Depth, String> {
     let source = manager.active_source()
         .ok_or("No active data source")?;
-    source.fetch_depth(&code, &market).await
+    source.fetch_depth(&code, &market).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,7 +33,7 @@ pub async fn get_intraday(
 ) -> Result<Vec<MinuteData>, String> {
     let source = manager.active_source()
         .ok_or("No active data source")?;
-    source.fetch_minute_data(&code, &market).await
+    source.fetch_minute_data(&code, &market).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -45,5 +45,5 @@ pub async fn get_kline(
 ) -> Result<Vec<KLineData>, String> {
     let source = manager.active_source()
         .ok_or("No active data source")?;
-    source.fetch_kline(&code, &market, &period).await
+    source.fetch_kline(&code, &market, &period).await.map_err(|e| e.to_string())
 }

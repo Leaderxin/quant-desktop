@@ -20,10 +20,12 @@ defineProps<{
   initError?: string | null;
   initReady?: boolean;
   quoteError?: string | null;
+  appError?: string | null;
 }>();
 
 defineEmits<{
   retry: [];
+  dismissAppError: [];
 }>();
 </script>
 
@@ -43,6 +45,18 @@ defineEmits<{
           </svg>
           重试
         </button>
+      </div>
+    </div>
+
+    <!-- Global child component error boundary (non-blocking) -->
+    <div v-else-if="appError && initReady" class="warning-banner" role="alert">
+      <div class="warning-banner-content">
+        <svg class="warning-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+          <path d="M8 1.5L15.5 14.5H.5L8 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="M8 6v3M8 11h.007" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+        <span class="warning-text">{{ appError }}</span>
+        <button class="error-dismiss-btn" @click="$emit('dismissAppError')" aria-label="关闭">✕</button>
       </div>
     </div>
 
@@ -146,5 +160,20 @@ defineEmits<{
 .warning-text {
   font-size: 11px;
   color: var(--color-warning);
+}
+.error-dismiss-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--color-warning);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+.error-dismiss-btn:hover {
+  opacity: 1;
 }
 </style>

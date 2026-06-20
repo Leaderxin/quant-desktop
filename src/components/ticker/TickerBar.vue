@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { availableMonitors, getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -17,7 +17,7 @@ let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let unlistenTheme: UnlistenFn | null = null;
 let unlistenDatasource: UnlistenFn | null = null;
 
-let watchlistPollTimer: ReturnType<typeof setInterval> | null = null;
+let unlistenWatchlist: UnlistenFn | null = null;
 
 const initFailed = ref(false);
 
@@ -30,7 +30,7 @@ onMounted(async () => {
     startCycle();
     startThemeListen();
     startDatasourceListen();
-    startWatchlistPoll();
+    startWatchlistListener();
   } catch (e) {
     initFailed.value = true;
     console.error('[TickerBar] init failed:', e);
@@ -42,16 +42,19 @@ onUnmounted(() => {
   if (cycleTimer) clearInterval(cycleTimer);
   if (unlistenTheme) unlistenTheme();
   if (unlistenDatasource) unlistenDatasource();
-  if (watchlistPollTimer) clearInterval(watchlistPollTimer);
-  // Clean up any lingering document-level drag listeners
-  document.removeEventListener('mousemove', onDocMouseMove);
-  document.removeEventListener('mouseup', onDocMouseUp);
+  if (unlistenWatchlist) unlistenWatchlist();
 });
 
-function startWatchlistPoll() {
-  watchlistPollTimer = setInterval(() => {
-    watchlist.fetchWatchlist().catch((e) => { console.error('[TickerBar] poll failed:', e); });
-  }, 3000);
+function startWatchlistListener() {
+  listen('watchlist-changed', () => {
+    watchlist.fetchWatchlist().catch((e) => {
+      console.error('[TickerBar] watchlist-changed refresh failed:', e);
+    });
+  }).then((unlisten) => {
+    unlistenWatchlist = unlisten;
+  }).catch((e) => {
+    console.error('[TickerBar] Failed to listen watchlist-changed:', e);
+  });
 }
 
 function startThemeListen() {
@@ -109,103 +112,31 @@ const visibleItems = computed(() => {
 
 const retryHintVisible = ref(false);
 
-// ── Dragging ─────────────────────────────────────────────────────
-// Uses document-level listeners so drag continues even when cursor
-// leaves the tiny 230×38 window.  Keeps the ticker inside the desktop
-// work area (union of all monitors).  Throttled via rAF.
-// ──────────────────────────────────────────────────────────────────
-let dragging = false;
-let dragScreenX = 0;
-let dragScreenY = 0;
-let winStartPhysicalX = 0;
-let winStartPhysicalY = 0;
-let scaleFactor = 1;
-let setPosPending = false;
+// ── Dragging (native OS-level via Tauri startDragging) ──
+// Delegates the drag to the OS compositor — zero JS overhead, zero IPC
+// latency, perfectly smooth.  Position is auto-saved by the Rust
+// WindowEvent::Moved handler in lib.rs.  We detect click-vs-drag by
+// comparing window position before and after startDragging resolves.
+const tickerWindow = getCurrentWindow();
 
-let clampMinX = 0;
-let clampMinY = 0;
-let clampMaxX = Infinity;
-let clampMaxY = Infinity;
-let tickerPhysicalW = 230;
-let tickerPhysicalH = 38;
-
-function clamp(val: number, min: number, max: number): number {
-  return val < min ? min : val > max ? max : val;
-}
-
-function onDocMouseMove(e: MouseEvent) {
-  if (e.buttons !== 1) return;
-  const dx = Math.abs(e.screenX - dragScreenX);
-  const dy = Math.abs(e.screenY - dragScreenY);
-  if (!dragging && (dx > 4 || dy > 4)) {
-    dragging = true;
+async function onMouseDown(_e: MouseEvent) {
+  if (initFailed.value) {
+    handleClick();
+    return;
   }
-  if (dragging && !setPosPending) {
-    setPosPending = true;
-    const physicalDx = Math.round((e.screenX - dragScreenX) * scaleFactor);
-    const physicalDy = Math.round((e.screenY - dragScreenY) * scaleFactor);
-    const newX = clamp(winStartPhysicalX + physicalDx, clampMinX, clampMaxX - tickerPhysicalW);
-    const newY = clamp(winStartPhysicalY + physicalDy, clampMinY, clampMaxY - tickerPhysicalH);
-    getCurrentWindow().setPosition(new PhysicalPosition(newX, newY));
-    requestAnimationFrame(() => { setPosPending = false; });
-  }
-}
+  try {
+    const startPos = await tickerWindow.outerPosition();
+    await tickerWindow.startDragging();
+    const endPos = await tickerWindow.outerPosition();
 
-function onDocMouseUp(_e: MouseEvent) {
-  if (!dragging) {
+    // Detect click vs drag
+    if (Math.abs(endPos.x - startPos.x) < 2 && Math.abs(endPos.y - startPos.y) < 2) {
+      handleClick();
+    }
+  } catch (e) {
+    console.error('[TickerBar] startDragging failed:', e);
     handleClick();
   }
-  dragging = false;
-  setPosPending = false;
-  document.removeEventListener('mousemove', onDocMouseMove);
-  document.removeEventListener('mouseup', onDocMouseUp);
-}
-
-async function onMouseDown(e: MouseEvent) {
-  dragScreenX = e.screenX;
-  dragScreenY = e.screenY;
-  dragging = false;
-  setPosPending = false;
-
-  try {
-    const win = getCurrentWindow();
-    const pos = await win.outerPosition();
-    winStartPhysicalX = pos.x;
-    winStartPhysicalY = pos.y;
-    scaleFactor = await win.scaleFactor();
-
-    const monitors = await availableMonitors();
-    if (monitors.length > 0) {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const m of monitors) {
-        const mPos = m.position;
-        const mSize = m.size;
-        if (mPos.x < minX) minX = mPos.x;
-        if (mPos.y < minY) minY = mPos.y;
-        if (mPos.x + mSize.width > maxX) maxX = mPos.x + mSize.width;
-        if (mPos.y + mSize.height > maxY) maxY = mPos.y + mSize.height;
-      }
-      clampMinX = minX;
-      clampMinY = minY;
-      clampMaxX = maxX;
-      clampMaxY = maxY;
-    }
-    tickerPhysicalW = Math.round(230 * scaleFactor);
-    tickerPhysicalH = Math.round(38 * scaleFactor);
-  } catch {
-    winStartPhysicalX = 0;
-    winStartPhysicalY = 0;
-    scaleFactor = 1;
-    clampMinX = 0;
-    clampMinY = 0;
-    clampMaxX = Infinity;
-    clampMaxY = Infinity;
-  }
-
-  document.removeEventListener('mousemove', onDocMouseMove);
-  document.removeEventListener('mouseup', onDocMouseUp);
-  document.addEventListener('mousemove', onDocMouseMove);
-  document.addEventListener('mouseup', onDocMouseUp);
 }
 
 async function handleClick() {
@@ -213,7 +144,7 @@ async function handleClick() {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
     if (unlistenDatasource) { unlistenDatasource(); unlistenDatasource = null; }
-    if (watchlistPollTimer) { clearInterval(watchlistPollTimer); watchlistPollTimer = null; }
+    if (unlistenWatchlist) { unlistenWatchlist(); unlistenWatchlist = null; }
     quoteStore.stopListening();
 
     initFailed.value = false;
@@ -226,7 +157,7 @@ async function handleClick() {
       startCycle();
       startThemeListen();
       startDatasourceListen();
-      startWatchlistPoll();
+      startWatchlistListener();
       retryHintVisible.value = false;
     } catch (e) {
       initFailed.value = true;

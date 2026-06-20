@@ -1,8 +1,4 @@
-use std::sync::OnceLock;
-use std::time::Duration;
-
 use encoding_rs::GBK;
-use reqwest::Client;
 
 use crate::domain::StockBrief;
 use super::headers;
@@ -12,16 +8,6 @@ const TENCENT_SUGGEST_URL: &str = "http://smartbox.gtimg.cn/s3/";
 
 /// Maximum number of search results returned to the frontend
 const MAX_RESULTS: usize = 20;
-
-fn client() -> &'static Client {
-    static CLIENT: OnceLock<Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(Duration::from_secs(8))
-            .build()
-            .expect("Failed to build search reqwest Client")
-    })
-}
 
 /// Search stocks by code or name using Sina's public suggest API.
 ///
@@ -40,7 +26,7 @@ pub async fn suggest_search(keyword: &str) -> Result<Vec<StockBrief>, String> {
     let url = format!("{}&key={}", SINA_SUGGEST_URL, urlencoding(trimmed));
 
     let resp = headers::with_browser_headers(
-        client().get(&url),
+        super::shared_client().get(&url),
         "https://finance.sina.com.cn",
     )
         .send()
@@ -81,7 +67,7 @@ pub async fn tencent_suggest_search(keyword: &str) -> Result<Vec<StockBrief>, St
     );
 
     let resp = headers::with_browser_headers(
-        client().get(&url),
+        super::shared_client().get(&url),
         "https://gu.qq.com",
     )
         .send()
