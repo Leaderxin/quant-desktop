@@ -72,3 +72,12 @@ export interface KLineData {
 }
 
 export type PeriodType = 'minute' | 'daily' | 'weekly' | 'monthly';
+
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  release_date: string;
+  notes: string;
+  release_url: string;
+  download_size: number | null;
+}

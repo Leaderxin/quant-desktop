@@ -123,3 +123,14 @@ impl AppError {
         }
     }
 }
+
+/// Update check result returned to frontend
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateInfo {
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_date: String,
+    pub notes: String,
+    pub release_url: String,
+    pub download_size: Option<u64>,
+}
