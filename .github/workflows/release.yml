@@ -143,26 +143,6 @@ jobs:
           echo "=== Changelog ==="
           cat changelog-notes.md
 
-      - name: Sign installers
-        run: |
-          npm ci
-
-          # Write private key to temp file, then set env var from file
-          # (bypasses any YAML-level encoding issues with base64 secrets)
-          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > /tmp/tauri-key
-          export TAURI_SIGNING_PRIVATE_KEY="$(cat /tmp/tauri-key)"
-          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
-          echo "Key bytes: $(wc -c < /tmp/tauri-key)"
-          rm -f /tmp/tauri-key
-
-          # Use local CLI via npm run (not npx) — ensures correct version
-          for f in release/*.{msi,exe,dmg,deb,AppImage}; do
-            [ -f "$f" ] || continue
-            echo "Signing $f..."
-            npm run tauri -- signer sign "$f"
-          done
-          ls -la release/
-
       - name: Generate latest.json
         run: |
           VERSION="${{ github.ref_name }}"
