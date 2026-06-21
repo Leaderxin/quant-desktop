@@ -144,25 +144,28 @@ jobs:
           ls -la release/
 
       - name: Sign and generate latest.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
-          # Write key to temp file (printf avoids trailing newline)
-          printf '%s' "${{ secrets.TAURI_PRIVATE_KEY }}" > /tmp/tauri-key.pem
-          echo "Key size: $(wc -c < /tmp/tauri-key.pem) bytes"
-
           VERSION="${{ github.ref_name }}"
           NOTES=$(jq -Rs '.' changelog-notes.md)
           echo "VERSION=$VERSION"
 
-          npx tauri signer sign \
-            --private-key-path /tmp/tauri-key.pem \
-            --password "${{ secrets.TAURI_KEY_PASSWORD }}" \
-            --generate-latest-json \
-            --version "$VERSION" \
-            --notes "$NOTES" \
-            release/ \
-            -o latest.json
+          # tauri signer needs the full project context (node_modules + src-tauri/)
+          npm ci --ignore-scripts
+          cd src-tauri
 
-          rm -f /tmp/tauri-key.pem
+          npx tauri signer sign \
+            --generate-latest-json \
+            --version "${VERSION#v}" \
+            --notes "$NOTES" \
+            ../release/ \
+            -o ../latest.json
+
+          cd ..
+          echo "=== latest.json ==="
+          cat latest.json
 
       - name: Publish to public release repo
         uses: softprops/action-gh-release@v2
