@@ -1,6 +1,5 @@
 use crate::datasource::market_clock::MarketSession;
 use crate::domain::UpdateInfo;
-use semver::Version;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -34,19 +33,6 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
         latest_version
     );
 
-    // Parse versions for semantic comparison
-    let cur_ver = parse_semver(&current_version);
-    let new_ver = parse_semver(&latest_version);
-
-    if new_ver <= cur_ver {
-        log::info!(
-            "[updater] Remote version {} is not newer than current {}",
-            latest_version,
-            current_version
-        );
-        return Ok(None);
-    }
-
     let info = UpdateInfo {
         current_version,
         latest_version: latest_version.clone(),
@@ -57,7 +43,7 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
         notes: update.body.clone().unwrap_or_default(),
         release_url: format!(
             "https://github.com/Leaderxin/QuantDesktopRelease/releases/tag/v{}",
-            latest_version
+            latest_version.strip_prefix('v').unwrap_or(&latest_version)
         ),
         download_size: None,
     };
@@ -128,9 +114,3 @@ pub fn is_trading_session() -> bool {
     )
 }
 
-/// Parse a version string like "1.1.1" or "v1.1.1" into semver::Version.
-/// Falls back to 0.0.0 if parsing fails.
-fn parse_semver(s: &str) -> Version {
-    let s = s.strip_prefix('v').unwrap_or(s);
-    Version::parse(s).unwrap_or_else(|_| Version::new(0, 0, 0))
-}

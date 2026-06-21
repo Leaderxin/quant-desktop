@@ -33,5 +33,4 @@ log = "0.4"
 simplelog = "0.12"
 thiserror = "2"
 tauri-plugin-updater = "2"
-semver = "1"
 
