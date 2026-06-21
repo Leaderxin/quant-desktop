@@ -42,7 +42,7 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
             .unwrap_or_default(),
         notes: update.body.clone().unwrap_or_default(),
         release_url: format!(
-            "https://github.com/Leaderxin/QuantDesktopRelease/releases/tag/v{}",
+            "https://github.com/Leaderxin/quant-desktop/releases/tag/v{}",
             latest_version.strip_prefix('v').unwrap_or(&latest_version)
         ),
         download_size: None,

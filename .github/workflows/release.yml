@@ -107,7 +107,7 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
-  sign-and-publish:
+  release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
@@ -126,13 +126,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Extract changelog for this version
-        run: |
-          VERSION="${{ github.ref_name }}"
-          node scripts/extract-changelog.mjs "$VERSION" > changelog-notes.md
-          echo "=== Changelog ==="
-          cat changelog-notes.md
-
       - name: Flatten installer files
         run: |
           mkdir -p release
@@ -143,6 +136,13 @@ jobs:
           \) -exec cp {} release/ \;
           ls -la release/
 
+      - name: Extract changelog for this version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          node scripts/extract-changelog.mjs "$VERSION" > changelog-notes.md
+          echo "=== Changelog ==="
+          cat changelog-notes.md
+
       - name: Sign and generate latest.json
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
@@ -152,7 +152,6 @@ jobs:
           NOTES=$(jq -Rs '.' changelog-notes.md)
           echo "VERSION=$VERSION"
 
-          # tauri signer needs the full project context (node_modules + src-tauri/)
           npm ci --ignore-scripts
           cd src-tauri
 
@@ -167,42 +166,12 @@ jobs:
           echo "=== latest.json ==="
           cat latest.json
 
-      - name: Publish to public release repo
-        uses: softprops/action-gh-release@v2
-        with:
-          repository: Leaderxin/QuantDesktopRelease
-          token: ${{ secrets.PUBLIC_REPO_PAT }}
-          files: |
-            release/*
-            latest.json
-          generate_release_notes: true
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: quant-desktop-*
-          merge-multiple: true
-
-      - name: Flatten installer files
-        run: |
-          mkdir -p release
-          find . -type f \( \
-            -name "*.exe" -o -name "*.msi" -o \
-            -name "*.dmg" -o \
-            -name "*.deb" -o -name "*.AppImage" \
-          \) -exec cp {} release/ \;
-          ls -la release/
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          files: |
+            release/*
+            latest.json
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
