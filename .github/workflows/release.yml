@@ -144,17 +144,22 @@ jobs:
           cat changelog-notes.md
 
       - name: Sign installers
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          npm ci --ignore-scripts
+          npm ci
 
-          # Sign each installer file individually (generates .sig files)
+          # Write private key to temp file, then set env var from file
+          # (bypasses any YAML-level encoding issues with base64 secrets)
+          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > /tmp/tauri-key
+          export TAURI_SIGNING_PRIVATE_KEY="$(cat /tmp/tauri-key)"
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
+          echo "Key bytes: $(wc -c < /tmp/tauri-key)"
+          rm -f /tmp/tauri-key
+
+          # Use local CLI via npm run (not npx) — ensures correct version
           for f in release/*.{msi,exe,dmg,deb,AppImage}; do
             [ -f "$f" ] || continue
             echo "Signing $f..."
-            npx tauri signer sign "$f"
+            npm run tauri -- signer sign "$f"
           done
           ls -la release/
 
