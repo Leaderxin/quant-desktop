@@ -19,6 +19,9 @@ export const useUpdaterStore = defineStore('updater', () => {
   const hasUpdate = computed(() => updateStatus.value === 'available');
   const isDownloading = computed(() => updateStatus.value === 'downloading');
 
+  // Store unlisten function for cleanup (prevents listener leak on HMR)
+  let unlistenUpdateAvailable: (() => void) | null = null;
+
   // Listen for manual update triggers (tray menu / settings button).
   // Startup auto-check goes through useUpdateCheck composable instead,
   // which gates on is_trading_session() before showing the dialog.
@@ -27,6 +30,8 @@ export const useUpdaterStore = defineStore('updater', () => {
     updateInfo.value = event.payload;
     // Manual triggers always show dialog (user explicitly asked)
     dialogVisible.value = true;
+  }).then((fn) => {
+    unlistenUpdateAvailable = fn;
   }).catch((e) => console.error('[updater] Failed to listen update-available:', e));
 
   async function checkForUpdate(): Promise<UpdateInfo | null> {
@@ -106,6 +111,13 @@ export const useUpdaterStore = defineStore('updater', () => {
     }
   }
 
+  function cleanup() {
+    if (unlistenUpdateAvailable) {
+      unlistenUpdateAvailable();
+      unlistenUpdateAvailable = null;
+    }
+  }
+
   function reset() {
     updateStatus.value = 'idle';
     updateInfo.value = null;
@@ -132,5 +144,6 @@ export const useUpdaterStore = defineStore('updater', () => {
     openReleasePage,
     showDialog,
     reset,
+    cleanup,
   };
 });

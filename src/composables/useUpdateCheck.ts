@@ -38,12 +38,11 @@ export function useUpdateCheck() {
   async function manualCheck(): Promise<boolean> {
     const info = await updater.checkForUpdate();
     if (info) {
-      updater.showDialog();
+      // Manual triggers always show the dialog (user explicitly asked)
+      updater.dialogVisible = true;
       return true;
-    } else if (updater.updateStatus === 'idle') {
-      return false; // No update
     }
-    return true;
+    return false;
   }
 
   return { performStartupCheck, manualCheck };
