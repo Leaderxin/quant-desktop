@@ -143,30 +143,26 @@ jobs:
           echo "=== Changelog ==="
           cat changelog-notes.md
 
-      - name: Sign and generate latest.json
+      - name: Sign installers
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          # Export signing key as env vars (tauri signer reads these automatically)
-          export TAURI_SIGNING_PRIVATE_KEY="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
+          npm ci --ignore-scripts
 
-          # Debug: verify key is set (masked by GitHub, shows ***)
-          echo "Key length: ${#TAURI_SIGNING_PRIVATE_KEY} chars"
+          # Sign each installer file individually (generates .sig files)
+          for f in release/*.{msi,exe,dmg,deb,AppImage}; do
+            [ -f "$f" ] || continue
+            echo "Signing $f..."
+            npx tauri signer sign "$f"
+          done
+          ls -la release/
 
+      - name: Generate latest.json
+        run: |
           VERSION="${{ github.ref_name }}"
           NOTES=$(jq -Rs '.' changelog-notes.md)
-          echo "VERSION=$VERSION"
-
-          npm ci --ignore-scripts
-          cd src-tauri
-
-          npx tauri signer sign \
-            --generate-latest-json \
-            --version "${VERSION#v}" \
-            --notes "$NOTES" \
-            ../release/ \
-            -o ../latest.json
-
-          cd ..
+          node scripts/make-latest-json.mjs "$VERSION" "$NOTES" release/ latest.json
           echo "=== latest.json ==="
           cat latest.json
 
