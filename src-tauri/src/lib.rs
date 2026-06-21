@@ -180,9 +180,11 @@ pub fn run() {
                                     }
                                     Ok(None) => {
                                         log::info!("[updater] Manual check: already up to date");
+                                        let _ = handle.emit("update-check-complete", "up-to-date");
                                     }
                                     Err(e) => {
                                         log::warn!("[updater] Manual check failed: {}", e);
+                                        let _ = handle.emit("update-check-complete", "error");
                                     }
                                 }
                             });

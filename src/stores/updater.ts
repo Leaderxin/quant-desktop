@@ -18,6 +18,8 @@ export const useUpdaterStore = defineStore('updater', () => {
 
   const hasUpdate = computed(() => updateStatus.value === 'available');
   const isDownloading = computed(() => updateStatus.value === 'downloading');
+  // Whether the last check found no update (for UI feedback)
+  const isUpToDate = ref(false);
 
   // Store unlisten function for cleanup (prevents listener leak on HMR)
   let unlistenUpdateAvailable: (() => void) | null = null;
@@ -34,6 +36,14 @@ export const useUpdaterStore = defineStore('updater', () => {
     unlistenUpdateAvailable = fn;
   }).catch((e) => console.error('[updater] Failed to listen update-available:', e));
 
+  // Listen for tray menu "no update" results
+  listen<string>('update-check-complete', (event) => {
+    if (event.payload === 'up-to-date') {
+      isUpToDate.value = true;
+      setTimeout(() => { isUpToDate.value = false; }, 5000);
+    }
+  }).catch((e) => console.error('[updater] Failed to listen update-check-complete:', e));
+
   async function checkForUpdate(): Promise<UpdateInfo | null> {
     updateStatus.value = 'checking';
     errorMessage.value = '';
@@ -46,12 +56,16 @@ export const useUpdaterStore = defineStore('updater', () => {
         return result;
       } else {
         updateStatus.value = 'idle';
+        isUpToDate.value = true;
         lastCheckTime.value = new Date().toISOString();
+        // Auto-clear "up to date" after 5 seconds
+        setTimeout(() => { isUpToDate.value = false; }, 5000);
         return null;
       }
     } catch (e) {
       updateStatus.value = 'error';
       errorMessage.value = String(e).slice(0, 200);
+      isUpToDate.value = false;
       console.error('[updater] checkForUpdate failed:', e);
       return null;
     }
@@ -137,6 +151,7 @@ export const useUpdaterStore = defineStore('updater', () => {
     dialogVisible,
     hasUpdate,
     isDownloading,
+    isUpToDate,
     checkForUpdate,
     downloadAndInstall,
     dismissUpdate,

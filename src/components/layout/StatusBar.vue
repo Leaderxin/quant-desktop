@@ -37,10 +37,11 @@ onMounted(async () => {
       <span class="sb-version" v-if="appVersion">v{{ appVersion }}</span>
       <button
         class="sb-check-btn"
+        :class="{ 'sb-up-to-date': updater.isUpToDate }"
         :disabled="updater.updateStatus === 'checking'"
         @click="manualCheck"
       >
-        {{ updater.updateStatus === 'checking' ? '检查中...' : '检查更新' }}
+        {{ updater.updateStatus === 'checking' ? '检查中...' : updater.isUpToDate ? '已是最新版本' : '检查更新' }}
       </button>
       <span class="sb-sep">·</span>
       <span class="sb-copyright">{{ copyright }}</span>
@@ -191,6 +192,9 @@ onMounted(async () => {
 .sb-check-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.sb-check-btn.sb-up-to-date {
+  color: #3fb950;
 }
 .sb-copyright {
   color: var(--color-text-tertiary);
