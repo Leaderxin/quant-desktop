@@ -79,18 +79,16 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
     update
         .download_and_install(
             |downloaded, total| {
-                let total = total.unwrap_or(0);
-                let percent = if total > 0 {
-                    ((downloaded as f64 / total as f64) * 100.0) as u32
-                } else {
-                    0
+                let percent = match total {
+                    Some(t) if t > 0 => ((downloaded as f64 / t as f64) * 100.0),
+                    _ => 0.0,
                 };
                 let _ = handle.emit(
                     "update-download-progress",
                     serde_json::json!({
                         "downloaded": downloaded,
                         "total": total,
-                        "percent": percent.min(100),
+                        "percent": (percent * 10.0).round() / 10.0,
                     }),
                 );
             },

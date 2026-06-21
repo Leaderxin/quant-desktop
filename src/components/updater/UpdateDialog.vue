@@ -31,6 +31,29 @@ const downloadLabel = computed(() => {
   return '';
 });
 
+const formattedDate = computed(() => {
+  const raw = updater.updateInfo?.release_date;
+  if (!raw) return '--';
+  // Parse "YYYY-MM-DD HH:MM:SS[.fff] [+-HH:MM[:SS]]" (time crate format)
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?\s*(?:([+-])(\d{2}):(\d{2})(?::\d{2})?)?/);
+  if (m) {
+    const year = +m[1], month = +m[2] - 1, day = +m[3];
+    let hour = +m[4], min = +m[5], sec = +m[6];
+    // Apply UTC offset to get Beijing time (UTC+8) if offset present
+    if (m[7] && m[8]) {
+      const offH = (m[7] === '+' ? 1 : -1) * +m[8];
+      hour += 8 - offH; // convert via UTC: remove offset, add Beijing
+    }
+    // Normalize after timezone math
+    const d = new Date(year, month, day, hour, min, sec);
+    if (!isNaN(d.getTime())) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+  }
+  return raw;
+});
+
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -136,7 +159,7 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
               <rect x="2" y="3" width="12" height="11" rx="1"/>
               <path d="M5 1v3M11 1v3M2 6h12"/>
             </svg>
-            {{ updater.updateInfo?.release_date || '--' }}
+            {{ formattedDate }}
           </span>
         </div>
 
@@ -165,6 +188,7 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
           <NProgress
             :percentage="updater.downloadProgress"
             :status="progressStatus"
+            :processing="updater.updateStatus === 'downloading' && updater.downloadProgress === 0"
             :show-indicator="false"
             :height="6"
             :border-radius="3"
@@ -175,7 +199,7 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
             </template>
             <template v-else>
               <span>{{ downloadLabel }}</span>
-              <span class="tabular-nums">{{ updater.downloadProgress }}%</span>
+              <span class="tabular-nums">{{ updater.downloadProgress.toFixed(1) }}%</span>
             </template>
           </div>
         </div>

@@ -32,6 +32,9 @@ pub fn run() {
                 .expect("Failed to get system data directory")
                 .join("quant-desktop");
 
+            // Detect local proxy (Clash/V2Ray) for updater downloads
+            detect_and_set_proxy();
+
             // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file)
             std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
             let log_file = File::create(app_dir.join("quant-desktop.log"))
@@ -468,4 +471,38 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start application");
+}
+
+/// Auto-detect local proxy (Clash/V2Ray) and set env vars for updater downloads.
+/// NO_PROXY excludes domestic stock API hosts so quotes/K-line still go direct.
+fn detect_and_set_proxy() {
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    // Skip if proxy already set
+    if std::env::var("HTTPS_PROXY").is_ok()
+        || std::env::var("HTTP_PROXY").is_ok()
+        || std::env::var("https_proxy").is_ok()
+        || std::env::var("http_proxy").is_ok()
+    {
+        return;
+    }
+
+    let ports = [7890u16, 10809, 10808, 7891, 1080, 8118, 8080];
+    for &port in &ports {
+        let addr = format!("127.0.0.1:{}", port);
+        if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(1)).is_ok() {
+            let proxy = format!("http://{}", addr);
+            std::env::set_var("HTTPS_PROXY", &proxy);
+            std::env::set_var("HTTP_PROXY", &proxy);
+            // Exclude domestic stock APIs from proxy
+            std::env::set_var(
+                "NO_PROXY",
+                "sinajs.cn,sina.com.cn,gtimg.cn,gu.qq.com,qq.com,localhost,127.0.0.1",
+            );
+            log::info!("[proxy] {} (stock APIs excluded)", proxy);
+            return;
+        }
+    }
+    log::info!("[proxy] No local proxy detected");
 }
