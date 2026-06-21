@@ -146,8 +146,8 @@ jobs:
       - name: Sign and generate latest.json
         run: |
           # Export signing key as env vars (tauri signer reads these automatically)
-          export TAURI_SIGNING_PRIVATE_KEY="${{ secrets.TAURI_PRIVATE_KEY }}"
-          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${{ secrets.TAURI_KEY_PASSWORD }}"
+          export TAURI_SIGNING_PRIVATE_KEY="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
 
           # Debug: verify key is set (masked by GitHub, shows ***)
           echo "Key length: ${#TAURI_SIGNING_PRIVATE_KEY} chars"
