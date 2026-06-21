@@ -143,6 +143,21 @@ jobs:
           echo "=== Changelog ==="
           cat changelog-notes.md
 
+      - name: Sign installers
+        run: |
+          npm ci
+
+          # Write private key to default tauri signer location
+          mkdir -p ~/.tauri
+          printf '%s' "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" > ~/.tauri/quant-desktop.key
+
+          for f in release/*.{msi,exe,dmg,deb,AppImage}; do
+            [ -f "$f" ] || continue
+            echo "Signing $f..."
+            npm run tauri -- signer sign "$f" --private-key ~/.tauri/quant-desktop.key --password "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}"
+          done
+          ls -la release/
+
       - name: Generate latest.json
         run: |
           VERSION="${{ github.ref_name }}"
