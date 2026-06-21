@@ -12,6 +12,9 @@ npm ci
 npm run tauri dev
 
 # Build for production (cross-platform: .exe on Windows, .dmg on macOS, .deb/.AppImage on Linux)
+# Requires signing env vars for updater artifacts:
+#   $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\quant-desktop.key"
+#   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 npm run tauri:build
 
 # Alternative: cross-platform build with proxy auto-detect (see scripts/build.mjs)

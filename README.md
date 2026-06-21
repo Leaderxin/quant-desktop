@@ -2,7 +2,7 @@
 
 桌面级 A 股行情监控工具，基于 Tauri 2 + Vue 3 + Rust 构建。
 
-当前版本：**v0.3.0**
+当前版本：**v1.2.2**
 
 ## 功能
 
@@ -16,6 +16,7 @@
 - **深色 / 浅色主题** — 一键切换，CSS 变量驱动，行情条同步响应
 - **窗口记忆** — 主窗口位置/大小自动保存，重启恢复，跨显示器边界保护
 - **离线缓存** — 行情数据写入 SQLite，重启即时恢复上一次报价
+- **自动更新** — 启动时自动检测新版本，交易时段智能抑制弹窗，CHANGELOG 展示，一键下载安装
 
 ## 技术栈
 
@@ -55,13 +56,19 @@ cargo build --manifest-path src-tauri/Cargo.toml
 
 ### 构建
 
-```bash
+```powershell
+# Windows PowerShell: 设置签名环境变量（更新功能需要）
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\quant-desktop.key"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
+
 # 跨平台打包（自动适配系统）
 npm run tauri:build
 
 # 或使用带代理自动检测的构建脚本
 node scripts/build.mjs
 ```
+
+> 签名密钥由 `npx tauri signer generate` 生成。CI 构建设置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secrets 即可。
 
 | 平台 | 产物 |
 |------|------|
@@ -86,11 +93,13 @@ quant-desktop/
 │   │   └── settings.ts           # 设置（主题、数据源切换）
 │   ├── composables/
 │   │   ├── useTauriEvent.ts      # Tauri 事件监听封装（自动清理）
-│   │   └── useTheme.ts           # 主题工具
+│   │   ├── useTheme.ts           # 主题工具
+│   │   └── useUpdateCheck.ts     # 更新检查（启动检测 + 交易时段门控）
 │   ├── components/
 │   │   ├── layout/
 │   │   │   ├── AppLayout.vue     # 主布局
-│   │   │   └── TopBar.vue        # 顶栏（品牌、数据源、主题切换）
+│   │   │   ├── TopBar.vue        # 顶栏（品牌、数据源、主题切换）
+│   │   │   └── StatusBar.vue     # 底栏（版本号、检查更新、主题、开机自启）
 │   │   ├── index/
 │   │   │   ├── IndexBar.vue      # 指数容器
 │   │   │   └── IndexCard.vue     # 单条指数
@@ -102,6 +111,8 @@ quant-desktop/
 │   │   │   ├── MinuteChart.vue   # 分时趋势图（KLineChart）
 │   │   │   ├── DepthPanel.vue    # 五档盘口
 │   │   │   └── StockSummary.vue  # 基本面概要
+│   │   ├── updater/
+│   │   │   └── UpdateDialog.vue  # 更新对话框（版本对比 + CHANGELOG + 进度）
 │   │   └── ticker/
 │   │       └── TickerBar.vue     # 浮动行情条
 │   └── assets/styles/
@@ -126,9 +137,12 @@ quant-desktop/
 │           ├── quote.rs          # 行情查询 + 盘口 + 分时数据
 │           ├── watchlist.rs      # 自选股 CRUD + 搜索（跨源回退）
 │           ├── settings.rs       # 设置读写 + 数据源切换
-│           └── window.rs         # 窗口控制
+│           ├── window.rs         # 窗口控制
+│           └── updater.rs        # 更新检查 + 下载安装 + 交易时段判断
 ├── scripts/
-│   └── build.mjs                 # 跨平台构建脚本（代理自动检测）
+│   ├── build.mjs                 # 跨平台构建脚本（代理自动检测）
+│   ├── extract-changelog.mjs     # CI 提取 CHANGELOG 指定版本条目
+│   └── make-latest-json.mjs      # CI 生成更新清单 latest.json
 ├── .github/workflows/
 │   └── release.yml               # CI/CD 自动构建发布
 ├── index.html                    # 主窗口 HTML
@@ -176,8 +190,8 @@ quant-desktop/
 |------|------|------|
 | Phase 1 (MVP) | ✅ 完成 | 项目脚手架、新浪适配器、托盘、行情条、自选 CRUD、指数看板、暗色主题 |
 | Phase 2 (体验) | ✅ 完成 | 个股详情（分时图+盘口+概要）、腾讯适配器、列排序、窗口记忆、交易时段感知轮询 |
-| Phase 3 (增强) | 📋 计划中 | K 线图+技术指标、价格预警、自选导入导出、开机自启、打包优化 |
-| Phase 4 (扩展) | 🔮 远期 | 港股/美股、专业数据源（Wind/Tushare）、自动更新、跨平台适配 |
+| Phase 3 (增强) | ✅ 部分完成 | 自动更新机制、K 线图+技术指标、自选导入导出、开机自启、打包优化 |
+| Phase 4 (扩展) | 🔮 远期 | 港股/美股、专业数据源（Wind/Tushare）、价格预警、跨平台适配 |
 
 ## IDE 推荐
 
