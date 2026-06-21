@@ -3,7 +3,6 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
-pub mod updater;
 
 use std::fs::File;
 use std::sync::Arc;
@@ -171,7 +170,7 @@ pub fn run() {
                         "check_update" => {
                             let handle = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                match crate::updater::commands::check_update(handle.clone()).await {
+                                match crate::commands::updater::check_update(handle.clone()).await {
                                     Ok(Some(info)) => {
                                         let _ = handle.emit("update-available", &info);
                                     }
@@ -457,9 +456,9 @@ pub fn run() {
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
             commands::window::show_main_window,
-            updater::commands::check_update,
-            updater::commands::install_update,
-            updater::commands::is_trading_session,
+            commands::updater::check_update,
+            commands::updater::install_update,
+            commands::updater::is_trading_session,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start application");
