@@ -145,11 +145,10 @@ jobs:
 
       - name: Sign and generate latest.json
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
-          # Write private key to temp file (more reliable than env var in CI)
-          echo "${{ secrets.TAURI_PRIVATE_KEY }}" > /tmp/tauri-signing.key
-          export TAURI_SIGNING_PRIVATE_KEY_PATH=/tmp/tauri-signing.key
+          echo "Key present: $(if [ -n '$TAURI_SIGNING_PRIVATE_KEY' ]; then echo YES; else echo NO; fi)"
 
           VERSION="${{ github.ref_name }}"
           NOTES=$(jq -Rs '.' changelog-notes.md)
@@ -162,8 +161,6 @@ jobs:
             --notes "$NOTES" \
             release/ \
             -o latest.json
-
-          rm -f /tmp/tauri-signing.key
 
           echo "=== latest.json ==="
           cat latest.json
