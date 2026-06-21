@@ -64,18 +64,19 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
   const sections: ChangelogSection[] = [];
   const lines = raw.split('\n');
   let currentSection: ChangelogSection | null = null;
-  let foundFirstHeader = false;
+  let passedHeader = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Skip the version header line (e.g. "## v1.2.0 (2026-06-20)" or "## 1.2.0")
-    if (!foundFirstHeader && /^##\s+v?\d/.test(line)) {
-      foundFirstHeader = true;
+  for (const line of lines) {
+    // Skip everything until we've passed the version header
+    if (!passedHeader) {
+      if (/^##\s+v?\d+\.\d+\.\d+/.test(line)) {
+        passedHeader = true;
+      }
       continue;
     }
-    // Also skip a date-only line right after the version header
-    if (foundFirstHeader && i === 1 && /^\d{4}-\d{2}-\d{2}/.test(line.trim())) {
+
+    // Skip date line that immediately follows the version header
+    if (passedHeader && /^\d{4}-\d{2}-\d{2}/.test(line.trim())) {
       continue;
     }
 
@@ -91,7 +92,6 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
     const liMatch = line.match(/^[-*]\s+(.+)/);
     if (liMatch && currentSection) {
       currentSection.items.push(liMatch[1].trim());
-      continue;
     }
   }
 
@@ -381,11 +381,11 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
 }
 
 .progress-error {
-  color: #f85149;
+  color: var(--color-error, #f85149);
 }
 
 .error-text {
-  color: #f85149;
+  color: var(--color-error, #f85149);
 }
 
 /* ── Footer ── */
