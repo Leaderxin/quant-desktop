@@ -1,6 +1,6 @@
 [package]
 name = "quant-desktop"
-version = "1.2.0"
+version = "1.2.2"
 description = "A Tauri App"
 authors = ["Leaderxin"]
 edition = "2021"
@@ -32,5 +32,6 @@ encoding_rs = "0.8"
 log = "0.4"
 simplelog = "0.12"
 thiserror = "2"
+dirs = "5"
 tauri-plugin-updater = "2"
 

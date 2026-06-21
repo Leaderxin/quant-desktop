@@ -143,6 +143,7 @@ onMounted(async () => {
   border-top: 1px solid var(--color-border-0);
   flex-shrink: 0;
   font-size: var(--text-xs);
+  line-height: 1;
   color: var(--color-text-tertiary);
 }
 
@@ -150,6 +151,7 @@ onMounted(async () => {
 .sb-zone {
   display: flex;
   align-items: center;
+  height: 100%;
   gap: var(--space-2);
 }
 
@@ -158,6 +160,7 @@ onMounted(async () => {
   color: var(--color-border-1);
   user-select: none;
   font-weight: var(--font-weight-bold);
+  line-height: 1;
 }
 
 /* ── Zone 1: Info ── */
@@ -165,6 +168,7 @@ onMounted(async () => {
   font-weight: var(--font-weight-medium);
   color: var(--color-accent);
   font-family: var(--font-mono);
+  line-height: 1;
 }
 .sb-check-btn {
   display: inline-flex;
@@ -175,6 +179,7 @@ onMounted(async () => {
   background: transparent;
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
+  line-height: 1;
   font-family: var(--font-sans);
   cursor: pointer;
   transition: color var(--transition-fast), background var(--transition-fast);
@@ -189,6 +194,7 @@ onMounted(async () => {
 }
 .sb-copyright {
   color: var(--color-text-tertiary);
+  line-height: 1;
 }
 
 /* ── Zone 2: Settings (icon buttons + toggles) ── */
@@ -220,6 +226,7 @@ onMounted(async () => {
 }
 .sb-autolaunch-label {
   color: var(--color-text-tertiary);
+  line-height: 1;
   transition: color var(--transition-fast);
 }
 .sb-autolaunch:hover .sb-autolaunch-label {

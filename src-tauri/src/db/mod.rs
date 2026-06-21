@@ -52,7 +52,7 @@ impl Database {
         let defaults = [
             ("active_datasource", "tencent"),
             ("refresh_interval", "3"),
-            ("theme", "dark"),
+            ("theme", "light"),
             ("ticker_visible", "true"),
             ("auto_launch", "false"),
         ];

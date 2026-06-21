@@ -9,14 +9,14 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Record<string, string>>({});
   const datasources = ref<[string, string][]>([]);
   const activeDatasource = ref('sina');
-  const theme = ref<'dark' | 'light'>('dark');
+  const theme = ref<'dark' | 'light'>('light');
   const autoLaunch = ref(false);
 
   async function fetchSettings() {
     try {
       settings.value = await invoke<Record<string, string>>('get_settings');
       activeDatasource.value = settings.value['active_datasource'] || 'sina';
-      theme.value = (settings.value['theme'] as 'dark' | 'light') || 'dark';
+      theme.value = (settings.value['theme'] as 'dark' | 'light') || 'light';
       datasources.value = await invoke<[string, string][]>('list_datasources');
       autoLaunch.value = await isEnabled();
     } catch (e) {

@@ -26,10 +26,14 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Initialize database
-            let app_dir = app.path().app_data_dir().expect("Failed to get app data dir");
+            // Use a fixed directory name decoupled from the app identifier,
+            // so that identifier changes don't reset the database/logs.
+            let app_dir = dirs::data_dir()
+                .expect("Failed to get system data directory")
+                .join("quant-desktop");
 
             // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file)
+            std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
             let log_file = File::create(app_dir.join("quant-desktop.log"))
                 .expect("Failed to create log file");
             CombinedLogger::init(vec![
