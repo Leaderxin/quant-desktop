@@ -145,22 +145,25 @@ jobs:
 
       - name: Sign and generate latest.json
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
+          # Write private key to temp file (more reliable than env var in CI)
+          echo "${{ secrets.TAURI_PRIVATE_KEY }}" > /tmp/tauri-signing.key
+          export TAURI_SIGNING_PRIVATE_KEY_PATH=/tmp/tauri-signing.key
+
           VERSION="${{ github.ref_name }}"
           NOTES=$(jq -Rs '.' changelog-notes.md)
           echo "VERSION=$VERSION"
           echo "NOTES=$NOTES"
 
-          # tauri signer reads TAURI_SIGNING_PRIVATE_KEY and
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD from the environment automatically
           npx tauri signer sign \
             --generate-latest-json \
             --version "$VERSION" \
             --notes "$NOTES" \
             release/ \
             -o latest.json
+
+          rm -f /tmp/tauri-signing.key
 
           echo "=== latest.json ==="
           cat latest.json
