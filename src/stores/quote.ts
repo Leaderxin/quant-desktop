@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { Quote, IndexQuote } from '@/types';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 export const useQuoteStore = defineStore('quote', () => {
@@ -40,6 +41,30 @@ export const useQuoteStore = defineStore('quote', () => {
         }
         indices.value = next;
       });
+
+      // Pull initial state from the backend cache to cover the race window
+      // where the scheduler already emitted data before listeners were ready
+      // (e.g. first launch during non-trading hours).
+      try {
+        const [cachedQuotes, cachedIndices] = await Promise.all([
+          invoke<Quote[]>('get_quotes'),
+          invoke<IndexQuote[]>('get_indices'),
+        ]);
+        if (cachedQuotes.length > 0) {
+          const map = new Map<string, Quote>();
+          for (const q of cachedQuotes) {
+            map.set(`${q.market}:${q.code}`, q);
+          }
+          quotes.value = map;
+          lastUpdate.value = Date.now();
+        }
+        if (cachedIndices.length > 0) {
+          indices.value = cachedIndices;
+        }
+      } catch (e) {
+        // Non-critical: events will populate the store on next poll cycle
+        console.warn('[quote store] Failed to pull initial cache state:', e);
+      }
 
       error.value = null;
     } catch (e) {
