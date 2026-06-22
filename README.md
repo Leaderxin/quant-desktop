@@ -212,6 +212,12 @@ quant-desktop/
 | Phase 3 (增强) | ✅ 完成 | K 线图（日/周/月）+ 成交量副图、指数详情面板、图表自动刷新、自适应轮询（探测/空闲）、自动更新、开机自启、五档盘口自动刷新 |
 | Phase 4 (扩展) | 🔮 远期 | 技术指标叠加（MA/BOLL/MACD）、价格预警、自选导入/导出、港股/美股、专业数据源（Wind/Tushare） |
 
+## 运维群
+
+欢迎加入微信运维群，进行产品运维、问题反馈或建议交流：
+
+<img src="public/qrcode.jpg" width="200" alt="微信运维群二维码" />
+
 ## IDE 推荐
 
 - [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
