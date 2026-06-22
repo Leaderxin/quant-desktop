@@ -82,6 +82,53 @@ node scripts/build.mjs
 
 > 产物输出在 `src-tauri/target/release/bundle/`。
 
+### 绿色版（Portable Zip）
+
+绿色版是一个免安装的 `.zip` 包，解压后直接运行 `quant-desktop.exe` 即可使用，**所有数据（数据库、日志）存储在 exe 同级 `data/` 目录下**，不写入系统 `%APPDATA%`，适合 U 盘携带或多版本并存。
+
+#### 工作原理
+
+程序启动时检测 exe 同级目录是否存在 `portable.dat` 空文件：
+
+| `portable.dat` | 数据目录 | 更新方式 |
+|---|---|---|
+| 存在 | `<exe 目录>/data/` | 手动下载新 zip 覆盖 |
+| 不存在 | `%APPDATA%/quant-desktop/` | 内置自动更新 |
+
+绿色版会自动隐藏"检查更新"按钮（状态栏）和托盘菜单中的更新选项，启动时也不会自动检测更新。
+
+#### 本地打包
+
+```powershell
+# 1. 先执行完整构建
+npm run tauri build
+
+# 2. 手动创建绿色版 zip
+$src = "src-tauri\target\release"
+$staging = "portable\quant-desktop"
+mkdir $staging -Force > $null
+Copy-Item "$src\quant-desktop.exe" -Destination "$staging\"
+New-Item -ItemType File -Path "$staging\portable.dat" > $null
+Compress-Archive -Path "$staging\*" -DestinationPath "$src\bundle\quant-desktop_1.2.5_x64-portable.zip"
+```
+
+> 产物：`src-tauri\target\release\bundle\quant-desktop_<version>_x64-portable.zip`
+
+#### CI 自动打包
+
+CI（`.github/workflows/release.yml`）在 Windows 构建后自动执行上述打包步骤，并上传到 GitHub Release。推 tag 即可触发，无需手动操作。
+
+#### 绿色版 vs 安装版
+
+| | 安装版（`.exe` / `.msi`） | 绿色版（`.zip`） |
+|---|---|---|
+| 安装方式 | 运行安装向导 | 解压即用 |
+| 数据位置 | `%APPDATA%/quant-desktop/` | `<exe 目录>/data/` |
+| 自动更新 | ✅ 后台静默更新 | ❌ 手动下载替换 |
+| 开机自启 | ✅ 支持 | ⚠️ 支持，但移动目录后失效 |
+| 注册表 | 写入卸载信息 | 无残留 |
+| 适用场景 | 日常固定使用 | U 盘携带、多版本测试 |
+
 ## 项目结构
 
 ```
