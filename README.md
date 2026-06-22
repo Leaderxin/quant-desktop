@@ -1,223 +1,193 @@
 # QuantDesktop
 
-桌面级 A 股行情监控工具，基于 Tauri 2 + Vue 3 + Rust 构建。
+> 🚀 **免费 · 专业 · 零打扰** —— 桌面级 A 股实时行情监控工具
 
-当前版本：**v1.2.5**
+<p align="center">
+  <img src="public/qrcode.jpg" width="200" alt="微信运维群二维码" />
+  <br/>
+  <sub>👆 扫码加入用户交流群</sub>
+</p>
 
-## 功能
+---
 
-- **实时行情** — 自选股批量刷新，交易时段自适应轮询（探测→正常→空闲三态），可切换腾讯证券 / 新浪财经数据源
-- **大盘指数** — 上证指数、深证成指、创业板指、科创 50、科创 100、中证 500、科创综指实时展示
-- **个股详情** — 点击自选行展开详情面板，包含分时趋势图 / K线图（日/周/月）、五档盘口、基本面概要（开/高/低/量/额/换手率）
-- **K 线图表** — 日 K / 周 K / 月 K，成交量副图含 MA5/MA10/MA20 均量线，蜡烛影线颜色与实体一致，涨跌颜色遵循 A 股习惯（与前收对比）
-- **指数详情** — 点击指数卡片展开指数详情面板，含分时图、K线图、成交量/成交额概要
-- **自动刷新** — 详情面板打开时，五档盘口 3 秒刷新，分时图 5 秒刷新，日 K 30 秒刷新，周/月 K 60 秒刷新
-- **浮动行情条** — 桌面置顶迷你行情条，2 只股票 3 秒自动轮播，鼠标悬停暂停，点击恢复主窗口
-- **系统托盘** — 关闭窗口最小化至托盘，左键单击切换显示/隐藏，右键菜单操作
-- **自选管理** — 添加、删除、排序（置顶 / 上移 / 下移 / 右键菜单），搜索支持跨数据源回退
-- **列排序** — 自选表格支持按涨跌幅、价格、成交量、代码等列排序
-- **深色 / 浅色主题** — 一键切换，CSS 变量驱动，行情条同步响应
-- **窗口记忆** — 主窗口位置/大小自动保存，重启恢复，跨显示器边界保护
-- **离线缓存** — 行情数据写入 SQLite，重启即时恢复上一次报价
-- **自适应轮询** — 交易时段进入时快速探测（3 次 ×2s），确认开市后正常轮询（2s），连续 10 次无价格变化自动降频（30s），节假日智能休眠
-- **自动更新** — 启动时自动检测新版本，交易时段智能抑制弹窗，CHANGELOG 展示，一键下载安装
-- **开机自启** — 状态栏开关，一键启用/禁用
+## 💡 你是否遇到过这些痛点？
 
-## 技术栈
+- 上班时偷偷看盘，浏览器切来切去太显眼
+- 手机盯盘效率低，K 线图太小看不清
+- 付费软件年费几百上千，功能虽多但真正用上的没几个
+- 装个看盘软件附带一堆广告弹窗、理财推荐
 
-| 层 | 技术 |
-|---|------|
-| 桌面框架 | Tauri 2 |
-| 前端 | Vue 3 + TypeScript + Pinia + Naive UI |
-| 图表 | KLineChart v10 |
-| 构建 | Vite + vue-tsc |
-| 后端 | Rust (tokio, reqwest, rusqlite, chrono, serde, async-trait) |
-| 数据源 | 腾讯证券 (默认)、新浪财经 (备用) — GBK 解码 |
-| 持久化 | SQLite (rusqlite bundled) |
-| 自动更新 | Tauri updater plugin |
+**QuantDesktop** 正是为解决这些问题而生 —— 一款真正**免费、轻量、专业**的桌面级 A 股行情监控工具。
 
-## 开发
+---
 
-### 前置要求
+## ✨ 什么是 QuantDesktop？
 
-- [Node.js](https://nodejs.org/) >= 18
-- [Rust](https://www.rust-lang.org/tools/install) 工具链
-- Windows 平台需安装 [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+QuantDesktop 是一款轻量级的桌面端 A 股行情监控工具，支持 **Windows / macOS / Linux** 三大平台。它从腾讯证券、新浪财经等公开数据源实时拉取行情，**完全免费，无需注册，开箱即用**。
 
-### 开始
+> 🏗️ **轻量高效**：安装包体积仅几 MB，运行时内存占用极低，不会拖慢你的电脑。
 
-```bash
-# 安装依赖
-npm install
+![主界面概览](public/screenshots/main-overview.jpg)
+<!-- TODO: 替换为主窗口完整截图，展示：指数栏 + 自选表格 + 详情面板 + 底部状态栏 -->
 
-# 启动开发模式（同时启动 Vite 和 Tauri）
-npm run tauri dev
+---
 
-# 类型检查
-npx vue-tsc --noEmit
+## 📊 核心功能
 
-# 仅编译 Rust 后端
-cargo build --manifest-path src-tauri/Cargo.toml
-```
+### 实时行情 + 大盘指数
 
-### 构建
+- **自选股批量刷新** —— 现价、涨跌幅、涨跌额、开/高/低、成交量、成交额、换手率，一览无余
+- **七大指数同步展示** —— 上证、深证、创业板指、科创 50、科创 100、中证 500、科创综指实时更新
+- **智能自适应轮询** —— 交易时段 2 秒快速刷新，盘前盘后自动降频，节假日智能休眠，不浪费带宽和电量
 
-```powershell
-# Windows PowerShell: 设置签名环境变量（更新功能需要）
-$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\quant-desktop.key"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
-npm run tauri:build
+### 专业图表分析
 
-# 或使用带代理自动检测的构建脚本
-node scripts/build.mjs
-```
+- **分时走势图** —— 盘中每分钟自动刷新，完整记录当日走势
+- **K 线图（日 / 周 / 月）** —— 蜡烛图严格遵循 A 股红涨绿跌习惯，成交量副图量价联动
+- **五档盘口** —— 买一至买五、卖一至卖五实时展示，3 秒自动刷新
 
-> 签名密钥由 `npx tauri signer generate` 生成。CI 构建设置 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 Secrets 即可。
+![K线图与分时图](public/screenshots/kline-chart.jpg)
+<!-- TODO: 替换为个股详情面板截图，同时展示 K线图 + 成交量副图 -->
 
-| 平台 | 产物 |
-|------|------|
-| Windows | NSIS `.exe` / `.msi` |
-| macOS | `.dmg` + `.app` |
-| Linux | `.deb` + `.AppImage` |
+### 自选股管理
 
-> 产物输出在 `src-tauri/target/release/bundle/`。
+- 添加、删除、排序（置顶 / 上移 / 下移），右键菜单快捷操作
+- 输入 6 位股票代码即时搜索，支持跨数据源智能回退
+- 按涨跌幅、价格、成交量、代码等任意列排序
 
-## 项目结构
+### 双数据源自动切换
 
-```
-quant-desktop/
-├── src/                          # Vue 前端
-│   ├── main.ts                   # 主窗口入口
-│   ├── ticker.ts                 # 行情条入口（独立 Vue 应用）
-│   ├── App.vue                   # 根组件（Naive UI 主题配置）
-│   ├── types/index.ts            # 前端类型定义（与 Rust domain 对应）
-│   ├── stores/                   # Pinia 状态管理
-│   │   ├── quote.ts              # 行情数据（事件驱动，Map 索引）
-│   │   ├── watchlist.ts          # 自选股 CRUD
-│   │   ├── settings.ts           # 设置（主题、数据源切换、开机自启）
-│   │   └── updater.ts            # 更新状态（检测/下载/安装）
-│   ├── composables/
-│   │   ├── useTauriEvent.ts      # Tauri 事件监听封装（自动清理）
-│   │   ├── useTheme.ts           # 主题工具
-│   │   ├── useChart.ts           # 图表通用逻辑（初始化、加载、自动刷新）
-│   │   └── useUpdateCheck.ts     # 更新检测（启动检测 + 交易时段门控）
-│   ├── components/
-│   │   ├── layout/
-│   │   │   ├── AppLayout.vue     # 主布局
-│   │   │   ├── TopBar.vue        # 顶栏（标语、数据源切换）
-│   │   │   └── StatusBar.vue     # 底栏（版本号、检查更新、主题、开机自启、联系）
-│   │   ├── index/
-│   │   │   ├── IndexBar.vue      # 指数容器
-│   │   │   └── IndexCard.vue     # 单条指数（点击展开详情）
-│   │   ├── watchlist/
-│   │   │   ├── WatchlistTable.vue # 自选股表格（排序、右键菜单、行点击展开）
-│   │   │   └── AddStockDialog.vue # 搜索添加弹窗（300ms 防抖）
-│   │   ├── detail/
-│   │   │   ├── StockDetail.vue   # 个股详情容器
-│   │   │   ├── IndexDetail.vue   # 指数详情容器
-│   │   │   ├── ChartSwitcher.vue # 图表周期切换（分时/日K/周K/月K）
-│   │   │   ├── MinuteChart.vue   # 分时趋势图（5s 自动刷新）
-│   │   │   ├── KLineChart.vue    # K线图（日30s/周月60s 自动刷新）
-│   │   │   ├── DepthPanel.vue    # 五档盘口（3s 自动刷新）
-│   │   │   └── StockSummary.vue  # 基本面概要
-│   │   ├── updater/
-│   │   │   └── UpdateDialog.vue  # 更新对话框（版本对比 + CHANGELOG + 进度）
-│   │   └── ticker/
-│   │       └── TickerBar.vue     # 浮动行情条
-│   └── assets/
-│       ├── styles/
-│       │   ├── variables.css     # 设计系统变量（颜色、间距、阴影）
-│       │   └── dark.css          # 滚动条样式
-│       └── chart.css             # 图表容器通用样式
-├── src-tauri/                    # Rust 后端
-│   ├── Cargo.toml
-│   ├── tauri.conf.json           # Tauri 配置（双窗口、打包、更新）
-│   ├── icons/                    # 应用图标
-│   └── src/
-│       ├── main.rs               # 入口
-│       ├── lib.rs                # 应用初始化、命令注册、托盘、调度器、更新
-│       ├── domain/mod.rs         # 数据结构（Quote, IndexQuote, Depth, Level, MinuteData, KLineData, Market）
-│       ├── db/mod.rs             # SQLite 数据库（自选、设置、缓存三表）
-│       ├── datasource/
-│       │   ├── mod.rs            # DataSource trait + DataSourceManager + 量额归一化
-│       │   ├── sina.rs           # 新浪财经适配器（指数用个股格式 API，沪指量 ×100）
-│       │   ├── tencent.rs        # 腾讯证券适配器（默认源）
-│       │   └── market_clock.rs   # 交易时段判断 + 自适应轮询状态机
-│       ├── cache/mod.rs          # 内存缓存 + 后台轮询调度器（探测/正常/空闲三态）
-│       └── commands/             # Tauri IPC 命令
-│           ├── quote.rs          # 行情查询 + 盘口 + 分时数据 + K线
-│           ├── watchlist.rs      # 自选股 CRUD + 搜索（跨源回退）
-│           ├── settings.rs       # 设置读写 + 数据源切换
-│           ├── window.rs         # 窗口控制
-│           └── updater.rs        # 更新检查 + 下载安装 + 交易时段判断
-├── scripts/
-│   ├── build.mjs                 # 跨平台构建脚本（代理自动检测）
-│   ├── extract-changelog.mjs     # CI 提取 CHANGELOG 指定版本条目
-│   └── make-latest-json.mjs      # CI 生成更新清单 latest.json
-├── .github/workflows/
-│   └── release.yml               # CI/CD 自动构建发布
-├── index.html                    # 主窗口 HTML
-├── ticker.html                   # 行情条 HTML（独立入口）
-├── vite.config.ts                # Vite 配置（双入口构建）
-└── tsconfig.json                 # TypeScript 严格模式配置
-```
+顶栏一键切换腾讯证券（默认）或新浪财经（备用），切换后即时刷新，零等待。
 
-## 数据流
+---
 
-```
-外部 API (腾讯/新浪)
-  → Scheduler (tokio 后台轮询，自适应频率)
-    → QuoteCache (内存 HashMap + SQLite 双写)
-      → app_handle.emit("quotes-updated" / "indices-updated" / "market-session-changed")
-        → Pinia Stores (Tauri 事件监听)
-          → Vue 响应式组件更新（主界面 + 行情条）
-```
+## 🌟 杀手锏功能
 
-按需请求：
+### 一、🖱️ 可拖拽的浮动行情条
 
-| 请求 | IPC 命令 | 目标组件 | 自动刷新 |
-|------|----------|----------|----------|
-| 五档盘口 | `get_depth` | DepthPanel | 3 秒 |
-| 分时图 | `get_intraday` | MinuteChart | 5 秒 |
-| 日 K 线 | `get_kline(period="daily")` | KLineChart | 30 秒 |
-| 周/月 K 线 | `get_kline(period="weekly"/"monthly")` | KLineChart | 60 秒 |
+这是 QuantDesktop **最受欢迎的功能**。
 
-## 窗口架构
+桌面右下角会显示一个迷你的行情条：
 
-| 窗口 | 标签 | 入口 | 配置 |
-|------|------|------|------|
-| 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭最小化至托盘，位置/大小持久化 |
-| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38，无边框置顶，定位桌面右下角，隐藏任务栏图标 |
+- ✅ **始终置顶**在所有窗口之上，无边框设计，不占任务栏空间
+- ✅ **每 3 秒自动轮播** 2 只自选股，显示股票名称、最新价和涨跌幅
+- ✅ **鼠标悬停暂停**，方便你仔细看某只股票
+- ✅ **直接拖拽**到桌面任意位置，丝滑零延迟
+- ✅ **点击恢复主窗口**，快速切换到完整看盘界面
+- ✅ **主题同步** —— 深色/浅色切换，行情条同步响应
 
-## 数据源
+![浮动行情条](public/screenshots/ticker-bar.jpg)
+<!-- TODO: 替换为行情条截图，展示浮在其他窗口之上的效果 -->
 
-通过 TopBar 下拉菜单可切换数据源，默认使用腾讯证券：
+> 💡 **典型场景**：把行情条拖到屏幕角落或副屏边缘，工作时余光一扫就能掌握自选股动态。比任何"老板键"都优雅 —— 因为**它看起来就像桌面的一部分**。
 
-| 数据源 | 标识符 | 编码 | 说明 |
-|--------|--------|------|------|
-| 腾讯证券 | `tencent` | GBK | 默认源，覆盖沪深京 A 股，盘口数据嵌入行情字段（位置 9-28），量 ×100 转股 |
-| 新浪财经 | `sina` | GBK | 备用源，指数用个股格式 API（更可靠）替代紧凑指数格式，沪指成交量自动 ×100 修正，盘口通过腾讯接口回退获取 |
+### 二、📌 系统托盘常驻
 
-特性：
-- **搜索跨源回退** — 当前源搜不到时自动尝试备用源
-- **自适应轮询** — 探测 → 正常 → 空闲三态，开盘快速确认，节假日自动休眠
-- **动态频率** — 交易 2s / 盘前 5s / 午休 10s / 闭市 30s
+- 关闭主窗口**不退出程序**，自动最小化到系统托盘
+- 左键托盘图标 → 显示/隐藏主窗口
+- 右键菜单 → 显示主窗口 / 切换行情条 / 退出
+- 支持**开机自启**，设为默认后台常驻
 
-## 开发阶段
+> 💡 早上开机，QuantDesktop 自动启动并缩在托盘里，行情条浮在桌面上。你不需要"打开看盘软件"这个动作 —— **行情一直在那儿**。
 
-| 阶段 | 状态 | 内容 |
-|------|------|------|
-| Phase 1 (MVP) | ✅ 完成 | 项目脚手架、新浪适配器、托盘、行情条、自选 CRUD、指数看板、暗色主题 |
-| Phase 2 (体验) | ✅ 完成 | 个股详情（分时图+盘口+概要）、腾讯适配器、列排序、窗口记忆、交易时段感知轮询 |
-| Phase 3 (增强) | ✅ 完成 | K 线图（日/周/月）+ 成交量副图、指数详情面板、图表自动刷新、自适应轮询（探测/空闲）、自动更新、开机自启、五档盘口自动刷新 |
-| Phase 4 (扩展) | 🔮 远期 | 技术指标叠加（MA/BOLL/MACD）、价格预警、自选导入/导出、港股/美股、专业数据源（Wind/Tushare） |
+### 三、🧠 窗口位置记忆
 
-## 运维群
+主窗口位置和大小自动保存，重启恢复原位。即使更换显示器也会智能检测边界，不会跑到屏幕外面去。
 
-欢迎加入微信运维群，进行产品运维、问题反馈或建议交流：
+### 四、⚡ 离线缓存
 
-<img src="public/qrcode.jpg" width="200" alt="微信运维群二维码" />
+行情数据自动写入本地缓存。重启应用时**立即恢复上一次报价**，无需等待网络请求 —— 打开就是最新行情。
 
-## IDE 推荐
+### 五、⏰ 交易时段智能感知
 
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+| 时段 | 轮询频率 | 说明 |
+|------|----------|------|
+| 开盘快速探测 | 2 秒 × 3 次 | 确认交易是否活跃 |
+| 正常交易 | 2 秒 | 实时跟踪价格变化 |
+| 盘前 / 午休 | 5~10 秒 | 适度降频 |
+| 连续无变化 | 30 秒 | 自动进入空闲态 |
+| 节假日 / 周末 | 30 秒 | 智能休眠 |
+
+自动更新提示也会在交易时段**智能抑制弹窗**，避免打断你盯盘。
+
+---
+
+## 🎨 界面设计
+
+- **深色 / 浅色主题**一键切换，白天黑夜都护眼
+- **等宽数字字体**，价格和涨跌幅列完美对齐
+- **A 股配色习惯** —— 红涨绿跌，一目了然
+- 界面简洁流畅，无冗余元素干扰
+
+---
+
+## 📦 安装与使用
+
+### 下载
+
+前往 [GitHub Releases](https://github.com/Leaderxin/quant-desktop/releases) 下载最新版本：
+
+| 平台 | 安装包格式 |
+|------|-----------|
+| Windows | `.exe` / `.msi` |
+| macOS | `.dmg` |
+| Linux | `.deb` / `.AppImage` |
+
+### 三步开始看盘
+
+1. **安装并启动** —— 首次启动自动创建数据库和默认配置
+2. **添加自选股** —— 点击"添加股票"，输入 6 位代码（如 `600519` 贵州茅台），搜索并添加
+3. **开始看盘** —— 主窗口查看完整行情，行情条常驻桌面后台监控
+
+---
+
+## 🗺️ 路线图
+
+### ✅ 已完成
+
+- [x] 实时行情 + 七大指数
+- [x] 分时图 + K 线图（日/周/月）+ 成交量副图
+- [x] 五档盘口（3s 自动刷新）
+- [x] 浮动行情条（拖拽、轮播、主题同步）
+- [x] 系统托盘常驻 + 开机自启
+- [x] 自选股增删改查 + 排序 + 搜索
+- [x] 深色 / 浅色主题
+- [x] 窗口位置记忆 + 离线缓存
+- [x] 自适应轮询 + 交易时段感知
+- [x] 自动更新 + 交易时段弹窗抑制
+
+### 📋 规划中
+
+- [ ] 技术指标叠加（MA / BOLL / MACD）
+- [ ] 价格预警通知
+- [ ] 自选股导入 / 导出（JSON / CSV）
+- [ ] 港股 / 美股市场支持
+- [ ] 专业数据源接入（Wind / Tushare）
+
+---
+
+## 🤝 开源与贡献
+
+QuantDesktop 完全开源，源码可见，自由使用、修改和分享。
+
+- **GitHub 仓库**：[Leaderxin/quant-desktop](https://github.com/Leaderxin/quant-desktop)
+- **Bug 反馈 & 功能建议**：欢迎提交 [Issue](https://github.com/Leaderxin/quant-desktop/issues)
+- **想参与开发？** 欢迎提交 PR，一起把工具做得更好
+
+---
+
+## 💬 结语
+
+QuantDesktop 的核心理念是 **"不打扰的看盘"**：
+
+> 不需要打开浏览器 · 不需要付费订阅 · 不需要笨重的客户端
+
+一个安静的系统托盘图标 + 一个可拖拽到任意位置的迷你行情条 + 需要时一键展开的完整看盘界面 —— **这就是 QuantDesktop 给你的一切**。
+
+如果你也是 A 股投资者，不妨试试看。完全免费，没有捆绑，不用注册。如果觉得好用，欢迎给个 **Star ⭐** 支持一下！
+
+---
+
+<p align="center">
+  <b>QuantDesktop v1.2.5</b> — 免费实时 A 股看盘，从桌面开始。
+</p>
