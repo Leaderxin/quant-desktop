@@ -148,7 +148,7 @@ impl DataSourceManager {
         self.sources.insert(name, source);
     }
 
-    /// Switch the active data source
+    /// Switch the active data source (notifies the scheduler to refresh immediately).
     pub fn set_active(&self, name: &str) -> Result<(), String> {
         if self.sources.contains_key(name) {
             *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.to_string();
@@ -157,6 +157,20 @@ impl DataSourceManager {
             Ok(())
         } else {
             log::warn!("Attempted to switch to unregistered data source: {}", name);
+            Err(format!("Data source '{}' is not registered", name))
+        }
+    }
+
+    /// Set the active data source WITHOUT notifying the scheduler.
+    /// Used during initial setup — the scheduler's main loop will pick up
+    /// the correct source on its first tick without a duplicate wakeup fetch.
+    pub fn set_active_initial(&self, name: &str) -> Result<(), String> {
+        if self.sources.contains_key(name) {
+            *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.to_string();
+            log::info!("Data source set (initial): {}", name);
+            Ok(())
+        } else {
+            log::warn!("Attempted to set unregistered data source: {}", name);
             Err(format!("Data source '{}' is not registered", name))
         }
     }

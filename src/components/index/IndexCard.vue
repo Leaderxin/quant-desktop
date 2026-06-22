@@ -57,11 +57,14 @@ const isUp = computed(() => props.index.change_pct >= 0);
   height: 68px;
   flex-shrink: 0;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  /* Only transition border/shadow on selection; background transitions on hover
+     are handled separately to avoid visual pulse when up/down state flips */
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .index-card:hover {
   background: var(--color-bg-elevated, rgba(255,255,255,0.04));
   border-color: var(--color-border, rgba(255,255,255,0.12));
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .index-card:focus-visible {
   outline: 2px solid var(--color-accent);

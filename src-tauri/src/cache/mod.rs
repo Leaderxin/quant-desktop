@@ -110,7 +110,7 @@ const PROBE_COUNT: u32 = 3;
 /// Interval used during probing phase (seconds)
 const PROBE_INTERVAL: u64 = 2;
 /// Number of consecutive unchanged polls before switching to idle
-const STREAK_THRESHOLD: u32 = 5;
+const STREAK_THRESHOLD: u32 = 10;
 /// Idle polling interval when market is detected as closed (seconds)
 const IDLE_INTERVAL: u64 = 30;
 
@@ -195,11 +195,9 @@ impl Scheduler {
         cache: Arc<QuoteCache>,
         db: Arc<crate::db::Database>,
         app_handle: tauri::AppHandle,
-        base_interval_secs: u64,
+        _base_interval_secs: u64,
     ) {
         tauri::async_runtime::spawn(async move {
-            let initial_interval = Duration::from_secs(base_interval_secs);
-            let mut interval = tokio::time::interval(initial_interval);
             let mut last_session = MarketSession::current();
             let mut state = PollingState::new();
 
@@ -220,8 +218,6 @@ impl Scheduler {
             });
 
             loop {
-                interval.tick().await;
-
                 // ── Session transition handling ──
                 let session = MarketSession::current();
                 if session != last_session {
@@ -252,14 +248,22 @@ impl Scheduler {
                 let outcome = Self::fetch_once(&data_manager, &cache, &db, &app_handle, &fetching, false).await;
 
                 // ── Adaptive interval ──
-                // Only update the state machine when we have actual quote data.
-                // None means empty watchlist / error / closed market — no data to
-                // judge price changes, so fall back to market_clock recommendation.
-                let new_interval = match outcome {
-                    Some(o) => state.update(o.prices_changed, session),
-                    None => session.recommended_interval(),
+                // Adaptive polling (probe → normal → idle) is only used during
+                // MorningTrade and AfternoonTrade sessions. During PreOpen,
+                // LunchBreak, and Closed, prices are expected to be static, so
+                // we skip the state machine and use the fixed recommended interval.
+                let in_trading = matches!(session, MarketSession::MorningTrade | MarketSession::AfternoonTrade);
+                let new_interval = match (outcome, in_trading) {
+                    (Some(o), true) => state.update(o.prices_changed, session),
+                    _ => session.recommended_interval(),
                 };
-                interval = tokio::time::interval(Duration::from_secs(new_interval));
+
+                // Use sleep instead of interval to avoid the "immediate first tick"
+                // problem. tokio::time::interval fires immediately when created,
+                // which causes a burst of polls on every state transition —
+                // creating an oscillation between idle and normal modes.
+                // sleep always waits the full duration before resuming.
+                tokio::time::sleep(Duration::from_secs(new_interval)).await;
             }
         });
     }
@@ -378,17 +382,24 @@ impl Scheduler {
         None
     }
 
-    /// Check whether any quote price differs from the snapshot
+    /// Check whether any quote price differs from the snapshot.
+    /// Uses a small epsilon (0.001) instead of f64::EPSILON because the stock
+    /// API may return values with slightly different floating-point representation
+    /// across backend servers (e.g. 3250.68 vs 3250.680000000001).
+    const PRICE_CHANGE_EPSILON: f64 = 0.001;
+
     fn any_price_changed(snapshot: &std::collections::HashMap<String, f64>, quotes: &[crate::domain::Quote]) -> bool {
+        if snapshot.is_empty() {
+            return true;
+        }
         for q in quotes {
             let key = format!("{}:{}", q.market, q.code);
             match snapshot.get(&key) {
-                Some(&prev_price) if (prev_price - q.price).abs() > f64::EPSILON => return true,
-                Some(_) => {} // same price
-                None => return true, // new stock added to watchlist
+                Some(&prev_price) if (prev_price - q.price).abs() > Self::PRICE_CHANGE_EPSILON => return true,
+                Some(_) => {} // same price (within tolerance)
+                None => return true, // new stock added
             }
         }
-        // Also check: were stocks removed from watchlist?
         if snapshot.len() != quotes.len() {
             return true;
         }
@@ -402,10 +413,23 @@ impl Scheduler {
     ) {
         if let Some(source) = manager.active_source() {
             match source.fetch_indices().await {
-                Ok(indices) => {
-                    cache.update_indices(indices.clone());
-                    if let Err(e) = app_handle.emit("indices-updated", &indices) {
-                        log::warn!("Failed to emit indices-updated: {}", e);
+                Ok(fresh) => {
+                    let prev = cache.get_indices();
+                    let changed = prev.len() != fresh.len()
+                        || !fresh.iter().zip(&prev).all(|(n, p)| {
+                            n.code == p.code
+                                && n.price == p.price
+                                && n.change == p.change
+                                && n.change_pct == p.change_pct
+                        });
+                    cache.update_indices(fresh);
+                    if changed {
+                        let current = cache.get_indices();
+                        if let Err(e) = app_handle.emit("indices-updated", &current) {
+                            log::warn!("Failed to emit indices-updated: {}", e);
+                        }
+                    } else {
+                        log::debug!("Indices unchanged, skipping emit");
                     }
                 }
                 Err(e) => log::warn!("Index fetch failed: {}", e),

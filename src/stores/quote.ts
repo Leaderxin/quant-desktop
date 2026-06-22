@@ -25,7 +25,18 @@ export const useQuoteStore = defineStore('quote', () => {
       });
 
       unlistenIndices = await listen<IndexQuote[]>('indices-updated', (event) => {
-        indices.value = event.payload;
+        const next = event.payload;
+        const prev = indices.value;
+        // Skip update if data is identical (avoids unnecessary Vue re-renders)
+        if (prev.length === next.length && next.every((v, i) =>
+          v.code === prev[i].code &&
+          v.price === prev[i].price &&
+          v.change === prev[i].change &&
+          v.change_pct === prev[i].change_pct
+        )) {
+          return;
+        }
+        indices.value = next;
       });
 
       error.value = null;

@@ -63,9 +63,11 @@ pub fn run() {
                 crate::datasource::sina::SinaAdapter::new(),
             ));
 
-            // Restore last used data source from settings
+            // Restore last used data source from settings.
+            // Use set_active_initial to avoid triggering a duplicate wakeup fetch
+            // on startup (the scheduler's main loop handles the first fetch).
             if let Ok(Some(active)) = db.get_setting("active_datasource") {
-                match ds_manager.set_active(&active) {
+                match ds_manager.set_active_initial(&active) {
                     Ok(()) => log::info!("Restored data source: {}", active),
                     Err(e) => log::warn!("Failed to restore data source '{}': {}", active, e),
                 }
@@ -442,6 +444,9 @@ pub fn run() {
                     let y = (mon_h).saturating_sub(th + 60);
                     let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
                 }
+
+                // Now show the ticker at the correct position (config has visible: false)
+                let _ = ticker.show();
             }
 
             Ok(())
