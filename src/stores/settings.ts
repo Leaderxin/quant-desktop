@@ -11,6 +11,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const activeDatasource = ref('tencent');
   const theme = ref<'dark' | 'light'>('light');
   const autoLaunch = ref(false);
+  const isPortable = ref(false);
   const error = ref<string | null>(null);
 
   async function fetchSettings() {
@@ -20,6 +21,7 @@ export const useSettingsStore = defineStore('settings', () => {
       theme.value = (settings.value['theme'] as 'dark' | 'light') || 'light';
       datasources.value = await invoke<[string, string][]>('list_datasources');
       autoLaunch.value = await isEnabled();
+      isPortable.value = await invoke<boolean>('get_portable_mode');
     } catch (e) {
       console.error('Failed to fetch settings:', e);
       error.value = `加载设置失败: ${e}`;
@@ -87,5 +89,5 @@ export const useSettingsStore = defineStore('settings', () => {
     // applyTheme again, creating an infinite event loop between windows.
   }
 
-  return { settings, datasources, activeDatasource, theme, autoLaunch, error, fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme };
+  return { settings, datasources, activeDatasource, theme, autoLaunch, isPortable, error, fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme };
 });

@@ -6,6 +6,7 @@ pub mod commands;
 
 use std::fs::File;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use simplelog::{CombinedLogger, WriteLogger, TermLogger, LevelFilter, Config, TerminalMode, ColorChoice};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -15,6 +16,11 @@ use tauri::{
 use db::Database;
 use datasource::DataSourceManager;
 use cache::QuoteCache;
+
+/// Runtime flag indicating whether the app is in portable mode
+/// (triggered by the presence of `portable.dat` next to the executable).
+#[derive(Debug, Clone, Copy)]
+pub struct PortableMode(pub bool);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,11 +32,26 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Use a fixed directory name decoupled from the app identifier,
-            // so that identifier changes don't reset the database/logs.
-            let app_dir = dirs::data_dir()
-                .expect("Failed to get system data directory")
-                .join("quant-desktop");
+            // Data directory:
+            // - Portable mode (portable.dat exists next to exe) → <exe_dir>/data/
+            // - Normal mode → %APPDATA%/quant-desktop/
+            let (app_dir, is_portable) = std::env::current_exe()
+                .ok()
+                .and_then(|exe| {
+                    let marker = exe.with_file_name("portable.dat");
+                    marker.exists().then(|| {
+                        let dir = exe.parent()
+                            .map(|p| p.join("data"))
+                            .unwrap_or_else(|| std::path::PathBuf::from("data"));
+                        (dir, true)
+                    })
+                })
+                .unwrap_or_else(|| {
+                    let dir = dirs::data_dir()
+                        .expect("Failed to get system data directory")
+                        .join("quant-desktop");
+                    (dir, false)
+                });
 
             // Detect local proxy (Clash/V2Ray) for updater downloads
             detect_and_set_proxy();
@@ -50,6 +71,10 @@ pub fn run() {
             ])
             .expect("Failed to initialize logger");
             log::info!("QuantDesktop v{} starting", env!("CARGO_PKG_VERSION"));
+            log::info!(
+                "Data directory: {:?} (portable: {})",
+                app_dir, is_portable
+            );
 
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
             log::info!("Database opened successfully");
@@ -84,6 +109,7 @@ pub fn run() {
             app.manage(db.clone());
             app.manage(ds_manager.clone());
             app.manage(cache.clone());
+            app.manage(PortableMode(is_portable));
 
             // Start background polling
             let interval: u64 = db
@@ -104,16 +130,28 @@ pub fn run() {
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
-            let check_update_item = MenuItemBuilder::with_id("check_update", "检查更新").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
-            let menu = MenuBuilder::new(app)
-                .item(&show_item)
-                .item(&toggle_ticker)
-                .separator()
-                .item(&check_update_item)
-                .item(&quit_item)
-                .build()?;
+            // Portable mode: skip the "check update" tray item — updates
+            // are managed by the user (download & replace the zip).
+            let menu = if is_portable {
+                MenuBuilder::new(app)
+                    .item(&show_item)
+                    .item(&toggle_ticker)
+                    .separator()
+                    .item(&quit_item)
+                    .build()?
+            } else {
+                let check_update_item =
+                    MenuItemBuilder::with_id("check_update", "检查更新").build(app)?;
+                MenuBuilder::new(app)
+                    .item(&show_item)
+                    .item(&toggle_ticker)
+                    .separator()
+                    .item(&check_update_item)
+                    .item(&quit_item)
+                    .build()?
+            };
 
             let _tray = TrayIconBuilder::new()
                 .icon(
@@ -177,9 +215,16 @@ pub fn run() {
                             }
                         }
                         "check_update" => {
+                            // Portable mode: the "check update" tray item is hidden,
+                            // but guard here as a safety net.
+                            if app.state::<PortableMode>().0 {
+                                log::info!("[updater] Tray check_update ignored — portable mode");
+                                return;
+                            }
                             let handle = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                match crate::commands::updater::check_update(handle.clone()).await {
+                                match crate::commands::updater::do_check_update(&handle).await
+                                {
                                     Ok(Some(info)) => {
                                         let _ = handle.emit("update-available", &info);
                                     }
@@ -230,10 +275,11 @@ pub fn run() {
             if let Some(main) = app.get_webview_window("main") {
                 let main_clone = main.clone();
                 let db_clone = db.clone();
-                // Rate-limit window geometry saves: Moved/Resized fire on every
-                // pixel drag, which would trigger hundreds of DB writes per second.
-                // We only persist at most once every 500ms.
-                let last_save = std::sync::Mutex::new(std::time::Instant::now());
+                // Debounced geometry save: Moved/Resized fire on every pixel
+                // during drag, but we only persist once the user stops moving
+                // the window for 800ms (drag-end behaviour).  This avoids
+                // hundreds of DB writes during a single resize/move gesture.
+                let save_counter = Arc::new(AtomicU64::new(0));
                 let _ = main.on_window_event(move |event| {
                     match event {
                         tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -264,45 +310,36 @@ pub fn run() {
                             }
                             let _ = main_clone.hide();
                         }
-                        tauri::WindowEvent::Moved(pos) => {
-                            if !main_clone.is_minimized().unwrap_or(false)
-                                && main_clone.is_visible().unwrap_or(false)
+                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                            if main_clone.is_minimized().unwrap_or(false)
+                                || !main_clone.is_visible().unwrap_or(false)
                             {
-                                let mut last = last_save.lock().unwrap_or_else(|e| e.into_inner());
-                                let now = std::time::Instant::now();
-                                if now.duration_since(*last).as_millis() < 500 {
+                                return;
+                            }
+                            // fetch_add returns the PREVIOUS value, so +1 to get
+                            // the value WE just set (checked by the debounce task).
+                            let count = save_counter.fetch_add(1, Ordering::SeqCst) + 1;
+                            let main = main_clone.clone();
+                            let db = db_clone.clone();
+                            let counter = save_counter.clone();
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                                // If counter changed, another event fired during
+                                // the wait — the user is still dragging, skip.
+                                if counter.load(Ordering::SeqCst) != count {
                                     return;
                                 }
-                                *last = now;
-                                drop(last);
-                                if let Err(e) = db_clone.set_setting("window_x", &pos.x.to_string()) {
-                                    log::warn!("Failed to save window_x on move: {}", e);
+                                if let Ok(pos) = main.outer_position() {
+                                    let _ = db.set_setting("window_x", &pos.x.to_string());
+                                    let _ = db.set_setting("window_y", &pos.y.to_string());
                                 }
-                                if let Err(e) = db_clone.set_setting("window_y", &pos.y.to_string()) {
-                                    log::warn!("Failed to save window_y on move: {}", e);
+                                if let Ok(size) = main.outer_size() {
+                                    if size.width > 0 && size.height > 0 {
+                                        let _ = db.set_setting("window_width", &size.width.to_string());
+                                        let _ = db.set_setting("window_height", &size.height.to_string());
+                                    }
                                 }
-                            }
-                        }
-                        tauri::WindowEvent::Resized(size) => {
-                            if !main_clone.is_minimized().unwrap_or(false)
-                                && main_clone.is_visible().unwrap_or(false)
-                                && size.width > 0
-                                && size.height > 0
-                            {
-                                let mut last = last_save.lock().unwrap_or_else(|e| e.into_inner());
-                                let now = std::time::Instant::now();
-                                if now.duration_since(*last).as_millis() < 500 {
-                                    return;
-                                }
-                                *last = now;
-                                drop(last);
-                                if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
-                                    log::warn!("Failed to save window_width on resize: {}", e);
-                                }
-                                if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
-                                    log::warn!("Failed to save window_height on resize: {}", e);
-                                }
-                            }
+                            });
                         }
                         _ => {}
                     }
@@ -487,6 +524,7 @@ pub fn run() {
             commands::settings::set_setting,
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
+            commands::settings::get_portable_mode,
             commands::window::show_main_window,
             commands::updater::check_update,
             commands::updater::install_update,

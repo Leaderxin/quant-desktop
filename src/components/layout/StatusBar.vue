@@ -41,6 +41,7 @@ onMounted(async () => {
     <div class="sb-zone sb-info">
       <span class="sb-version" v-if="appVersion">v{{ appVersion }}</span>
       <button
+        v-if="!settings.isPortable"
         class="sb-check-btn"
         :class="{ 'sb-up-to-date': updater.isUpToDate }"
         :disabled="updater.updateStatus === 'checking'"

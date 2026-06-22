@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use crate::db::Database;
 use crate::datasource::DataSourceManager;
+use crate::PortableMode;
 
 #[tauri::command]
 pub fn get_settings(db: State<'_, Arc<Database>>) -> Result<HashMap<String, String>, String> {
@@ -38,4 +39,10 @@ pub fn list_datasources(manager: State<'_, Arc<DataSourceManager>>) -> Vec<(Stri
         .into_iter()
         .map(|(id, name)| (id.to_string(), name.to_string()))
         .collect()
+}
+
+/// Query whether the app is running in portable mode (portable.dat next to exe).
+#[tauri::command]
+pub fn get_portable_mode(portable: State<'_, PortableMode>) -> bool {
+    portable.0
 }

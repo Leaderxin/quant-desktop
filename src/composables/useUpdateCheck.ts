@@ -1,13 +1,20 @@
 // src/composables/useUpdateCheck.ts
 import { useUpdaterStore } from '@/stores/updater';
+import { useSettingsStore } from '@/stores/settings';
 
 export function useUpdateCheck() {
   const updater = useUpdaterStore();
+  const settings = useSettingsStore();
 
   /**
    * Startup check — called once on app mount. Shows dialog if update available.
+   * Skipped in portable mode (updates are managed by the user).
    */
   async function performStartupCheck() {
+    if (settings.isPortable) {
+      console.log('[updater] Skipping startup update check — portable mode');
+      return;
+    }
     try {
       const info = await updater.checkForUpdate();
       if (!info) return;

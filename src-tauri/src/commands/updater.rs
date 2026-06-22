@@ -1,13 +1,13 @@
 use crate::datasource::market_clock::MarketSession;
 use crate::domain::UpdateInfo;
+use crate::PortableMode;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
 
-/// Check for update. Returns UpdateInfo if a newer version is available,
-/// or null if the current version is already the latest.
-#[tauri::command]
-pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+/// Core update-check logic (no State dependency). Callable from the tray menu
+/// handler where Tauri's automatic State injection is not available.
+pub async fn do_check_update(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
     let current_version = app
         .config()
         .version
@@ -62,6 +62,21 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     Ok(Some(info))
 }
 
+/// Check for update. Returns UpdateInfo if a newer version is available,
+/// or null if the current version is already the latest.
+/// In portable mode, always returns None (updates are managed by the user).
+#[tauri::command]
+pub async fn check_update(
+    app: AppHandle,
+    portable: State<'_, PortableMode>,
+) -> Result<Option<UpdateInfo>, String> {
+    if portable.0 {
+        log::info!("[updater] Skipping update check — running in portable mode");
+        return Ok(None);
+    }
+    do_check_update(&app).await
+}
+
 /// Download and install the update.
 ///
 /// **Important**: We use `app.updater()` (NOT `updater_builder()` with a custom
@@ -75,7 +90,15 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
 /// chunk size (not cumulative bytes). We accumulate them ourselves to compute
 /// actual download progress.
 #[tauri::command]
-pub async fn install_update(app: AppHandle) -> Result<(), String> {
+pub async fn install_update(
+    app: AppHandle,
+    portable: State<'_, PortableMode>,
+) -> Result<(), String> {
+    if portable.0 {
+        log::info!("[updater] Skipping update install — running in portable mode");
+        return Err("更新功能在绿色版中不可用，请手动下载新版本".to_string());
+    }
+
     let handle = app.clone();
     let proxy_state = (
         std::env::var("HTTPS_PROXY").ok(),

@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { UpdateInfo } from '@/types';
+import { useSettingsStore } from '@/stores/settings';
 
 export const useUpdaterStore = defineStore('updater', () => {
   const updateStatus = ref<'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'>('idle');
@@ -54,6 +55,12 @@ export const useUpdaterStore = defineStore('updater', () => {
   }
 
   async function checkForUpdate(): Promise<UpdateInfo | null> {
+    // Portable mode: updates are managed by the user (download & replace zip).
+    if (useSettingsStore().isPortable) {
+      console.log('[updater] Skipping update check — portable mode');
+      return null;
+    }
+
     updateStatus.value = 'checking';
     errorMessage.value = '';
     try {
@@ -81,6 +88,10 @@ export const useUpdaterStore = defineStore('updater', () => {
   }
 
   async function downloadAndInstall() {
+    if (useSettingsStore().isPortable) {
+      console.log('[updater] Skipping update install — portable mode');
+      return;
+    }
     if (!updateInfo.value) return;
     updateStatus.value = 'downloading';
     downloadProgress.value = 0;

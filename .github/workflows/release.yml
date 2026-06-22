@@ -97,3 +97,28 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Create portable zip (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = "src-tauri/target/x86_64-pc-windows-msvc/release"
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          $staging = "portable/quant-desktop"
+          $null = New-Item -ItemType Directory -Force -Path $staging
+          Copy-Item "$src/quant-desktop.exe" -Destination "$staging/"
+          $null = New-Item -ItemType File -Path "$staging/portable.dat"
+          $zipName = "quant-desktop_$($ver)_x64-portable.zip"
+          $null = New-Item -ItemType Directory -Force -Path "$src/bundle"
+          Compress-Archive -Path "$staging/*" -DestinationPath "$src/bundle/$zipName"
+          Write-Host "Portable zip created: $src/bundle/$zipName"
+
+      - name: Upload portable zip to release
+        if: matrix.platform == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          make_latest: false
+          files: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/quant-desktop_*_x64-portable.zip
