@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { NIcon, NDropdown, NTooltip } from 'naive-ui';
+import { NIcon, NDropdown } from 'naive-ui';
 
 const settings = useSettingsStore();
 
@@ -33,22 +33,17 @@ function handleDsSelect(key: string) {
       :options="dsOptions"
       @select="handleDsSelect"
     >
-      <n-tooltip>
-        <template #trigger>
-          <span class="ds-tag">
-            <span class="ds-label">{{ dsDisplayName }}</span>
-            <n-icon :size="12" class="ds-swap-icon">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 3 3 7l4 4" />
-                <path d="M17 11v1a4 4 0 0 1-4 4H3" />
-                <path d="M13 17 17 13l-4-4" />
-                <path d="M3 9V8a4 4 0 0 1 4-4h10" />
-              </svg>
-            </n-icon>
-          </span>
-        </template>
-        点击切换数据源
-      </n-tooltip>
+      <span class="ds-tag" title="点击切换数据源">
+        <span class="ds-label">{{ dsDisplayName }}</span>
+        <n-icon :size="12" class="ds-swap-icon">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 3 3 7l4 4" />
+            <path d="M17 11v1a4 4 0 0 1-4 4H3" />
+            <path d="M13 17 17 13l-4-4" />
+            <path d="M3 9V8a4 4 0 0 1 4-4h10" />
+          </svg>
+        </n-icon>
+      </span>
     </n-dropdown>
   </header>
 </template>

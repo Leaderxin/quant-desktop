@@ -87,11 +87,21 @@ impl Database {
 
     pub fn add_watch(&self, code: &str, market: &str, name: &str) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        // Place new items at the end by computing the next sort_order from the
+        // current maximum.  Without this, every new item would get DEFAULT 0
+        // and appear at an unpredictable position after deletions leave gaps.
+        let max_sort: i32 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM watchlist",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(-1);
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         conn.execute(
-            "INSERT OR IGNORE INTO watchlist (code, market, name, added_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![code, market, name, now],
+            "INSERT OR IGNORE INTO watchlist (code, market, name, sort_order, added_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![code, market, name, max_sort + 1, now],
         )?;
         Ok(())
     }
@@ -166,7 +176,13 @@ impl Database {
     pub fn cache_quotes(&self, quotes: &[crate::domain::Quote]) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        // Wrap all INSERTs in a single transaction for better performance
+        // Wrap all INSERTs in a single transaction for better performance.
+        // SAFETY: `unchecked_transaction` is safe here because:
+        // - The connection is protected by a Mutex (no concurrent access).
+        // - The loop below only executes INSERT/REPLACE (no reads that depend
+        //   on uncommitted state within this transaction).
+        // - If this function is refactored to remove the Mutex, replace with
+        //   a regular `transaction()` to avoid data races.
         let tx = conn.unchecked_transaction()?;
         for q in quotes {
             let data = serde_json::to_string(q).unwrap_or_else(|e| {

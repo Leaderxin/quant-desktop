@@ -67,10 +67,15 @@ impl SinaAdapter {
         let price = fields[3].parse::<f64>().unwrap_or(0.0);
         let high = fields[4].parse::<f64>().unwrap_or(0.0);
         let low = fields[5].parse::<f64>().unwrap_or(0.0);
-        // Sina returns volume in 手 (hands) and turnover in 万元;
-        // normalize to 股 (shares) and 元 (yuan) to match Tencent adapter.
-        let volume = super::normalize_volume(fields[8].parse::<u64>().unwrap_or(0));
-        let turnover = super::normalize_turnover(fields[9].parse::<f64>().unwrap_or(0.0));
+        // Sina's stock-format API returns volume in 股 (shares) and turnover in
+        // 元 (yuan) — same as the index endpoint.  Do NOT apply normalize_volume /
+        // normalize_turnover here; they would over-multiply (×100 and ×10000
+        // respectively), producing wildly inflated values.
+        // The Tencent adapter needs normalization because Tencent returns volume
+        // in 手 and turnover in 万元; Sina's stock and index formats are already
+        // in the normalised units that Quote expects.
+        let volume = fields[8].parse::<u64>().unwrap_or(0);
+        let turnover = fields[9].parse::<f64>().unwrap_or(0.0);
         // Sina's hq.sinajs.cn/list= endpoint only returns basic quote +
         // 5-level depth (~33 fields). Turnover rate is NOT included.
         let turnover_rate: Option<f64> = None;
@@ -325,8 +330,16 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| AppError::network("sina", format!("分钟数据读取失败: {:#}", e)))?;
 
-        // Sina's response ends with a JS callback comment; strip it
+        // Sina's response ends with a JS callback comment; strip it.
+        // Guard against format changes: if the response doesn't contain valid JSON
+        // array brackets, fail with a clear error instead of an opaque parse error.
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
+        if json_str.is_empty() || !json_str.starts_with('[') {
+            return Err(AppError::network(
+                "sina",
+                "分钟数据响应格式异常：未找到 JSON 数组",
+            ));
+        }
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
             .map_err(|e| AppError::network("sina", format!("分钟数据解析失败: {}", e)))?;
 
@@ -409,6 +422,13 @@ impl DataSource for SinaAdapter {
         }
 
         let json_str = body_text.trim_end_matches(|c| c != ']').trim();
+        // Guard against format changes producing empty or non-array responses
+        if json_str.is_empty() || !json_str.starts_with('[') {
+            return Err(AppError::network(
+                "sina",
+                "K线响应格式异常：未找到 JSON 数组",
+            ));
+        }
         let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
             .map_err(|e| AppError::network("sina", format!("K线解析失败: {}", e)))?;
 

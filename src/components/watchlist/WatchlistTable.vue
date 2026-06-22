@@ -37,8 +37,11 @@ const selectedRow = ref<WatchItem | null>(null);
 
 function handleContextMenu(e: MouseEvent, row: WatchItem) {
   e.preventDefault();
-  ctxMenuX.value = e.clientX;
-  ctxMenuY.value = e.clientY;
+  // Clamp menu position to viewport so it never renders off-screen
+  const menuW = 140; // approximate menu width
+  const menuH = 200; // approximate menu height
+  ctxMenuX.value = Math.min(e.clientX, window.innerWidth - menuW);
+  ctxMenuY.value = Math.min(e.clientY, window.innerHeight - menuH);
   ctxMenuItem.value = row;
   showCtxMenu.value = true;
 }

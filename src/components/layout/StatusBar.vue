@@ -71,12 +71,18 @@ onMounted(async () => {
 
       <span class="sb-sep">·</span>
 
-      <span class="sb-autolaunch" @click.stop="settings.toggleAutoLaunch()">
+      <button
+        class="sb-autolaunch"
+        role="switch"
+        :aria-checked="settings.autoLaunch"
+        :aria-label="`开机自启：${settings.autoLaunch ? '已开启' : '已关闭'}`"
+        @click.stop="settings.toggleAutoLaunch()"
+      >
         <span class="sb-autolaunch-label">开机自启</span>
         <span class="sb-toggle" :class="{ on: settings.autoLaunch }">
           <span class="sb-toggle-knob"></span>
         </span>
-      </span>
+      </button>
     </div>
 
     <!-- Zone 3: Contact -->
@@ -231,6 +237,12 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  border: none;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
   cursor: pointer;
   user-select: none;
 }

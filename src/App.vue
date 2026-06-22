@@ -15,6 +15,10 @@ const quote = useQuoteStore();
 // Initialize updater event listeners early so backend events during
 // startup are not missed (Pinia stores are lazy-initialized).
 useUpdaterStore().initListeners();
+// Composables must be called at setup top-level (not inside lifecycle
+// hooks) per Vue 3 convention — ensures hooks are registered correctly
+// even if the component is activated/deactivated by <KeepAlive>.
+const { performStartupCheck } = useUpdateCheck();
 
 const initError = ref<string | null>(null);
 const initReady = ref(false);
@@ -63,7 +67,6 @@ onMounted(async () => {
     initReady.value = true;
 
     // Startup update check (non-blocking, gated by trading session)
-    const { performStartupCheck } = useUpdateCheck();
     performStartupCheck();
   } catch (e) {
     initError.value = `应用启动失败: ${String(e).slice(0, 200)}`;
