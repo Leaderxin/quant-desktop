@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
@@ -112,32 +112,13 @@ const visibleItems = computed(() => {
 
 const retryHintVisible = ref(false);
 
-// ── Dragging (native OS-level via Tauri startDragging) ──
-// Delegates the drag to the OS compositor — zero JS overhead, zero IPC
-// latency, perfectly smooth.  Position is auto-saved by the Rust
-// WindowEvent::Moved handler in lib.rs.  We detect click-vs-drag by
-// comparing window position before and after startDragging resolves.
-const tickerWindow = getCurrentWindow();
-
-async function onMouseDown(_e: MouseEvent) {
-  if (initFailed.value) {
-    handleClick();
-    return;
-  }
-  try {
-    const startPos = await tickerWindow.outerPosition();
-    await tickerWindow.startDragging();
-    const endPos = await tickerWindow.outerPosition();
-
-    // Detect click vs drag
-    if (Math.abs(endPos.x - startPos.x) < 2 && Math.abs(endPos.y - startPos.y) < 2) {
-      handleClick();
-    }
-  } catch (e) {
-    console.error('[TickerBar] startDragging failed:', e);
-    handleClick();
-  }
-}
+// ── Dragging ──
+// CSS -webkit-app-region: drag handles window movement at the OS compositor
+// level — same mechanism as the main window TopBar, zero latency.
+// Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
+// The @click event naturally distinguishes click vs drag:
+// - Click (no movement): click event fires → opens main window
+// - Drag (mouse moved): OS compositor takes over → click does NOT fire
 
 async function handleClick() {
   if (initFailed.value) {
@@ -180,7 +161,7 @@ async function handleClick() {
     @keydown.space.prevent="handleClick"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
-    @mousedown="onMouseDown"
+    @click="handleClick"
   >
     <template v-if="initFailed">
       <div class="ticker-row ticker-error-row">
@@ -222,6 +203,7 @@ async function handleClick() {
   flex-direction: column;
   justify-content: center;
   user-select: none;
+  -webkit-app-region: drag;
   cursor: grab;
   overflow: hidden;
   padding: var(--space-1) var(--space-2);
