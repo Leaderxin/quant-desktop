@@ -1,4 +1,4 @@
-use chrono::{Local, Datelike, NaiveTime, Weekday};
+use chrono::{Utc, FixedOffset, Datelike, NaiveTime, Weekday};
 
 /// A-share market trading session
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,9 +16,12 @@ pub enum MarketSession {
 }
 
 impl MarketSession {
-    /// Determine the current A-share market session (China Standard Time / UTC+8)
+    /// Determine the current A-share market session (China Standard Time / UTC+8).
+    /// Uses a fixed UTC+8 offset instead of the system local timezone so that
+    /// session detection is correct regardless of where the user is located.
     pub fn current() -> Self {
-        let now = Local::now();
+        let cst_offset = FixedOffset::east_opt(8 * 3600).expect("UTC+8 is a valid offset");
+        let now = Utc::now().with_timezone(&cst_offset);
 
         // Check weekend
         match now.weekday() {

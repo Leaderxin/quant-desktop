@@ -8,33 +8,39 @@ import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Record<string, string>>({});
   const datasources = ref<[string, string][]>([]);
-  const activeDatasource = ref('sina');
+  const activeDatasource = ref('tencent');
   const theme = ref<'dark' | 'light'>('light');
   const autoLaunch = ref(false);
+  const error = ref<string | null>(null);
 
   async function fetchSettings() {
     try {
       settings.value = await invoke<Record<string, string>>('get_settings');
-      activeDatasource.value = settings.value['active_datasource'] || 'sina';
+      activeDatasource.value = settings.value['active_datasource'] || 'tencent';
       theme.value = (settings.value['theme'] as 'dark' | 'light') || 'light';
       datasources.value = await invoke<[string, string][]>('list_datasources');
       autoLaunch.value = await isEnabled();
     } catch (e) {
       console.error('Failed to fetch settings:', e);
+      error.value = `加载设置失败: ${e}`;
     }
   }
 
   async function toggleAutoLaunch() {
     try {
+      // Persist to DB first so that on restart the app knows the desired state.
+      const newValue = String(!autoLaunch.value);
+      await setSetting('auto_launch', newValue);
+      // Then toggle the OS-level autostart.
       if (autoLaunch.value) {
         await disable();
       } else {
         await enable();
       }
       autoLaunch.value = !autoLaunch.value;
-      await setSetting('auto_launch', String(autoLaunch.value));
     } catch (e) {
       console.error('[settings] toggleAutoLaunch failed:', e);
+      error.value = `自动启动切换失败: ${e}`;
     }
   }
 
@@ -44,6 +50,7 @@ export const useSettingsStore = defineStore('settings', () => {
       settings.value[key] = value;
     } catch (e) {
       console.error(`[settings] setSetting('${key}') failed:`, e);
+      error.value = `保存设置失败: ${e}`;
     }
   }
 
@@ -58,6 +65,7 @@ export const useSettingsStore = defineStore('settings', () => {
       });
     } catch (e) {
       activeDatasource.value = previous;
+      error.value = `数据源切换失败: ${e}`;
       console.error('[settings] switchDatasource failed:', e);
     }
   }
@@ -79,5 +87,5 @@ export const useSettingsStore = defineStore('settings', () => {
     // applyTheme again, creating an infinite event loop between windows.
   }
 
-  return { settings, datasources, activeDatasource, theme, autoLaunch, fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme };
+  return { settings, datasources, activeDatasource, theme, autoLaunch, error, fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme };
 });

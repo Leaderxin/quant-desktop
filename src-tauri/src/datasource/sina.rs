@@ -54,7 +54,10 @@ impl SinaAdapter {
         let data = &line[quote_start..quote_start + quote_end];
         let fields: Vec<&str> = data.split(',').collect();
 
-        if fields.len() < 32 {
+        // We only need fields[0]–[9] (name, open, prev_close, price, high,
+        // low, _, _, volume, turnover). A stricter bound would reject valid
+        // responses from API variants that return fewer than 32 fields.
+        if fields.len() < 10 {
             return None;
         }
 
@@ -64,8 +67,10 @@ impl SinaAdapter {
         let price = fields[3].parse::<f64>().unwrap_or(0.0);
         let high = fields[4].parse::<f64>().unwrap_or(0.0);
         let low = fields[5].parse::<f64>().unwrap_or(0.0);
-        let volume = fields[8].parse::<u64>().unwrap_or(0);
-        let turnover = fields[9].parse::<f64>().unwrap_or(0.0);
+        // Sina returns volume in 手 (hands) and turnover in 万元;
+        // normalize to 股 (shares) and 元 (yuan) to match Tencent adapter.
+        let volume = super::normalize_volume(fields[8].parse::<u64>().unwrap_or(0));
+        let turnover = super::normalize_turnover(fields[9].parse::<f64>().unwrap_or(0.0));
         // Sina's hq.sinajs.cn/list= endpoint only returns basic quote +
         // 5-level depth (~33 fields). Turnover rate is NOT included.
         let turnover_rate: Option<f64> = None;
@@ -98,41 +103,71 @@ impl SinaAdapter {
         })
     }
 
-    /// Parse Sina index line
+    /// Parse index data from Sina's stock-format API (codes without s_ prefix).
+    ///
+    /// The stock-format endpoint returns 30+ fields matching the individual stock
+    /// layout: `[0]=name [1]=open [2]=prev_close [3]=price [4]=high [5]=low
+    /// [8]=volume(股) [9]=turnover(元)`.  This is more reliable than the compact
+    /// index-only format (`s_` prefix, 6 fields) which returns incorrect volume
+    /// **and** turnover for 创业板指 (s_sz399006).
+    ///
+    /// Shanghai (`sh*`) index volume is 1/100 of the correct value in every Sina
+    /// format (index compact and stock alike).  Multiply by 100 so it matches
+    /// Shenzhen / Tencent before the value enters the shared data pipeline.
     fn parse_sina_index(line: &str) -> Option<IndexQuote> {
         let eq_pos = line.find('=')?;
         let var_part = &line[..eq_pos];
         let code_raw = var_part.strip_prefix("var hq_str_")?;
-        let code = code_raw.to_string();
+        // Stock format gives "sh000001" — prepend "s_" for the canonical code
+        // form used everywhere else (s_sh000001) so the frontend matches.
+        let code = format!("s_{}", code_raw);
+        let is_shanghai = code_raw.starts_with("sh");
 
         let quote_start = line[eq_pos + 1..].find('"')? + eq_pos + 2;
         let quote_end = line[quote_start..].find('"')?;
         let data = &line[quote_start..quote_start + quote_end];
         let fields: Vec<&str> = data.split(',').collect();
 
-        if fields.len() < 6 {
+        // Stock format has 30+ fields; we need at least 10.
+        if fields.len() < 10 {
             return None;
         }
 
         let name = fields[0].to_string();
-        let price = fields[1].parse::<f64>().unwrap_or(0.0);
-        let change = fields[2].parse::<f64>().unwrap_or(0.0);
-        let change_pct = fields[3].parse::<f64>().unwrap_or(0.0);
-        let volume = fields[4].parse::<u64>().unwrap_or(0);
-        let turnover = fields[5].parse::<f64>().unwrap_or(0.0);
-        // Normalize: volume 手→股, turnover 万元→元,
-        // matching Tencent adapter and stock Quote conventions.
-        let volume_shares = super::normalize_volume(volume);
-        let turnover_yuan = super::normalize_turnover(turnover);
+        let prev_close = fields[2].parse::<f64>().unwrap_or(0.0);
+        let price = fields[3].parse::<f64>().unwrap_or(0.0);
+        // Stock-format volume is already in 股 (shares) and turnover in 元 (yuan),
+        // i.e. the same normalised units that IndexQuote expects.  Do NOT apply
+        // normalize_volume / normalize_turnover — they would over-multiply.
+        let volume = fields[8].parse::<u64>().unwrap_or(0);
+        let turnover = fields[9].parse::<f64>().unwrap_or(0.0);
+
+        // Compute change from price vs prev_close (stock format reports raw
+        // prices, not pre-computed change like the compact index format).
+        let (change, change_pct) = if price > 0.0 && prev_close > 0.0 {
+            let c = price - prev_close;
+            let pct = (c / prev_close) * 100.0;
+            (c, pct)
+        } else {
+            (0.0, 0.0)
+        };
+
+        // Shanghai index volume is consistently 1/100 of the correct value across
+        // all Sina formats.  Correct it here so it matches Shenzhen / Tencent.
+        let volume_corrected = if is_shanghai {
+            volume.saturating_mul(100)
+        } else {
+            volume
+        };
 
         Some(IndexQuote {
             code,
             name,
             price,
-            change,
-            change_pct,
-            volume: volume_shares,
-            turnover: turnover_yuan,
+            change: (change * 100.0).round() / 100.0,
+            change_pct: (change_pct * 100.0).round() / 100.0,
+            volume: volume_corrected,
+            turnover,
         })
     }
 }
@@ -166,6 +201,10 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| AppError::network("sina", format!("请求失败: {:#}", e)))?;
 
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("HTTP {}", resp.status())));
+        }
+
         let body_bytes = resp
             .bytes()
             .await
@@ -181,9 +220,15 @@ impl DataSource for SinaAdapter {
     }
 
     async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, AppError> {
-        // Sina index codes
-        let index_codes = INDEX_CODES;
-        let url = format!("{}{}", SINA_URL, index_codes);
+        // Use stock-format codes (strip "s_" prefix) — the stock endpoint
+        // returns reliable volume/turnover for every index including 创业板指,
+        // unlike the compact index-only format (s_ prefix) which has data
+        // quality issues.
+        let stock_codes: Vec<&str> = INDEX_CODES
+            .split(',')
+            .map(|c| c.strip_prefix("s_").unwrap_or(c))
+            .collect();
+        let url = format!("{}{}", SINA_URL, stock_codes.join(","));
 
         let resp = headers::with_browser_headers(
             self.client.get(&url),
@@ -192,6 +237,10 @@ impl DataSource for SinaAdapter {
             .send()
             .await
             .map_err(|e| AppError::network("sina", format!("指数请求失败: {:#}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("指数 HTTP {}", resp.status())));
+        }
 
         let body_bytes = resp
             .bytes()
@@ -267,6 +316,10 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| AppError::network("sina", format!("分钟数据请求失败: {:#}", e)))?;
 
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("分钟数据 HTTP {}", resp.status())));
+        }
+
         let body_text = resp
             .text()
             .await
@@ -298,6 +351,9 @@ impl DataSource for SinaAdapter {
                     high,
                     low,
                     volume: pt.get("volume")?.as_str()?.parse().unwrap_or(0),
+                    // NOTE: Sina's 5-min K-line API does not provide VWAP (avg_price).
+                    // We fall back to the bar open price as a best-effort approximation
+                    // so the chart has a non-zero value for rendering.
                     avg_price: open,
                 })
             })
@@ -318,9 +374,10 @@ impl DataSource for SinaAdapter {
             Self::code_to_sina(code, market)
         };
 
-        // Sina only supports daily K-line; weekly/monthly are not available
-        if period != "daily" && period != "minute" {
-            return Err(AppError::Unsupported("新浪数据源不支持周K/月K，请切换到腾讯数据源查看".into()));
+        // Sina only supports daily K-line; reject minute/weekly/monthly.
+        // Minute data should use fetch_minute_data instead.
+        if period != "daily" {
+            return Err(AppError::Unsupported("新浪数据源不支持周K/月K/分钟K线，请切换到腾讯数据源查看".into()));
         }
         let scale = "240";
 
@@ -336,6 +393,10 @@ impl DataSource for SinaAdapter {
             .send()
             .await
             .map_err(|e| AppError::network("sina", format!("K线请求失败: {:#}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("K线 HTTP {}", resp.status())));
+        }
 
         let body_text = resp
             .text()
@@ -409,6 +470,10 @@ impl DataSource for SinaAdapter {
             .await
             .map_err(|e| AppError::network("sina", format!("深度数据(Tencent)请求失败: {:#}", e)))?;
 
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("深度数据 HTTP {}", resp.status())));
+        }
+
         let body_bytes = resp.bytes().await.map_err(|e| AppError::network("sina", format!("深度数据读取失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
@@ -417,9 +482,14 @@ impl DataSource for SinaAdapter {
 
         for line in body.lines() {
             if let Some(eq_pos) = line.find('=') {
-                let qs = line[eq_pos + 1..].find('"').unwrap_or(0) + eq_pos + 2;
-                let qe = line[qs..].find('"').unwrap_or(0);
-                let data = &line[qs..qs + qe];
+                // Use ?-style fallback instead of unwrap_or(0) to avoid
+                // panicking on malformed responses without quoted data.
+                let q_start = match line[eq_pos + 1..].find('"') {
+                    Some(p) => p + eq_pos + 2,
+                    None => continue, // skip lines without quoted data
+                };
+                let qe = line[q_start..].find('"').unwrap_or(0);
+                let data = &line[q_start..q_start + qe];
                 let fields: Vec<&str> = data.split('~').collect();
 
                 if fields.len() >= 29 {

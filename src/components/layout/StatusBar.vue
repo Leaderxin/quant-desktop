@@ -11,7 +11,7 @@ const updater = useUpdaterStore();
 const { manualCheck } = useUpdateCheck();
 const appVersion = ref('');
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   copyright?: string;
   contactEmail?: string;
   qrcodeSrc?: string;
@@ -26,6 +26,11 @@ onMounted(async () => {
     appVersion.value = await getVersion();
   } catch {
     appVersion.value = '';
+  }
+  // Preload QR code image so popover has correct dimensions on first open
+  if (props.qrcodeSrc) {
+    const img = new Image();
+    img.src = props.qrcodeSrc;
   }
 });
 </script>
@@ -305,10 +310,8 @@ onMounted(async () => {
 }
 .qr-image {
   display: block;
-  max-width: min(200px, calc(100vw - 80px));
-  max-height: 200px;
-  width: auto;
-  height: auto;
+  width: min(200px, calc(100vw - 80px));
+  height: 200px;
   border-radius: var(--radius-sm);
   object-fit: contain;
 }

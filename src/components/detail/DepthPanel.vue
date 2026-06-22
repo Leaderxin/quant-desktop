@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { Depth, Level } from '@/types';
 import { getPricePrecision, formatVolume } from '@/utils/format';
@@ -12,6 +12,7 @@ const props = defineProps<{
 const depth = ref<Depth | null>(null);
 const loading = ref(false);
 const error = ref('');
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 async function fetchDepth() {
   loading.value = true;
@@ -25,8 +26,29 @@ async function fetchDepth() {
   }
 }
 
-onMounted(() => fetchDepth());
-watch(() => [props.code, props.market], () => fetchDepth());
+function startAutoRefresh() {
+  stopAutoRefresh();
+  refreshTimer = setInterval(fetchDepth, 3000);
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer !== null) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+onMounted(() => {
+  fetchDepth();
+  startAutoRefresh();
+});
+
+onUnmounted(() => stopAutoRefresh());
+
+watch(() => [props.code, props.market], () => {
+  fetchDepth();
+  startAutoRefresh();
+});
 
 const levels = computed(() => {
   const rawBids = depth.value ? [...depth.value.bids] : [];

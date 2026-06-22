@@ -4,6 +4,7 @@ import { NConfigProvider, darkTheme, lightTheme, NMessageProvider, type GlobalTh
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
+import { useUpdaterStore } from '@/stores/updater';
 import AppLayout from '@/components/layout/AppLayout.vue';
 import UpdateDialog from '@/components/updater/UpdateDialog.vue';
 import { useUpdateCheck } from '@/composables/useUpdateCheck';
@@ -11,6 +12,9 @@ import { useUpdateCheck } from '@/composables/useUpdateCheck';
 const settings = useSettingsStore();
 const watchlist = useWatchlistStore();
 const quote = useQuoteStore();
+// Initialize updater event listeners early so backend events during
+// startup are not missed (Pinia stores are lazy-initialized).
+useUpdaterStore().initListeners();
 
 const initError = ref<string | null>(null);
 const initReady = ref(false);

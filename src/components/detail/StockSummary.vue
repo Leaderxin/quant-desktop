@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { Quote } from '@/types';
 import { formatPrice, formatVolume } from '@/utils/format';
 
@@ -6,7 +7,7 @@ const props = defineProps<{
   quote: Quote;
 }>();
 
-const items = [
+const items = computed(() => [
   { label: '开盘', value: formatPrice(props.quote.open) },
   { label: '最高', value: formatPrice(props.quote.high) },
   { label: '最低', value: formatPrice(props.quote.low) },
@@ -16,7 +17,7 @@ const items = [
     label: '换手率',
     value: props.quote.turnover_rate != null ? props.quote.turnover_rate.toFixed(2) + '%' : '--'
   },
-];
+]);
 </script>
 
 <template>

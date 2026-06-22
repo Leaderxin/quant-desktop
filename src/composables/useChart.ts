@@ -14,10 +14,11 @@ export function useChart(options: {
 }) {
   const settings = useSettingsStore();
 
-  let chart: Chart | null = null;
+  const chart = ref<Chart | null>(null);
   const loading = ref(false);
   const error = ref('');
   let abortController: AbortController | null = null;
+  let refreshTimer: ReturnType<typeof setInterval> | null = null;
   const currentPeriod = ref<PeriodType>('minute');
 
   const klineData = ref<KCLineData[]>([]);
@@ -50,10 +51,10 @@ export function useChart(options: {
   }
 
   function applyChartStyles() {
-    if (!chart) return;
+    if (!chart.value) return;
     const c = themeColors();
 
-    chart.setStyles({
+    chart.value.setStyles({
       grid: {
         show: true,
         horizontal: { show: true, color: c.gridHColor, size: 1, dashedValue: [2, 2] },
@@ -61,7 +62,7 @@ export function useChart(options: {
       },
       candle: {
         type: 'area',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' as any },
+        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           labels: ['时间', '开', '高', '低', '收', '量', '额'],
@@ -105,13 +106,13 @@ export function useChart(options: {
   }
 
   function applyCandlestickStyles() {
-    if (!chart) return;
+    if (!chart.value) return;
     const c = themeColors();
 
-    chart.setStyles({
+    chart.value.setStyles({
       candle: {
         type: 'candle_solid',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' as any },
+        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           labels: ['日期', '开', '高', '低', '收', '量', '额'],
@@ -147,18 +148,18 @@ export function useChart(options: {
   async function initChart(period: PeriodType) {
     if (!options.chartRef.value) return;
 
-    const isNew = !chart;
+    const isNew = !chart.value;
     if (isNew) {
-      chart = init(options.chartRef.value, {
+      chart.value = init(options.chartRef.value, {
         locale: 'zh-CN',
         layout: { basicParams: { yAxisInside: true } },
       });
-      if (!chart) {
+      if (!chart.value) {
         error.value = '图表初始化失败';
         return;
       }
 
-      chart.overrideIndicator({
+      chart.value.overrideIndicator({
         name: 'VOL',
         shortName: '成交量',
         series: 'volume',
@@ -176,11 +177,11 @@ export function useChart(options: {
     }
 
     // Always update symbol and period on stock/period change (even for reused chart)
-    if (!chart) return;
-    chart.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
+    if (!chart.value) return;
+    chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
 
     currentPeriod.value = period;
-    chart.setPeriod(periodToKlinecharts(period) as any);
+    chart.value.setPeriod(periodToKlinecharts(period) as any);
     applyChartStyles();
     if (period !== 'minute') {
       applyCandlestickStyles();
@@ -188,15 +189,42 @@ export function useChart(options: {
   }
 
   function syncPrecision() {
-    if (!chart || klineData.value.length === 0) return;
+    if (!chart.value || klineData.value.length === 0) return;
     const last = klineData.value[klineData.value.length - 1];
     if (last.close != null && !isNaN(last.close) && last.close !== 0) {
-      chart.setSymbol({
+      chart.value.setSymbol({
         ticker: unref(options.code),
         name: unref(options.name) || unref(options.code),
         pricePrecision: getPricePrecision(last.close),
         volumePrecision: 0,
       });
+    }
+  }
+
+  function getRefreshInterval(period: PeriodType): number {
+    switch (period) {
+      case 'minute': return 5000;    // 分时图：5 秒
+      case 'daily':  return 30000;   // 日K：30 秒
+      case 'weekly': return 60000;   // 周K：60 秒
+      case 'monthly':return 60000;   // 月K：60 秒
+      default:       return 30000;
+    }
+  }
+
+  function startAutoRefresh(period: PeriodType) {
+    stopAutoRefresh();
+    const interval = getRefreshInterval(period);
+    refreshTimer = setInterval(() => {
+      if (!loading.value) {
+        loadData(period);
+      }
+    }, interval);
+  }
+
+  function stopAutoRefresh() {
+    if (refreshTimer !== null) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
     }
   }
 
@@ -262,10 +290,11 @@ export function useChart(options: {
       }
 
       if (signal.aborted) return;
-      if (chart) {
-        chart.setDataLoader(dataLoader);
+      if (chart.value) {
+        chart.value.setDataLoader(dataLoader);
         syncPrecision();
       }
+      startAutoRefresh(period);
     } catch (e) {
       if (signal.aborted) return;
       error.value = `加载数据失败: ${String(e).slice(0, 160)}`;
@@ -278,13 +307,14 @@ export function useChart(options: {
   }
 
   function disposeChart() {
+    stopAutoRefresh();
     if (abortController) {
       abortController.abort();
       abortController = null;
     }
-    if (chart) {
-      dispose(chart);
-      chart = null;
+    if (chart.value) {
+      dispose(chart.value);
+      chart.value = null;
     }
   }
 

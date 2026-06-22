@@ -32,7 +32,9 @@ export const useQuoteStore = defineStore('quote', () => {
           v.code === prev[i].code &&
           v.price === prev[i].price &&
           v.change === prev[i].change &&
-          v.change_pct === prev[i].change_pct
+          v.change_pct === prev[i].change_pct &&
+          v.volume === prev[i].volume &&
+          v.turnover === prev[i].turnover
         )) {
           return;
         }

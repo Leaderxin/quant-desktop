@@ -204,16 +204,30 @@ impl Scheduler {
             // Fetch guard — prevents concurrent fetch_once calls from the two loops
             let fetching = Arc::new(AtomicBool::new(false));
 
-            // Background wakeup listener — triggered on datasource switch for immediate refresh
-            let dm = data_manager.clone();
-            let c = cache.clone();
-            let d = db.clone();
-            let ah = app_handle.clone();
-            let fg = fetching.clone();
+            // Background wakeup listener — triggered on datasource switch for immediate refresh.
+            // Each fetch is spawned as a separate task so a single panic (e.g. from
+            // a poisoned Mutex or serialization error) doesn't kill the listener.
+            // Subsequent datasource switches would otherwise be ignored until the
+            // next timed poll cycle.
+            let dm_wake = data_manager.clone();
+            let c_wake = cache.clone();
+            let d_wake = db.clone();
+            let ah_wake = app_handle.clone();
+            let fg_wake = fetching.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    dm.wakeup.notified().await;
-                    Self::fetch_once(&dm, &c, &d, &ah, &fg, true).await;
+                    dm_wake.wakeup.notified().await;
+                    let dm = dm_wake.clone();
+                    let c = c_wake.clone();
+                    let d = d_wake.clone();
+                    let ah = ah_wake.clone();
+                    let fg = fg_wake.clone();
+                    let handle = tauri::async_runtime::spawn(async move {
+                        Self::fetch_once(&dm, &c, &d, &ah, &fg, true).await
+                    });
+                    if let Err(join_err) = handle.await {
+                        log::warn!("Wakeup fetch task panicked: {}", join_err);
+                    }
                 }
             });
 

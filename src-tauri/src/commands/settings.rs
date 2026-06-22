@@ -25,9 +25,10 @@ pub fn switch_datasource(
     db: State<'_, Arc<Database>>,
     name: String,
 ) -> Result<(), String> {
-    manager.set_active(&name)?;
+    // Persist to DB first so a restart doesn't revert to the old source.
     db.set_setting("active_datasource", &name)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    manager.set_active(&name)
 }
 
 #[tauri::command]

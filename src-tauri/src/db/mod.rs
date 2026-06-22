@@ -107,12 +107,16 @@ impl Database {
 
     pub fn reorder_watch(&self, ids: &[i64]) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        // Wrap in a transaction so that a crash mid-reorder doesn't leave
+        // sort_orders in an inconsistent half-updated state.
+        let tx = conn.unchecked_transaction()?;
         for (i, id) in ids.iter().enumerate() {
-            conn.execute(
+            tx.execute(
                 "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
                 params![i as i32, id],
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -229,13 +233,15 @@ impl Database {
         if let Some(pos) = ids.iter().position(|&x| x == id) {
             if pos > 0 {
                 let prev_id = ids[pos - 1];
+                // Swap sort_order: target takes the previous entry's position,
+                // and the previous entry takes the target's position.
                 conn.execute(
                     "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
-                    params![pos as i32, id],
+                    params![(pos - 1) as i32, id],
                 )?;
                 conn.execute(
                     "UPDATE watchlist SET sort_order = ?1 WHERE id = ?2",
-                    params![(pos - 1) as i32, prev_id],
+                    params![pos as i32, prev_id],
                 )?;
             }
         }

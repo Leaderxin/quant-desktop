@@ -23,26 +23,35 @@ export const useUpdaterStore = defineStore('updater', () => {
 
   // Store unlisten function for cleanup (prevents listener leak on HMR)
   let unlistenUpdateAvailable: (() => void) | null = null;
+  let unlistenCheckComplete: (() => void) | null = null;
+  let listenersInitialized = false;
 
-  // Listen for manual update triggers (tray menu / settings button).
-  // Startup auto-check goes through useUpdateCheck composable instead,
-  // which gates on is_trading_session() before showing the dialog.
-  listen<UpdateInfo>('update-available', (event) => {
-    updateStatus.value = 'available';
-    updateInfo.value = event.payload;
-    // Manual triggers always show dialog (user explicitly asked)
-    dialogVisible.value = true;
-  }).then((fn) => {
-    unlistenUpdateAvailable = fn;
-  }).catch((e) => console.error('[updater] Failed to listen update-available:', e));
+  function initListeners() {
+    if (listenersInitialized) return;
+    listenersInitialized = true;
 
-  // Listen for tray menu "no update" results
-  listen<string>('update-check-complete', (event) => {
-    if (event.payload === 'up-to-date') {
-      isUpToDate.value = true;
-      setTimeout(() => { isUpToDate.value = false; }, 5000);
-    }
-  }).catch((e) => console.error('[updater] Failed to listen update-check-complete:', e));
+    // Listen for manual update triggers (tray menu / settings button).
+    // Startup auto-check goes through useUpdateCheck composable instead,
+    // which gates on is_trading_session() before showing the dialog.
+    listen<UpdateInfo>('update-available', (event) => {
+      updateStatus.value = 'available';
+      updateInfo.value = event.payload;
+      // Manual triggers always show dialog (user explicitly asked)
+      dialogVisible.value = true;
+    }).then((fn) => {
+      unlistenUpdateAvailable = fn;
+    }).catch((e) => console.error('[updater] Failed to listen update-available:', e));
+
+    // Listen for tray menu "no update" results
+    listen<string>('update-check-complete', (event) => {
+      if (event.payload === 'up-to-date') {
+        isUpToDate.value = true;
+        setTimeout(() => { isUpToDate.value = false; }, 5000);
+      }
+    }).then((fn) => {
+      unlistenCheckComplete = fn;
+    }).catch((e) => console.error('[updater] Failed to listen update-check-complete:', e));
+  }
 
   async function checkForUpdate(): Promise<UpdateInfo | null> {
     updateStatus.value = 'checking';
@@ -130,6 +139,11 @@ export const useUpdaterStore = defineStore('updater', () => {
       unlistenUpdateAvailable();
       unlistenUpdateAvailable = null;
     }
+    if (unlistenCheckComplete) {
+      unlistenCheckComplete();
+      unlistenCheckComplete = null;
+    }
+    listenersInitialized = false;
   }
 
   function reset() {
@@ -160,5 +174,6 @@ export const useUpdaterStore = defineStore('updater', () => {
     showDialog,
     reset,
     cleanup,
+    initListeners,
   };
 });

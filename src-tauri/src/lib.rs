@@ -230,6 +230,10 @@ pub fn run() {
             if let Some(main) = app.get_webview_window("main") {
                 let main_clone = main.clone();
                 let db_clone = db.clone();
+                // Rate-limit window geometry saves: Moved/Resized fire on every
+                // pixel drag, which would trigger hundreds of DB writes per second.
+                // We only persist at most once every 500ms.
+                let last_save = std::sync::Mutex::new(std::time::Instant::now());
                 let _ = main.on_window_event(move |event| {
                     match event {
                         tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -264,6 +268,13 @@ pub fn run() {
                             if !main_clone.is_minimized().unwrap_or(false)
                                 && main_clone.is_visible().unwrap_or(false)
                             {
+                                let mut last = last_save.lock().unwrap_or_else(|e| e.into_inner());
+                                let now = std::time::Instant::now();
+                                if now.duration_since(*last).as_millis() < 500 {
+                                    return;
+                                }
+                                *last = now;
+                                drop(last);
                                 if let Err(e) = db_clone.set_setting("window_x", &pos.x.to_string()) {
                                     log::warn!("Failed to save window_x on move: {}", e);
                                 }
@@ -278,6 +289,13 @@ pub fn run() {
                                 && size.width > 0
                                 && size.height > 0
                             {
+                                let mut last = last_save.lock().unwrap_or_else(|e| e.into_inner());
+                                let now = std::time::Instant::now();
+                                if now.duration_since(*last).as_millis() < 500 {
+                                    return;
+                                }
+                                *last = now;
+                                drop(last);
                                 if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
                                     log::warn!("Failed to save window_width on resize: {}", e);
                                 }
@@ -480,6 +498,13 @@ pub fn run() {
 
 /// Auto-detect local proxy (Clash/V2Ray) and set env vars for updater downloads.
 /// NO_PROXY excludes domestic stock API hosts so quotes/K-line still go direct.
+///
+/// # Safety
+///
+/// `std::env::set_var` is NOT thread-safe per Rust's documentation. This function
+/// MUST be called during startup, on the main thread, BEFORE any background tasks
+/// (scheduler, updater checks, etc.) are spawned. Concurrent reads of the affected
+/// env vars from other threads while this function runs is undefined behavior.
 fn detect_and_set_proxy() {
     use std::net::TcpStream;
     use std::time::Duration;

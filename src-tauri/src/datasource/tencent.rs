@@ -147,6 +147,10 @@ impl DataSource for TencentAdapter {
             .await
             .map_err(|e| AppError::network("tencent", format!("请求失败: {:#}", e)))?;
 
+        if !resp.status().is_success() {
+            return Err(AppError::network("tencent", format!("HTTP {}", resp.status())));
+        }
+
         let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
@@ -168,6 +172,10 @@ impl DataSource for TencentAdapter {
             .send()
             .await
             .map_err(|e| AppError::network("tencent", format!("指数请求失败: {:#}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::network("tencent", format!("指数 HTTP {}", resp.status())));
+        }
 
         let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
@@ -234,6 +242,10 @@ impl DataSource for TencentAdapter {
             .send()
             .await
             .map_err(|e| AppError::network("tencent", format!("K线请求失败: {:#}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::network("tencent", format!("K线 HTTP {}", resp.status())));
+        }
 
         let body: serde_json::Value = resp
             .json()
@@ -386,6 +398,10 @@ impl DataSource for TencentAdapter {
             .await
             .map_err(|e| AppError::network("tencent", format!("深度数据请求失败: {:#}", e)))?;
 
+        if !resp.status().is_success() {
+            return Err(AppError::network("tencent", format!("深度数据 HTTP {}", resp.status())));
+        }
+
         let body_bytes = resp.bytes().await.map_err(|e| AppError::network("tencent", format!("读取响应失败: {:#}", e)))?;
         let (body, _, _) = GBK.decode(&body_bytes);
 
@@ -394,9 +410,14 @@ impl DataSource for TencentAdapter {
 
         for line in body.lines() {
             if let Some(eq_pos) = line.find('=') {
-                let qs = line[eq_pos + 1..].find('"').unwrap_or(0) + eq_pos + 2;
-                let qe = line[qs..].find('"').unwrap_or(0);
-                let data = &line[qs..qs + qe];
+                // Use safe fallback instead of unwrap_or(0) to avoid
+                // panicking on malformed responses without quoted data.
+                let q_start = match line[eq_pos + 1..].find('"') {
+                    Some(p) => p + eq_pos + 2,
+                    None => continue, // skip lines without quoted data
+                };
+                let qe = line[q_start..].find('"').unwrap_or(0);
+                let data = &line[q_start..q_start + qe];
                 let fields: Vec<&str> = data.split('~').collect();
 
                 if fields.len() >= 29 {
