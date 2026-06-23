@@ -129,6 +129,7 @@ async function handleAdd(stock: StockBrief) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -145,6 +146,8 @@ async function handleAdd(stock: StockBrief) {
   font-size: var(--text-xs);
   font-family: var(--font-sans);
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: background var(--transition-fast), filter var(--transition-fast);
 }
 .result-add-btn:hover {
@@ -153,20 +156,26 @@ async function handleAdd(stock: StockBrief) {
 
 .result-info {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
+  overflow: hidden;
+  min-width: 0;
+  max-width: 280px;
 }
 .result-name {
   font-size: var(--text-md);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
   line-height: 1.4;
+  word-break: break-all;
 }
 .result-code {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--color-text-tertiary);
   line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .no-results {
   text-align: center;

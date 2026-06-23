@@ -140,7 +140,10 @@ const columns: DataTableColumns<WatchItem> = [
     },
     render(row) {
       const q = quoteStore.getQuote(row.code, row.market);
-      return formatPrice(q?.price);
+      if (!q) return '--';
+      const v = q.change_pct;
+      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
+        formatPrice(q.price));
     }
   },
   {

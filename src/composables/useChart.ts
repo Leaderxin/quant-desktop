@@ -53,6 +53,7 @@ export function useChart(options: {
   function applyChartStyles() {
     if (!chart.value) return;
     const c = themeColors();
+    const isDark = settings.theme === 'dark';
 
     chart.value.setStyles({
       grid: {
@@ -79,6 +80,11 @@ export function useChart(options: {
       indicator: {
         ohlc: { upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' },
         bars: [] as any,
+        // 均线配色：参考主流股票软件（同花顺/东方财富/通达信）白/黄/紫/绿
+        lines: (isDark
+          ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
+          : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A']
+        ).map(color => ({ style: 'solid', smooth: false, size: 1, color })),
         lastValueMark: { show: false } as any,
         tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any,
       },
@@ -185,6 +191,14 @@ export function useChart(options: {
     applyChartStyles();
     if (period !== 'minute') {
       applyCandlestickStyles();
+      // 叠加价格均线 MA5/MA10/MA20 到主图（仅 K 线图，分时图不叠加）
+      const existingMA = chart.value.getIndicators({ name: 'MA' });
+      if (existingMA.length === 0) {
+        chart.value.createIndicator({
+          name: 'MA',
+          calcParams: [5, 10, 20, 60],
+        }, { pane: { id: 'candle_pane' } });
+      }
     }
   }
 
