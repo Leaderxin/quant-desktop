@@ -278,14 +278,15 @@ impl DataSource for TencentAdapter {
                 let close: f64 = arr[2].as_str()?.parse().ok()?;
                 let high: f64 = arr[3].as_str()?.parse().unwrap_or(close);
                 let low: f64 = arr[4].as_str()?.parse().unwrap_or(close);
-                let volume: u64 = arr[5].as_str()?.parse().unwrap_or(0);
+                let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+                let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
                 Some(crate::domain::MinuteData {
                     time,
                     price: close,
                     open,
                     high,
                     low,
-                    volume: super::normalize_volume(volume),
+                    volume,
                     avg_price: open,
                 })
             })

@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -113,12 +114,18 @@ const visibleItems = computed(() => {
 const retryHintVisible = ref(false);
 
 // ── Dragging ──
-// CSS -webkit-app-region: drag handles window movement at the OS compositor
-// level — same mechanism as the main window TopBar, zero latency.
+// Uses Tauri's startDragging() API (Win32 DefWindowProc) instead of CSS
+// -webkit-app-region so that dragging is smooth on both Windows 10 and 11.
 // Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
-// The @click event naturally distinguishes click vs drag:
+// Click vs drag discrimination is handled natively by the OS:
+// - Drag (mouse moved): startDragging() takes over → no click event
 // - Click (no movement): click event fires → opens main window
-// - Drag (mouse moved): OS compositor takes over → click does NOT fire
+
+function handleMouseDown() {
+  getCurrentWindow().startDragging().catch((e) => {
+    console.error('[TickerBar] startDragging failed:', e);
+  });
+}
 
 async function handleClick() {
   if (initFailed.value) {
@@ -159,6 +166,7 @@ async function handleClick() {
     aria-label="显示主界面"
     @keydown.enter="handleClick"
     @keydown.space.prevent="handleClick"
+    @mousedown="handleMouseDown"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
     @click="handleClick"
@@ -203,7 +211,6 @@ async function handleClick() {
   flex-direction: column;
   justify-content: center;
   user-select: none;
-  -webkit-app-region: drag;
   cursor: grab;
   overflow: hidden;
   padding: var(--space-1) var(--space-2);

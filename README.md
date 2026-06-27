@@ -189,5 +189,5 @@ QuantDesktop 的核心理念是 **"不打扰的看盘"**：
 ---
 
 <p align="center">
-  <b>QuantDesktop v1.2.7</b> — 免费实时 A 股看盘，从桌面开始。
+  <b>QuantDesktop v1.2.8</b> — 免费实时 A 股看盘，从桌面开始。
 </p>

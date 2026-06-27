@@ -329,8 +329,10 @@ impl Scheduler {
             }
         }
 
-        // 3. When market is Closed (after 15:00 or weekend), serve from cache
-        //    if it fully covers the watchlist — otherwise fetch to populate it.
+        // 3. When market is Closed (after 15:00 or weekend), emit cached quotes
+        //    immediately for instant display (if cache fully covers the watchlist),
+        //    then fall through to the API so the frontend receives the latest
+        //    closing data — consistent with how indices are always refreshed.
         if session == MarketSession::Closed && !force {
             let cached = cache.get_all_quotes();
             if !cached.is_empty() {
@@ -339,17 +341,19 @@ impl Scheduler {
                     cached.iter().any(|q| q.code == *code && q.market == "CN")
                 });
                 if all_cached {
+                    // Emit cached data first so the UI appears instantly; the
+                    // subsequent API fetch will overwrite with fresher data.
                     if let Err(e) = app_handle.emit("quotes-updated", &cached) {
                         log::warn!("Failed to emit quotes-updated (cached): {}", e);
                     }
-                    Self::fetch_and_emit_indices(manager, cache, app_handle).await;
-                    return None;
+                } else {
+                    log::info!("Cache incomplete during closed market — fetching to backfill missing stocks");
                 }
-                log::info!("Cache incomplete during closed market — fetching to backfill missing stocks");
             } else {
                 log::info!("Cache empty during closed market — fetching to populate");
             }
-            // Cache is empty or incomplete → fall through to fetch from API
+            // Fall through to fetch from API so quotes receive the latest
+            // closing data, consistent with how indices are always refreshed.
         }
 
         if !cn_codes.is_empty() {

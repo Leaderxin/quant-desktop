@@ -2,7 +2,7 @@
 
 桌面级 A 股行情监控工具，基于 Tauri 2 + Vue 3 + Rust 构建。
 
-当前版本：**v1.2.7**
+当前版本：**v1.2.8**
 
 ## 功能
 
@@ -109,7 +109,7 @@ $staging = "portable\quant-desktop"
 mkdir $staging -Force > $null
 Copy-Item "$src\quant-desktop.exe" -Destination "$staging\"
 New-Item -ItemType File -Path "$staging\portable.dat" > $null
-Compress-Archive -Path "$staging\*" -DestinationPath "$src\bundle\quant-desktop_1.2.7_x64-portable.zip"
+Compress-Archive -Path "$staging\*" -DestinationPath "$src\bundle\quant-desktop_1.2.8_x64-portable.zip"
 ```
 
 > 产物：`src-tauri\target\release\bundle\quant-desktop_<version>_x64-portable.zip`
