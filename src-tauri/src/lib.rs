@@ -429,6 +429,9 @@ pub fn run() {
             // Ticker window: save position on move (clamped), restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
+                // Explicitly hide from taskbar — the config `skipTaskbar` is not
+                // always reliable on Windows and can reset when the window is shown.
+                let _ = ticker.set_skip_taskbar(true);
 
                 // Capture monitor bounds and ticker size for clamping on move
                 let mon = ticker.primary_monitor().ok().flatten();

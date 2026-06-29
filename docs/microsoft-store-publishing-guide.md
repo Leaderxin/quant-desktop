@@ -1,7 +1,7 @@
 # QuantDesktop — Microsoft Store 发布方案文档
 
-> 版本：v1.0  
-> 日期：2026-06-22  
+> 版本：v1.1  
+> 日期：2026-06-29（修订）  
 > 适用产品：QuantDesktop v1.2.5+  
 > 目标平台：Microsoft Store（Windows 10 1809+ / Windows 11）
 
@@ -20,6 +20,7 @@
 9. [发布后维护](#9-发布后维护)
 10. [CI/CD 自动化构建](#10-cicd-自动化构建)
 11. [附录](#11-附录)
+12. [常见账号问题排查](#12-常见账号问题排查)
 
 ---
 
@@ -67,8 +68,8 @@ MSIX Packaging Tool 封装 (.msix)
 
 | 费用项 | 金额 | 说明 |
 |--------|------|------|
-| 个人开发者注册费 | **免费** | 2025 年 6 月起永久免费 |
-| 企业开发者注册费 | **免费** | 2026 年 5 月起永久免费 |
+| 个人开发者注册费 | **免费** | 2024 年 9 月起永久免费（原 $19） |
+| 企业开发者注册费 | **免费** | 2026 年 5 月起永久免费（原 $99） |
 | MSIX 代码签名 | **免费** | 微软认证后重新签名 |
 | 应用托管/CDN | **免费** | 微软提供全球 CDN |
 | 应用更新分发 | **免费** | Store 内置更新机制 |
@@ -90,21 +91,27 @@ MSIX Packaging Tool 封装 (.msix)
 
 ### 3.1 注册入口
 
-访问 [Microsoft Partner Center](https://partner.microsoft.com)，使用 Microsoft 账号登录。
+**注册专用入口**：[https://developer.microsoft.com/microsoft-store/register/](https://developer.microsoft.com/microsoft-store/register/)
+
+点击"注册"，使用 Microsoft 账号（个人账号或 Entra ID 工作账号）登录后进入注册向导。
+
+> ⚠️ **重要**：登录 `https://partner.microsoft.com` 后默认进入的是微软所有合作伙伴项目的总门户（CSP、商业市场、ISV 等）。作为 Windows 应用开发者，你需要导航到 **"Windows apps and games"** 才能看到应用管理功能。也可以直接访问仪表板：[https://partner.microsoft.com/en-us/dashboard/windows/overview](https://partner.microsoft.com/en-us/dashboard/windows/overview)
 
 ### 3.2 账号类型选择
 
 | | 个人账户 | 企业账户 |
 |---|---|---|
 | 适用对象 | 个人开发者 | 公司/组织 |
+| 登录方式 | Microsoft 个人账号 | Microsoft 个人账号 **或** Microsoft Entra ID（工作账号，2026 年 5 月起支持） |
 | 显示名称 | 个人真实姓名 | 公司名称 |
-| 所需材料 | 身份证/护照 + 自拍 | 营业执照 + D-U-N-S 编号 + 公司域邮箱 |
-| 验证周期 | 几小时（自动） | 1-3 天（人工审核） |
+| 所需材料 | 身份证/护照 + 自拍 | 营业执照 + D-U-N-S 编号（推荐）+ 公司域邮箱 |
+| 验证周期 | 几小时（自动） | 1-3 天（人工审核，使用 Entra ID 可加速） |
 | 费用 | 免费 | 免费 |
+| 团队管理 | 不支持 | 使用 Entra ID 可分配角色，多人管理 |
 
 ### 3.3 注册步骤
 
-1. 打开 https://partner.microsoft.com ，点击"注册"
+1. 打开 [https://developer.microsoft.com/microsoft-store/register/](https://developer.microsoft.com/microsoft-store/register/)，点击"注册"，使用 Microsoft 账号登录（企业用户可使用 Microsoft Entra ID 工作账号）
 2. 选择账户类型：**个人** 或 **公司**
 3. 填写开发者信息：
    - 个人：真实姓名、国家/地区、联系邮箱
@@ -648,7 +655,7 @@ jobs:
         shell: pwsh
         run: |
           $msiPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1
-          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\msix.exe" `
+          & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\makeappx.exe" `
             pack `
             -d temp_msix `
             -p quant-desktop.msix `
@@ -698,10 +705,11 @@ makeappx.exe pack /d $staging /p "quant-desktop.msix" /l
 
 | 资源 | 链接 |
 |------|------|
-| Microsoft Partner Center | https://partner.microsoft.com |
+| Microsoft Partner Center（仪表板） | https://partner.microsoft.com/en-us/dashboard/windows/overview |
+| Microsoft Store 开发者注册 | https://developer.microsoft.com/microsoft-store/register/ |
 | 发布第一个 Windows 应用（官方文档） | https://learn.microsoft.com/zh-cn/windows/apps/package-and-deploy/publish-first-app |
 | 将 Win32 应用分发到 Store | https://learn.microsoft.com/zh-cn/windows/apps/distribute-through-store/how-to-distribute-your-win32-app-through-microsoft-store |
-| Tauri 官方 Microsoft Store 指南 | https://v2.tauri.app/distribute/microsoft-store/ |
+| Tauri 官方 Microsoft Store 指南 | https://v2.tauri.app/learn/distribute/microsoft-store/ |
 | MSIX Packaging Tool | Microsoft Store 免费下载 |
 | 个人开发者免费上架实战参考 | https://huayemao.run/posts/337 |
 | Windows App Certification Kit (WACK) | 包含在 Windows SDK 中 |
@@ -732,6 +740,96 @@ makeappx.exe pack /d $staging /p "quant-desktop.msix" /l
 | Partner Center 提交 | 同 MSIX | `1.2.5.0` |
 
 每次发布 Store 版本时，MSIX 的 Revision 号需要递增：`1.2.5.0` → `1.2.5.1`。
+
+---
+
+## 12. 常见账号问题排查
+
+Partner Center 的账号验证和后台状态同步偶尔会出现卡顿，以下是最常见的几个问题和解决方案。
+
+### 12.1 登录后看不到"Windows apps and games"
+
+**症状**：登录 `https://partner.microsoft.com` 后只看到商业市场（Marketplace）、CSP 等选项，找不到应用发布入口。
+
+**原因**：`partner.microsoft.com` 是微软所有合作伙伴项目的总门户。Windows 应用发布只是其中一个模块，新手容易走错。
+
+**解决**：
+1. 直接访问专用仪表板地址：[https://partner.microsoft.com/en-us/dashboard/windows/overview](https://partner.microsoft.com/en-us/dashboard/windows/overview)
+2. 确认注册时选择了正确的账号类型（Windows 应用开发者，而非 CSP/ISV）
+3. 如仍不可用，可能是账号尚未完成验证（见 12.3）
+
+### 12.2 "提交认证"按钮灰色无法点击
+
+**症状**：所有标签页已经填写完毕（显示绿色勾），但最终的"提交以进行认证"按钮始终是灰色的。
+
+**可能原因与解决**：
+
+1. **未接受更新后的协议条款** → 导航到 **Account Settings → Agreements**（账户设置 → 协议），检查是否有待接受的更新条款。需要用账号所有者邮箱对应的账号登录才能签署。
+2. **所有标签页确实需要全部变绿** → 特别检查容易遗漏的"Submission Options"标签页 —— 即使内容为空，也需要点进去打开一下并保存。
+3. **浏览器缓存问题** → 退出登录，清除浏览器缓存和 Cookie，使用隐私/无痕窗口重新登录。
+4. **Partner Center 已知 bug**：使用 `runFullTrust` 受限能力的应用，有时"Submission Options"会一直显示"Incomplete"。这是 Partner Center 前端的 bug，需要联系支持解决。
+
+### 12.3 账号长期处于"未验证"状态
+
+**症状**：注册已超过 30 分钟（甚至数天），账号仍显示 verification pending，页面提示"You can't submit to the Store until your account is verified"。
+
+**解决步骤**：
+
+1. **检查邮箱**（含垃圾邮件箱），是否有微软发来的验证请求邮件
+2. **个人账号**：确认身份证/护照照片清晰、自拍照面部清晰且与证件匹配
+3. **企业账号**：确认 D-U-N-S 编号有效，或营业执照扫描件清晰可读；使用公司域名的邮箱
+4. **通过官方支持渠道提交工单**：
+   - Partner Center 内：**Help (?) → Contact Support** → 选择"Account"类别
+   - 或访问：[https://developer.microsoft.com/en-us/windows/support/](https://developer.microsoft.com/en-us/windows/support/)
+5. **备用方案**：如果 Partner Center 支持入口不可用（链接跳转错误等），可到 [Azure Portal](https://portal.azure.com) 创建支持请求，选择"订阅/账号"类别，描述中提到"Dev Center/Partner Center provisioning issue"，附上你的 Publisher ID
+
+> ⚠️ 身份验证只有 **3 次**机会，材料务必准备完整正确再提交。
+
+### 12.4 税务/付款资料阻止提交（即使是免费应用）
+
+**症状**：页面提示"需要更新税务和付款信息"，但进入 Payout & Tax 页面发现所有资料显示为 **Complete**（已完成）。
+
+**原因**：这是 Partner Center 的已知问题 —— 后端验证系统与前端 UI 状态不同步。
+
+**解决**：
+1. 重新填写并保存税务资料（即使是重复的），触发一次后端重新验证
+2. 等待 24 小时内后端同步（通常会自动恢复）
+3. 如超 24 小时仍未解决，通过 Partner Center 的 **Help (?) → Contact Support** 提交工单
+
+### 12.5 提交后长期卡在"Publishing"状态
+
+**症状**：应用已通过认证（Certification passed），进入 Publishing 阶段，但卡在"可能需要 30 分钟"的提示数天无变化。
+
+**解决**：
+1. 退出登录 → 清除缓存 → 隐私模式重新登录查看状态
+2. 尝试 **撤回提交并重新提交**（Withdraw and re-submit）
+3. 如果上述方法无效且超过 2 天，通过 Partner Center **Help (?) → Contact Support** 提交工单，注明 Product ID 和 Submission ID
+
+### 12.6 程序包上传持续报错
+
+**症状**：上传 MSIX 或填写 EXE/MSI URL 后，Pacakges 页面持续显示 "Submission failed. Please try again later"。
+
+**解决**：
+1. 确保每个架构/语言组合只上传了 **一个**程序包 —— 重复条目会导致报错
+2. 删除旧的或重复的包条目，重新添加
+3. 如果自检（病毒扫描、代码签名验证）已通过但仍报错，这很可能是后端问题，需要通过支持工单上报（附上 Package ID）
+
+### 12.7 联系支持的推荐方式
+
+| 渠道 | 适用场景 |
+|------|----------|
+| **Partner Center → Help (?) → Contact Support** | 首选，适用于大多数问题 |
+| **developer.microsoft.com/windows/support** | 账号验证、提交、认证相关问题 |
+| **Azure Portal → 创建支持请求** | 当 Partner Center 支持入口不可用时的备用方案 |
+| **Microsoft Q&A（learn.microsoft.com/answers）** | 公开社区求助，用于紧急且其他渠道无响应时 |
+| **`reportapp@microsoft.com`** | **仅**用于政策/认证纠纷申诉，不用于技术问题 |
+
+提交工单时请务必附上：
+- **Seller ID / Publisher ID**
+- **Product ID** 和 **Submission ID**（如适用）
+- 问题发生的**完整时间线**
+- 错误信息的**截图**
+- 之前所有相关工单的**编号**
 
 ---
 
