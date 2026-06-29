@@ -114,20 +114,49 @@ const visibleItems = computed(() => {
 const retryHintVisible = ref(false);
 
 // ── Dragging ──
-// Uses Tauri's startDragging() API (Win32 DefWindowProc) instead of CSS
-// -webkit-app-region so that dragging is smooth on both Windows 10 and 11.
+// Uses Tauri's startDragging() API (Win32 DefWindowProc) for smooth
+// OS-level window dragging on both Windows 10 and 11.
 // Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
-// Click vs drag discrimination is handled natively by the OS:
-// - Drag (mouse moved): startDragging() takes over → no click event
-// - Click (no movement): click event fires → opens main window
+// Click vs drag detection via mousemove threshold:
+// - Click (mouse moves <3px): @click fires → opens main window
+// - Drag (mouse moves ≥3px): startDragging() triggers OS drag → @click does NOT fire
+//   because startDragging() enters a Win32 modal drag loop that consumes mouseup.
+//   Document-level mousemove listener ensures we catch fast mouse movements
+//   that leave the ticker bar element.
 
-function handleMouseDown() {
-  getCurrentWindow().startDragging().catch((e) => {
-    console.error('[TickerBar] startDragging failed:', e);
-  });
+let isDragging = false;
+
+function onMouseDown(e: MouseEvent) {
+  isDragging = false;
+  if (initFailed.value) {
+    return;
+  }
+  const startX = e.clientX;
+  const startY = e.clientY;
+
+  const onMouseMove = (ev: MouseEvent) => {
+    if (isDragging) return;
+    if (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3) {
+      isDragging = true;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      getCurrentWindow().startDragging().catch((err) => {
+        console.error('[TickerBar] startDragging failed:', err);
+      });
+    }
+  };
+
+  const onMouseUp = () => {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  };
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
 }
 
 async function handleClick() {
+  if (isDragging) return;
   if (initFailed.value) {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
@@ -166,7 +195,7 @@ async function handleClick() {
     aria-label="显示主界面"
     @keydown.enter="handleClick"
     @keydown.space.prevent="handleClick"
-    @mousedown="handleMouseDown"
+    @mousedown="onMouseDown"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
     @click="handleClick"
