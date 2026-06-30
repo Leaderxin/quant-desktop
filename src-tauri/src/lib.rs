@@ -178,6 +178,9 @@ pub fn run() {
                                 } else {
                                     let _ = window.show();
                                     let _ = window.set_always_on_top(true);
+                                    // Re-hide from taskbar after show (ITaskbarList::DeleteTab
+                                    // requires the window to be visible to take effect).
+                                    let _ = window.set_skip_taskbar(true);
                                     // Try saved position first, fall back to bottom-right
                                     let mon = window.primary_monitor().ok().flatten();
                                     let (mon_w, mon_h) = mon
@@ -429,9 +432,6 @@ pub fn run() {
             // Ticker window: save position on move (clamped), restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
-                // Explicitly hide from taskbar — the config `skipTaskbar` is not
-                // always reliable on Windows and can reset when the window is shown.
-                let _ = ticker.set_skip_taskbar(true);
 
                 // Capture monitor bounds and ticker size for clamping on move
                 let mon = ticker.primary_monitor().ok().flatten();
@@ -505,6 +505,9 @@ pub fn run() {
 
                 // Now show the ticker at the correct position (config has visible: false)
                 let _ = ticker.show();
+                // Must be called AFTER show() — the underlying ITaskbarList::DeleteTab
+                // COM call only works once the window has a taskbar tab registered.
+                let _ = ticker.set_skip_taskbar(true);
             }
 
             Ok(())
