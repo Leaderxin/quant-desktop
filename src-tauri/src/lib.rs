@@ -17,6 +17,78 @@ use db::Database;
 use datasource::DataSourceManager;
 use cache::QuoteCache;
 
+/// Windows-only utility: add WS_EX_TOOLWINDOW to a window's extended style.
+/// This permanently hides the window from the taskbar (survives Explorer
+/// restarts), unlike the COM-based ITaskbarList::DeleteTab approach used by
+/// Tauri's `set_skip_taskbar`.
+#[cfg(target_os = "windows")]
+mod windows_util {
+    use std::ffi::c_void;
+    type HWND = *mut c_void;
+
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_TOOLWINDOW: isize = 0x80;
+
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
+
+    extern "system" {
+        fn GetWindowLongPtrW(hwnd: HWND, nIndex: i32) -> isize;
+        fn SetWindowLongPtrW(hwnd: HWND, nIndex: i32, dwNewLong: isize) -> isize;
+        fn SetWindowPos(
+            hwnd: HWND,
+            hwndInsertAfter: HWND,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            uFlags: u32,
+        ) -> i32;
+    }
+
+    /// Set WS_EX_TOOLWINDOW on a window identified by its raw HWND.
+    /// Idempotent — skips if the style is already set.
+    pub unsafe fn set_tool_window(hwnd: isize) {
+        let hwnd_ptr = hwnd as HWND;
+        let ex_style = GetWindowLongPtrW(hwnd_ptr, GWL_EXSTYLE);
+        if ex_style == 0 {
+            log::warn!("[ticker] GetWindowLongPtrW returned 0 — skipping WS_EX_TOOLWINDOW");
+            return;
+        }
+        if ex_style & WS_EX_TOOLWINDOW != 0 {
+            return; // already applied
+        }
+        SetWindowLongPtrW(hwnd_ptr, GWL_EXSTYLE, ex_style | WS_EX_TOOLWINDOW);
+        SetWindowPos(
+            hwnd_ptr,
+            std::ptr::null_mut(),
+            0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+        log::info!("[ticker] WS_EX_TOOLWINDOW applied — permanently hidden from taskbar");
+    }
+}
+
+/// Apply WS_EX_TOOLWINDOW to a Tauri window so it stays hidden from the
+/// Windows taskbar even after Explorer restarts.  No-op on non-Windows.
+fn apply_tool_window_style(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use raw_window_handle::HasWindowHandle;
+        if let Ok(handle) = window.window_handle() {
+            if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                unsafe {
+                    windows_util::set_tool_window(h.hwnd.get() as isize);
+                }
+            }
+        }
+    }
+    let _ = window; // suppress unused warning on non-Windows
+}
+
 /// Runtime flag indicating whether the app is in portable mode
 /// (triggered by the presence of `portable.dat` next to the executable).
 #[derive(Debug, Clone, Copy)]
@@ -178,9 +250,9 @@ pub fn run() {
                                 } else {
                                     let _ = window.show();
                                     let _ = window.set_always_on_top(true);
-                                    // Re-hide from taskbar after show (ITaskbarList::DeleteTab
-                                    // requires the window to be visible to take effect).
+                                    // Re-hide from taskbar after show
                                     let _ = window.set_skip_taskbar(true);
+                                    apply_tool_window_style(&window);
                                     // Try saved position first, fall back to bottom-right
                                     let mon = window.primary_monitor().ok().flatten();
                                     let (mon_w, mon_h) = mon
@@ -505,9 +577,11 @@ pub fn run() {
 
                 // Now show the ticker at the correct position (config has visible: false)
                 let _ = ticker.show();
-                // Must be called AFTER show() — the underlying ITaskbarList::DeleteTab
-                // COM call only works once the window has a taskbar tab registered.
+                // Remove ticker from taskbar at both levels:
+                //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)
+                //   apply_tool_window → WS_EX_TOOLWINDOW (survives Explorer restart)
                 let _ = ticker.set_skip_taskbar(true);
+                apply_tool_window_style(&ticker);
             }
 
             Ok(())

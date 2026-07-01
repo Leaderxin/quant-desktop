@@ -2884,6 +2884,7 @@ dependencies = [
  "dirs 5.0.1",
  "encoding_rs",
  "log",
+ "raw-window-handle",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
