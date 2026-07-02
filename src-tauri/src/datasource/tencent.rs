@@ -300,6 +300,8 @@ impl DataSource for TencentAdapter {
         code: &str,
         market: &str,
         period: &str,
+        end_date: Option<&str>,
+        count: Option<u32>,
     ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         let tc_code = if code.starts_with("s_") {
             code[2..].to_string()
@@ -314,9 +316,12 @@ impl DataSource for TencentAdapter {
             _ => "day",
         };
 
+        let cnt = count.unwrap_or(200);
+        let end_date_str = end_date.unwrap_or("");
+
         let url = format!(
-            "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={},{},,,200,qfq",
-            tc_code, period_param
+            "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={},{},,{},{},qfq",
+            tc_code, period_param, end_date_str, cnt
         );
 
         let resp = headers::with_browser_headers(

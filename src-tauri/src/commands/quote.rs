@@ -45,5 +45,5 @@ pub async fn get_kline(
 ) -> Result<Vec<KLineData>, String> {
     let source = manager.active_source()
         .ok_or("No active data source")?;
-    source.fetch_kline(&code, &market, &period).await.map_err(|e| e.to_string())
+    source.fetch_kline(&code, &market, &period, None, None).await.map_err(|e| e.to_string())
 }
