@@ -110,11 +110,15 @@ pub trait DataSource: Send + Sync {
     }
 
     /// Fetch K-line data for charting (daily/weekly/monthly)
+    /// - `end_date`: None → latest data; Some("YYYY-MM-DD") → data up to and including this date
+    /// - `count`: None → default 200; Some(n) → return at most n bars
     async fn fetch_kline(
         &self,
         _code: &str,
         _market: &str,
         _period: &str,
+        _end_date: Option<&str>,
+        _count: Option<u32>,
     ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         Ok(vec![])
     }
