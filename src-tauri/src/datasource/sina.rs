@@ -396,7 +396,7 @@ impl DataSource for SinaAdapter {
         }
 
         if end_date.is_some() || count.is_some() {
-            log::warn!("Sina adapter does not support end_date/count pagination; ignoring");
+            log::debug!("Sina adapter does not support end_date/count pagination; ignoring");
         }
 
         let scale = "240";

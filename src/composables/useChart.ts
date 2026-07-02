@@ -322,6 +322,17 @@ export function useChart(options: {
       return;
     }
 
+    // Sina doesn't support incremental refresh; use old full-reload behavior
+    if (settings.activeDatasource === 'sina') {
+      const interval = getRefreshInterval(period);
+      refreshTimer = setInterval(() => {
+        if (!loading.value) {
+          loadData(period);
+        }
+      }, interval);
+      return;
+    }
+
     // K-line: incremental refresh
     const interval = getRefreshInterval(period);
     refreshTimer = setInterval(async () => {
