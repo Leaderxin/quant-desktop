@@ -55,11 +55,14 @@ export function useChart(options: {
   const dataLoader: DataLoader = {
     getBars: async (params) => {
       if (params.type === 'init') {
-        // 首次加载/切换股票：返回全部已加载数据
-        params.callback(allData.value, {
-          forward: hasMoreForward.value,
-          backward: false,
-        });
+        if (currentPeriod.value === 'minute') {
+          params.callback(klineData.value, { forward: false, backward: false });
+        } else {
+          params.callback(allData.value, {
+            forward: hasMoreForward.value,
+            backward: false,
+          });
+        }
       } else if (params.type === 'forward') {
         // 用户向左拖动到边界 → 加载更早的历史数据
         if (!hasMoreForward.value) {
@@ -91,6 +94,7 @@ export function useChart(options: {
               ];
             }
           }
+          klineData.value = allData.value;
           hasMoreForward.value = newBars.length >= 100;
           params.callback(newBars, {
             forward: hasMoreForward.value,
@@ -306,6 +310,19 @@ export function useChart(options: {
 
   function startAutoRefresh(period: PeriodType) {
     stopAutoRefresh();
+
+    if (period === 'minute') {
+      // Minute chart: use old full-reload behavior (calls get_intraday)
+      const interval = getRefreshInterval(period);
+      refreshTimer = setInterval(() => {
+        if (!loading.value) {
+          loadData(period);
+        }
+      }, interval);
+      return;
+    }
+
+    // K-line: incremental refresh
     const interval = getRefreshInterval(period);
     refreshTimer = setInterval(async () => {
       if (loading.value) return;
@@ -325,6 +342,7 @@ export function useChart(options: {
             map.set(bar.timestamp, bar);
           }
           allData.value = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+          klineData.value = allData.value;
           // 触发图表增量更新（init 会返回完整 allData）
           if (chart.value) {
             chart.value.setDataLoader(dataLoader);
