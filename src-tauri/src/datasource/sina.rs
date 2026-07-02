@@ -380,6 +380,8 @@ impl DataSource for SinaAdapter {
         code: &str,
         market: &str,
         period: &str,
+        end_date: Option<&str>,
+        count: Option<u32>,
     ) -> Result<Vec<crate::domain::KLineData>, AppError> {
         let symbol = if code.starts_with("s_") {
             code[2..].to_string()
@@ -392,10 +394,15 @@ impl DataSource for SinaAdapter {
         if period != "daily" {
             return Err(AppError::Unsupported("新浪数据源不支持周K/月K/分钟K线，请切换到腾讯数据源查看".into()));
         }
+
+        if end_date.is_some() || count.is_some() {
+            log::warn!("Sina adapter does not support end_date/count pagination; ignoring");
+        }
+
         let scale = "240";
 
         let url = format!(
-            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=200",
+            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=600",
             symbol, scale
         );
 
