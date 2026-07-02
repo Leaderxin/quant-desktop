@@ -21,15 +21,94 @@ export function useChart(options: {
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   const currentPeriod = ref<PeriodType>('minute');
 
+  // 累积全部已加载的 K 线数据（初始 + 历次懒加载），按时间升序
+  const allData = ref<KCLineData[]>([]);
+  // 标记是否还有更多历史数据可加载
+  const hasMoreForward = ref(true);
+
+  /** 将时间戳格式化为 YYYY-MM-DD 字符串，用于 API end_date 参数 */
+  function formatDate(ts: number): string {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  /** 将后端 KLineData 映射为 klinecharts 需要的 KLineData 格式 */
+  function mapKLineToChart(data: KLineData[]): KCLineData[] {
+    return data.map((d) => {
+      const ts = new Date(d.date).getTime();
+      return {
+        timestamp: isNaN(ts) ? 0 : ts,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+        volume: d.volume,
+      };
+    });
+  }
+
   const klineData = ref<KCLineData[]>([]);
 
   const dataLoader: DataLoader = {
-    getBars: (params) => {
+    getBars: async (params) => {
       if (params.type === 'init') {
-        params.callback(klineData.value, false);
+        // 首次加载/切换股票：返回全部已加载数据
+        params.callback(allData.value, {
+          forward: hasMoreForward.value,
+          backward: false,
+        });
+      } else if (params.type === 'forward') {
+        // 用户向左拖动到边界 → 加载更早的历史数据
+        if (!hasMoreForward.value) {
+          params.callback([], { forward: false, backward: false });
+          return;
+        }
+        loading.value = true;
+        try {
+          const endDate =
+            params.timestamp != null
+              ? formatDate(params.timestamp - 86400000)
+              : undefined;
+          const data = await invoke<KLineData[]>('get_kline', {
+            code: unref(options.code),
+            market: unref(options.market),
+            period: currentPeriod.value,
+            endDate,
+            count: 100,
+          });
+          const newBars = mapKLineToChart(data);
+          if (newBars.length > 0) {
+            // 去重后拼接到头部
+            const existing = new Set(allData.value.map((d) => d.timestamp));
+            const unique = newBars.filter((d) => !existing.has(d.timestamp));
+            if (unique.length > 0) {
+              allData.value = [
+                ...unique.sort((a, b) => a.timestamp - b.timestamp),
+                ...allData.value,
+              ];
+            }
+          }
+          hasMoreForward.value = newBars.length >= 100;
+          params.callback(newBars, {
+            forward: hasMoreForward.value,
+            backward: false,
+          });
+        } catch (e) {
+          console.error('[useChart] forward load failed:', e);
+          // 加载失败时保持 forward: true，用户再次拖动会重试
+          params.callback([], { forward: true, backward: false });
+        } finally {
+          loading.value = false;
+        }
       } else {
-        // No more historical data available beyond initial load
-        params.callback([], true);
+        // backward / update: 不需要处理
+        params.callback([], {
+          forward: hasMoreForward.value,
+          backward: false,
+        });
       }
     },
   };
@@ -228,9 +307,32 @@ export function useChart(options: {
   function startAutoRefresh(period: PeriodType) {
     stopAutoRefresh();
     const interval = getRefreshInterval(period);
-    refreshTimer = setInterval(() => {
-      if (!loading.value) {
-        loadData(period);
+    refreshTimer = setInterval(async () => {
+      if (loading.value) return;
+      try {
+        // 增量刷新：只取最新 10 条，更新末尾
+        const data = await invoke<KLineData[]>('get_kline', {
+          code: unref(options.code),
+          market: unref(options.market),
+          period: period,
+          count: 10,
+        });
+        const newBars = mapKLineToChart(data);
+        if (newBars.length > 0) {
+          // 合并到 allData：按 timestamp 去重、更新
+          const map = new Map(allData.value.map((d) => [d.timestamp, d]));
+          for (const bar of newBars) {
+            map.set(bar.timestamp, bar);
+          }
+          allData.value = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
+          // 触发图表增量更新（init 会返回完整 allData）
+          if (chart.value) {
+            chart.value.setDataLoader(dataLoader);
+          }
+        }
+      } catch (e) {
+        // 静默失败，不影响用户浏览
+        console.error('[useChart] incremental update failed:', e);
       }
     }, interval);
   }
@@ -251,6 +353,11 @@ export function useChart(options: {
 
     loading.value = true;
     error.value = '';
+
+    // 重置累积数据和分页状态（切换股票/周期时重新开始）
+    allData.value = [];
+    hasMoreForward.value = true;
+
     try {
       if (period === 'minute') {
         const data = await invoke<MinuteData[]>('get_intraday', {
@@ -289,17 +396,13 @@ export function useChart(options: {
         if (signal.aborted) return;
 
         if (data.length) {
-          klineData.value = data.map((d) => {
-            const ts = new Date(d.date).getTime();
-            return {
-              timestamp: isNaN(ts) ? 0 : ts,
-              open: d.open,
-              high: d.high,
-              low: d.low,
-              close: d.close,
-              volume: d.volume,
-            };
-          });
+          const mapped = mapKLineToChart(data);
+          // 存入 allData（按时间升序）
+          allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
+          // 新浪日K 600 条一次性加载到底，腾讯支持分页懒加载
+          hasMoreForward.value = settings.activeDatasource !== 'sina';
+          // 保持 klineData 兼容性（对外暴露）
+          klineData.value = mapped;
         }
       }
 
