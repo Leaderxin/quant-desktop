@@ -41,9 +41,11 @@ pub async fn get_kline(
     code: String,
     market: String,
     period: String,
+    end_date: Option<String>,
+    count: Option<u32>,
     manager: State<'_, Arc<DataSourceManager>>,
 ) -> Result<Vec<KLineData>, String> {
     let source = manager.active_source()
         .ok_or("No active data source")?;
-    source.fetch_kline(&code, &market, &period, None, None).await.map_err(|e| e.to_string())
+    source.fetch_kline(&code, &market, &period, end_date.as_deref(), count).await.map_err(|e| e.to_string())
 }
