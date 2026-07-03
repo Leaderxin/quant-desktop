@@ -26,6 +26,9 @@ export function useChart(options: {
   // 标记是否还有更多历史数据可加载
   const hasMoreForward = ref(true);
 
+  /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
+  let barSubscriber: ((bar: KCLineData) => void) | null = null;
+
   /** 将时间戳格式化为 YYYY-MM-DD 字符串，用于 API end_date 参数 */
   function formatDate(ts: number): string {
     const d = new Date(ts);
@@ -50,6 +53,44 @@ export function useChart(options: {
     });
   }
 
+  /** 加载更早的历史数据（getBars forward 和预加载共用） */
+  async function loadMoreHistory(): Promise<KCLineData[]> {
+    if (!hasMoreForward.value || loading.value) return [];
+    loading.value = true;
+    try {
+      const earliest = allData.value[0];
+      const endDate = earliest
+        ? formatDate(earliest.timestamp - 86400000)
+        : undefined;
+      const data = await invoke<KLineData[]>('get_kline', {
+        code: unref(options.code),
+        market: unref(options.market),
+        period: currentPeriod.value,
+        endDate,
+        count: 100,
+      });
+      const newBars = mapKLineToChart(data);
+      if (newBars.length > 0) {
+        const existing = new Set(allData.value.map((d) => d.timestamp));
+        const unique = newBars.filter((d) => !existing.has(d.timestamp));
+        if (unique.length > 0) {
+          allData.value = [
+            ...unique.sort((a, b) => a.timestamp - b.timestamp),
+            ...allData.value,
+          ];
+        }
+      }
+      klineData.value = allData.value;
+      hasMoreForward.value = newBars.length >= 100;
+      return newBars;
+    } catch (e) {
+      console.error('[useChart] forward load failed:', e);
+      return [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
   const klineData = ref<KCLineData[]>([]);
 
   const dataLoader: DataLoader = {
@@ -64,56 +105,29 @@ export function useChart(options: {
           });
         }
       } else if (params.type === 'forward') {
-        // 用户向左拖动到边界 → 加载更早的历史数据
+        // 用户向左拖动（getBars 触发或预加载触发）
         if (!hasMoreForward.value) {
           params.callback([], { forward: false, backward: false });
           return;
         }
-        loading.value = true;
-        try {
-          const endDate =
-            params.timestamp != null
-              ? formatDate(params.timestamp - 86400000)
-              : undefined;
-          const data = await invoke<KLineData[]>('get_kline', {
-            code: unref(options.code),
-            market: unref(options.market),
-            period: currentPeriod.value,
-            endDate,
-            count: 100,
-          });
-          const newBars = mapKLineToChart(data);
-          if (newBars.length > 0) {
-            // 去重后拼接到头部
-            const existing = new Set(allData.value.map((d) => d.timestamp));
-            const unique = newBars.filter((d) => !existing.has(d.timestamp));
-            if (unique.length > 0) {
-              allData.value = [
-                ...unique.sort((a, b) => a.timestamp - b.timestamp),
-                ...allData.value,
-              ];
-            }
-          }
-          klineData.value = allData.value;
-          hasMoreForward.value = newBars.length >= 100;
-          params.callback(newBars, {
-            forward: hasMoreForward.value,
-            backward: false,
-          });
-        } catch (e) {
-          console.error('[useChart] forward load failed:', e);
-          // 加载失败时保持 forward: true，用户再次拖动会重试
-          params.callback([], { forward: true, backward: false });
-        } finally {
-          loading.value = false;
-        }
+        const newBars = await loadMoreHistory();
+        params.callback(newBars, {
+          forward: hasMoreForward.value,
+          backward: false,
+        });
       } else {
-        // backward / update: 不需要处理
+        // backward: 不需要处理
         params.callback([], {
           forward: hasMoreForward.value,
           backward: false,
         });
       }
+    },
+    subscribeBar: ({ callback }) => {
+      barSubscriber = callback;
+    },
+    unsubscribeBar: () => {
+      barSubscriber = null;
     },
   };
 
@@ -263,6 +277,24 @@ export function useChart(options: {
           { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: 'rgba(248,81,73,0.4)', downColor: 'rgba(63,185,80,0.4)' } } as any,
         ],
       } as any);
+
+      // 预加载：监听可视范围变化，接近左边界时提前拉取更早数据
+      chart.value.subscribeAction('onVisibleRangeChange', (range: unknown) => {
+        const r = range as { from: number; to: number };
+        if (currentPeriod.value === 'minute') return;
+        if (!hasMoreForward.value || loading.value) return;
+        const data = allData.value;
+        if (data.length === 0) return;
+        const dataLeft = data[0].timestamp;
+        // 日K: 5天 / 周K: 35天 / 月K: 150天 的阈值
+        const barMs =
+          currentPeriod.value === 'weekly' ? 604800000 :
+          currentPeriod.value === 'monthly' ? 2592000000 :
+          86400000;
+        if (r.from <= dataLeft + barMs * 5) {
+          loadMoreHistory();
+        }
+      });
     }
 
     // Always update symbol and period on stock/period change (even for reused chart)
@@ -354,9 +386,11 @@ export function useChart(options: {
           }
           allData.value = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
           klineData.value = allData.value;
-          // 触发图表增量更新（init 会返回完整 allData）
-          if (chart.value) {
-            chart.value.setDataLoader(dataLoader);
+          // 增量推送，不触发 init 全量替换 → 无抖动
+          if (barSubscriber) {
+            for (const bar of newBars) {
+              barSubscriber(bar);
+            }
           }
         }
       } catch (e) {
@@ -454,6 +488,7 @@ export function useChart(options: {
 
   function disposeChart() {
     stopAutoRefresh();
+    barSubscriber = null;
     if (abortController) {
       abortController.abort();
       abortController = null;
