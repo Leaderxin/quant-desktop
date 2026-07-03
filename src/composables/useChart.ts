@@ -28,8 +28,6 @@ export function useChart(options: {
 
   /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
   let barSubscriber: ((bar: KCLineData) => void) | null = null;
-  /** 预加载节流：限制检查频率避免拖动时高频回调导致卡顿 */
-  let lastPrefetchCheck = 0;
 
   /** 将时间戳格式化为 YYYY-MM-DD 字符串，用于 API end_date 参数 */
   function formatDate(ts: number): string {
@@ -279,28 +277,6 @@ export function useChart(options: {
           { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: 'rgba(248,81,73,0.4)', downColor: 'rgba(63,185,80,0.4)' } } as any,
         ],
       } as any);
-
-      // 预加载：监听可视范围变化，接近左边界时提前拉取更早数据
-      chart.value.subscribeAction('onVisibleRangeChange', (range: unknown) => {
-        if (currentPeriod.value === 'minute') return;
-        if (!hasMoreForward.value || loading.value) return;
-        // 节流：最多 500ms 检查一次，避免拖动时高频回调卡顿
-        const now = Date.now();
-        if (now - lastPrefetchCheck < 500) return;
-        lastPrefetchCheck = now;
-        const data = allData.value;
-        if (data.length === 0) return;
-        const r = range as { from: number; to: number };
-        const dataLeft = data[0].timestamp;
-        // 日K: 3天 / 周K: 21天 / 月K: 90天 的阈值（更保守，减少误触发）
-        const barMs =
-          currentPeriod.value === 'weekly' ? 604800000 :
-          currentPeriod.value === 'monthly' ? 2592000000 :
-          86400000;
-        if (r.from <= dataLeft + barMs * 3) {
-          loadMoreHistory();
-        }
-      });
     }
 
     // Always update symbol and period on stock/period change (even for reused chart)
