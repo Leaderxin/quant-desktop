@@ -67,7 +67,7 @@ export function useChart(options: {
         market: unref(options.market),
         period: currentPeriod.value,
         endDate,
-        count: 100,
+        count: 200,
       });
       const newBars = mapKLineToChart(data);
       if (newBars.length > 0) {
