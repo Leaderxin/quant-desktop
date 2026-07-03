@@ -28,6 +28,8 @@ export function useChart(options: {
 
   /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
   let barSubscriber: ((bar: KCLineData) => void) | null = null;
+  /** 预加载节流：限制检查频率避免拖动时高频回调导致卡顿 */
+  let lastPrefetchCheck = 0;
 
   /** 将时间戳格式化为 YYYY-MM-DD 字符串，用于 API end_date 参数 */
   function formatDate(ts: number): string {
@@ -280,18 +282,22 @@ export function useChart(options: {
 
       // 预加载：监听可视范围变化，接近左边界时提前拉取更早数据
       chart.value.subscribeAction('onVisibleRangeChange', (range: unknown) => {
-        const r = range as { from: number; to: number };
         if (currentPeriod.value === 'minute') return;
         if (!hasMoreForward.value || loading.value) return;
+        // 节流：最多 500ms 检查一次，避免拖动时高频回调卡顿
+        const now = Date.now();
+        if (now - lastPrefetchCheck < 500) return;
+        lastPrefetchCheck = now;
         const data = allData.value;
         if (data.length === 0) return;
+        const r = range as { from: number; to: number };
         const dataLeft = data[0].timestamp;
-        // 日K: 5天 / 周K: 35天 / 月K: 150天 的阈值
+        // 日K: 3天 / 周K: 21天 / 月K: 90天 的阈值（更保守，减少误触发）
         const barMs =
           currentPeriod.value === 'weekly' ? 604800000 :
           currentPeriod.value === 'monthly' ? 2592000000 :
           86400000;
-        if (r.from <= dataLeft + barMs * 5) {
+        if (r.from <= dataLeft + barMs * 3) {
           loadMoreHistory();
         }
       });
@@ -386,11 +392,13 @@ export function useChart(options: {
           }
           allData.value = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
           klineData.value = allData.value;
-          // 增量推送，不触发 init 全量替换 → 无抖动
+          // 优先 subscribeBar 增量推送（无抖动），未注册时回退到 setDataLoader
           if (barSubscriber) {
             for (const bar of newBars) {
               barSubscriber(bar);
             }
+          } else if (chart.value) {
+            chart.value.setDataLoader(dataLoader);
           }
         }
       } catch (e) {
