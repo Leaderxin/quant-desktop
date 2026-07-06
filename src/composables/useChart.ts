@@ -299,14 +299,31 @@ export function useChart(options: {
     }
   }
 
+  /**
+   * 根据 K 线数据自适应价格精度。
+   * 扫描最近 10 根 K 线的 OHLC 值（共 40 个价格点）来检测价格的小数位数，
+   * 避免单点采样（仅收盘价）在第三位小数为零时（如 0.950 → JSON 传 0.95）
+   * 误判为 2 位小数，导致 ETF/可转债等 3 位精度品种的图表价格标注错误。
+   */
   function syncPrecision() {
     if (!chart.value || klineData.value.length === 0) return;
+    let precision = 2;
+    const barsToCheck = klineData.value.slice(-10);
+    for (const bar of barsToCheck) {
+      for (const val of [bar.open, bar.high, bar.low, bar.close]) {
+        if (val != null && !isNaN(val) && val !== 0 && getPricePrecision(val) === 3) {
+          precision = 3;
+          break;
+        }
+      }
+      if (precision === 3) break;
+    }
     const last = klineData.value[klineData.value.length - 1];
     if (last.close != null && !isNaN(last.close) && last.close !== 0) {
       chart.value.setSymbol({
         ticker: unref(options.code),
         name: unref(options.name) || unref(options.code),
-        pricePrecision: getPricePrecision(last.close),
+        pricePrecision: precision,
         volumePrecision: 0,
       });
     }
