@@ -6,6 +6,14 @@ import type { MinuteData, KLineData, PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
 
+/** 分钟 K 周期集合（1/5/15/30/60 分钟），与后端 minute_span/sina_scale 一致 */
+const MINUTE_K_PERIODS: PeriodType[] = ['1min', '5min', '15min', '30min', '60min'];
+
+/** 判断某周期是否为分钟 K（区别于分时 'minute' 与日/周/月 K） */
+function isMinuteK(period: PeriodType): boolean {
+  return MINUTE_K_PERIODS.includes(period);
+}
+
 export function useChart(options: {
   chartRef: Ref<HTMLElement | null>;
   code: MaybeRef<string>;
@@ -211,6 +219,7 @@ export function useChart(options: {
   function applyCandlestickStyles() {
     if (!chart.value) return;
     const c = themeColors();
+    const dateLabel = isMinuteK(currentPeriod.value) ? '时间' : '日期';
 
     chart.value.setStyles({
       candle: {
@@ -218,7 +227,7 @@ export function useChart(options: {
         bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
-          labels: ['日期', '开', '高', '低', '收', '量', '额'],
+          labels: [dateLabel, '开', '高', '低', '收', '量', '额'],
           title: { show: false } as any,
           rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
           text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
@@ -242,6 +251,11 @@ export function useChart(options: {
   function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
     switch (period) {
       case 'minute': return { type: 'minute', span: 5 };
+      case '1min': return { type: 'minute', span: 1 };
+      case '5min': return { type: 'minute', span: 5 };
+      case '15min': return { type: 'minute', span: 15 };
+      case '30min': return { type: 'minute', span: 30 };
+      case '60min': return { type: 'minute', span: 60 };
       case 'weekly': return { type: 'week', span: 1 };
       case 'monthly': return { type: 'month', span: 1 };
       default: return { type: 'day', span: 1 };
@@ -332,6 +346,11 @@ export function useChart(options: {
   function getRefreshInterval(period: PeriodType): number {
     switch (period) {
       case 'minute': return 5000;    // 分时图：5 秒
+      case '1min':
+      case '5min':   return 8000;    // 短分钟 K：8 秒
+      case '15min':
+      case '30min':
+      case '60min':  return 20000;   // 长分钟 K：20 秒
       case 'daily':  return 30000;   // 日K：30 秒
       case 'weekly': return 60000;   // 周K：60 秒
       case 'monthly':return 60000;   // 月K：60 秒
@@ -463,8 +482,8 @@ export function useChart(options: {
           const mapped = mapKLineToChart(data);
           // 存入 allData（按时间升序）
           allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
-          // 新浪日K 600 条一次性加载到底，腾讯支持分页懒加载
-          hasMoreForward.value = settings.activeDatasource !== 'sina';
+          // 分钟 K 一次性加载，不做左滑懒加载；新浪日K 600 条到底；腾讯日/周/月支持懒加载
+          hasMoreForward.value = !isMinuteK(period) && settings.activeDatasource !== 'sina';
           // 保持 klineData 兼容性（对外暴露）
           klineData.value = mapped;
         }

@@ -71,7 +71,16 @@ export interface KLineData {
   turnover: number;
 }
 
-export type PeriodType = 'minute' | 'daily' | 'weekly' | 'monthly';
+export type PeriodType =
+  | 'minute'
+  | '1min'
+  | '5min'
+  | '15min'
+  | '30min'
+  | '60min'
+  | 'daily'
+  | 'weekly'
+  | 'monthly';
 
 export interface UpdateInfo {
   current_version: string;
