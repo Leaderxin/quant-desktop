@@ -7,6 +7,47 @@ use super::{DataSource, INDEX_CODES, headers};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 
+/// 解析腾讯 mkline 分钟数据行 `["YYYYMMDDHHMM", 开, 收, 高, 低, 量(手), {}, 额]`
+/// 为 KLineData。`date` 格式化为 "YYYY-MM-DD HH:MM"。
+/// 注意字段顺序：位置 2 是收盘、位置 3 是最高、位置 4 是最低。
+fn parse_minute_klines(lines: &[serde_json::Value]) -> Vec<crate::domain::KLineData> {
+    lines
+        .iter()
+        .filter_map(|pt| {
+            let arr = pt.as_array()?;
+            if arr.len() < 6 {
+                return None;
+            }
+            let t = arr[0].as_str()?;
+            let date = if t.len() >= 12 {
+                format!("{}-{}-{} {}:{}", &t[0..4], &t[4..6], &t[6..8], &t[8..10], &t[10..12])
+            } else {
+                t.to_string()
+            };
+            let open: f64 = arr[1].as_str()?.parse().ok()?;
+            let close: f64 = arr[2].as_str()?.parse().ok()?;
+            let high: f64 = arr[3].as_str()?.parse().ok()?;
+            let low: f64 = arr[4].as_str()?.parse().ok()?;
+            let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+            let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
+            let turnover: f64 = arr
+                .get(7)
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            Some(crate::domain::KLineData {
+                date,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                turnover,
+            })
+        })
+        .collect()
+}
+
 pub struct TencentAdapter {
     client: Client,
 }
@@ -309,6 +350,38 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
+        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛），一次性取约 320 根。
+        if let Some(span) = super::minute_span(period) {
+            let cnt = count.unwrap_or(320);
+            let url = format!(
+                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},,{}",
+                tc_code, span, cnt
+            );
+            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
+                .send()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {:#}", e)))?;
+            if !resp.status().is_success() {
+                return Err(AppError::network("tencent", format!("分钟K线 HTTP {}", resp.status())));
+            }
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线解析失败: {}", e)))?;
+            let lines = body
+                .pointer("/data")
+                .and_then(|d| d.as_object())
+                .and_then(|obj| obj.values().next())
+                .and_then(|stock| stock.get(format!("m{}", span).as_str()))
+                .and_then(|arr| arr.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if lines.is_empty() {
+                log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
+            }
+            return Ok(parse_minute_klines(&lines));
+        }
+
         // Map period to Tencent API parameter
         let period_param = match period {
             "weekly" => "week",
@@ -466,5 +539,27 @@ impl DataSource for TencentAdapter {
         self.fetch_realtime(&codes, "CN")
             .await
             .map(|q| !q.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tencent_minute_klines() {
+        let lines: Vec<serde_json::Value> = serde_json::from_str(
+            r#"[["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]]"#,
+        )
+        .unwrap();
+        let out = parse_minute_klines(&lines);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].date, "2026-06-18 09:35");
+        assert_eq!(out[0].open, 10.00);
+        assert_eq!(out[0].close, 10.20);
+        assert_eq!(out[0].high, 10.30);
+        assert_eq!(out[0].low, 9.90);
+        assert_eq!(out[0].volume, 150000); // 1500 手 ×100
+        assert_eq!(out[0].turnover, 1530000.0);
     }
 }

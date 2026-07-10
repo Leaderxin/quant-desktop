@@ -61,6 +61,19 @@ pub fn normalize_turnover(turnover_wan: f64) -> f64 {
     turnover_wan * TURNOVER_WAN_TO_YUAN
 }
 
+/// 将图表周期字符串映射为分钟跨度（仅分钟周期返回 Some）。
+/// 用于区分分钟 K 线与日/周/月 K 线。
+pub fn minute_span(period: &str) -> Option<u32> {
+    match period {
+        "1min" => Some(1),
+        "5min" => Some(5),
+        "15min" => Some(15),
+        "30min" => Some(30),
+        "60min" => Some(60),
+        _ => None,
+    }
+}
+
 /// Abstract data source trait — all market data adapters implement this
 #[async_trait]
 pub trait DataSource: Send + Sync {
@@ -210,6 +223,22 @@ impl DataSourceManager {
             .iter()
             .map(|(k, v)| (k.as_str(), v.display_name()))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minute_span_maps_known_periods() {
+        assert_eq!(minute_span("1min"), Some(1));
+        assert_eq!(minute_span("5min"), Some(5));
+        assert_eq!(minute_span("15min"), Some(15));
+        assert_eq!(minute_span("30min"), Some(30));
+        assert_eq!(minute_span("60min"), Some(60));
+        assert_eq!(minute_span("daily"), None);
+        assert_eq!(minute_span("weekly"), None);
     }
 }
 
