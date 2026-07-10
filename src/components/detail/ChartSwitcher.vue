@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { NDropdown } from 'naive-ui';
@@ -13,6 +13,7 @@ const emit = defineEmits<{
 }>();
 
 const settings = useSettingsStore();
+const dropdownOpen = ref(false);
 
 const tabs: { key: PeriodType; label: string }[] = [
   { key: 'minute', label: '分时' },
@@ -44,12 +45,12 @@ const dropdownOptions = computed(() =>
 );
 
 const isMinuteActive = computed(() =>
-  minuteOptions.some((o) => o.key === props.modelValue)
+  availableMinutes.value.some((o) => o.key === props.modelValue)
 );
 
 // 选中某分钟周期时「更多」按钮显示该周期，否则显示「更多」
 const moreLabel = computed(() => {
-  const found = minuteOptions.find((o) => o.key === props.modelValue);
+  const found = availableMinutes.value.find((o) => o.key === props.modelValue);
   return found ? found.label : '更多';
 });
 
@@ -74,6 +75,8 @@ function handleMinuteSelect(key: string) {
 
     <n-dropdown
       trigger="click"
+      :show="dropdownOpen"
+      @update:show="(v: boolean) => dropdownOpen = v"
       :options="dropdownOptions"
       @select="handleMinuteSelect"
     >
@@ -82,7 +85,7 @@ function handleMinuteSelect(key: string) {
         :class="{ active: isMinuteActive }"
         :aria-selected="isMinuteActive"
         aria-haspopup="menu"
-        aria-expanded="false"
+        :aria-expanded="dropdownOpen"
       >
         {{ moreLabel }}<span class="more-caret" aria-hidden="true">▾</span>
       </button>
