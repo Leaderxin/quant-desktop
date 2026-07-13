@@ -67,6 +67,10 @@ impl TencentAdapter {
 
     fn code_to_tencent(code: &str, market: &str) -> String {
         if market == "CN" {
+            // Already has exchange prefix (e.g. "sh000001" from index codes)
+            if code.starts_with("sh") || code.starts_with("sz") {
+                return code.to_string();
+            }
             if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
                 format!("sh{}", code)
             } else {
