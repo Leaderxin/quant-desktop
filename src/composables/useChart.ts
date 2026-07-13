@@ -63,23 +63,27 @@ export function useChart(options: {
     if (!hasMoreForward.value || loading.value) return [];
     loading.value = true;
     try {
-      const earliest = allData.value[0];
-      const endDate = earliest
-        ? formatDate(earliest.timestamp - 86400000)
-        : undefined;
       const isMinute = isMinuteK(currentPeriod.value);
+      // 分钟 K 用累计数量翻页（每次请求已加载条数 + 320），端上 timestamp 去重；
+      // 日/周/月 K 用 end_date 翻页（API 原生支持分页）
+      const endDate = (!isMinute && allData.value[0])
+        ? formatDate(allData.value[0].timestamp - 86400000)
+        : undefined;
+      const count = isMinute ? allData.value.length + 320 : 200;
       const data = await invoke<KLineData[]>('get_kline', {
         code: unref(options.code),
         market: unref(options.market),
         period: currentPeriod.value,
         endDate,
-        count: isMinute ? 320 : 200,
+        count,
       });
       const newBars = mapKLineToChart(data);
+      let uniqueCount = 0;
       if (newBars.length > 0) {
         const existing = new Set(allData.value.map((d) => d.timestamp));
         const unique = newBars.filter((d) => !existing.has(d.timestamp));
-        if (unique.length > 0) {
+        uniqueCount = unique.length;
+        if (uniqueCount > 0) {
           allData.value = [
             ...unique.sort((a, b) => a.timestamp - b.timestamp),
             ...allData.value,
@@ -87,7 +91,8 @@ export function useChart(options: {
         }
       }
       klineData.value = allData.value;
-      hasMoreForward.value = newBars.length >= 100;
+      // 仅当返回了新的非重复 bar 且响应量充足时才认为还有更多历史数据
+      hasMoreForward.value = uniqueCount > 0 && newBars.length >= 100;
       return newBars;
     } catch (e) {
       console.error('[useChart] forward load failed:', e);
