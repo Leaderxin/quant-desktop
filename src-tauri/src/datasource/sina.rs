@@ -8,20 +8,17 @@ use super::{DataSource, INDEX_CODES, headers};
 const SINA_URL: &str = "http://hq.sinajs.cn/list=";
 
 /// 将图表周期映射为新浪 getKLineData 的 `scale` 参数（分钟数；日 K = 240）。
-/// 新浪不支持 1 分钟与周/月 K，返回 Unsupported 错误。
+/// 分钟周期的映射委托到 minute_span；新浪特有：日 K → 240、拒绝 1 分钟、拒绝未知周期。
 fn sina_scale(period: &str) -> Result<u32, AppError> {
     match period {
         "daily" => Ok(240),
-        "5min" => Ok(5),
-        "15min" => Ok(15),
-        "30min" => Ok(30),
-        "60min" => Ok(60),
         "1min" => Err(AppError::Unsupported(
             "新浪数据源不支持1分钟K线，请切换到腾讯数据源查看".into(),
         )),
-        _ => Err(AppError::Unsupported(
-            "新浪数据源不支持周K/月K，请切换到腾讯数据源查看".into(),
-        )),
+        other => super::minute_span(other)
+            .ok_or_else(|| AppError::Unsupported(
+                "新浪数据源不支持该周期，请切换到腾讯数据源查看".into(),
+            )),
     }
 }
 

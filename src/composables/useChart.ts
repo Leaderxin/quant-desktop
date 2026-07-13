@@ -6,12 +6,9 @@ import type { MinuteData, KLineData, PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
 
-/** 分钟 K 周期集合（1/5/15/30/60 分钟），与后端 minute_span/sina_scale 一致 */
-const MINUTE_K_PERIODS: PeriodType[] = ['1min', '5min', '15min', '30min', '60min'];
-
-/** 判断某周期是否为分钟 K（区别于分时 'minute' 与日/周/月 K） */
+/** 判断某周期是否为分钟 K（区别于分时 'minute' 与日/周/月 K）。*/
 function isMinuteK(period: PeriodType): boolean {
-  return MINUTE_K_PERIODS.includes(period);
+  return period !== 'minute' && period.endsWith('min');
 }
 
 export function useChart(options: {
@@ -249,13 +246,10 @@ export function useChart(options: {
   }
 
   function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
+    const minuteSpan = parseInt(period);
+    if (!isNaN(minuteSpan)) return { type: 'minute', span: minuteSpan };
     switch (period) {
       case 'minute': return { type: 'minute', span: 5 };
-      case '1min': return { type: 'minute', span: 1 };
-      case '5min': return { type: 'minute', span: 5 };
-      case '15min': return { type: 'minute', span: 15 };
-      case '30min': return { type: 'minute', span: 30 };
-      case '60min': return { type: 'minute', span: 60 };
       case 'weekly': return { type: 'week', span: 1 };
       case 'monthly': return { type: 'month', span: 1 };
       default: return { type: 'day', span: 1 };
@@ -344,13 +338,10 @@ export function useChart(options: {
   }
 
   function getRefreshInterval(period: PeriodType): number {
+    const minuteSpan = parseInt(period);
+    if (!isNaN(minuteSpan)) return minuteSpan <= 5 ? 8000 : 20000; // 短分钟 K 8s / 长分钟 K 20s
     switch (period) {
       case 'minute': return 5000;    // 分时图：5 秒
-      case '1min':
-      case '5min':   return 8000;    // 短分钟 K：8 秒
-      case '15min':
-      case '30min':
-      case '60min':  return 20000;   // 长分钟 K：20 秒
       case 'daily':  return 30000;   // 日K：30 秒
       case 'weekly': return 60000;   // 周K：60 秒
       case 'monthly':return 60000;   // 月K：60 秒

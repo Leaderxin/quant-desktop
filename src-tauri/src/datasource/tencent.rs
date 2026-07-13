@@ -7,44 +7,50 @@ use super::{DataSource, INDEX_CODES, headers};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 
-/// 解析腾讯 mkline 分钟数据行 `["YYYYMMDDHHMM", 开, 收, 高, 低, 量(手), {}, 额]`
-/// 为 KLineData。`date` 格式化为 "YYYY-MM-DD HH:MM"。
-/// 注意字段顺序：位置 2 是收盘、位置 3 是最高、位置 4 是最低。
+/// 解析腾讯 K 线数组行为 KLineData（日 K / 分钟 K 共用）。
+/// 腾讯 K 线数组格式：`[date, open, close, high, low, volume(手), turnover_opt?, ...]`
+/// - 日 K：`["2026-06-19", "开", "收", "高", "低", "量(手)", "额", ...]`（≥6 元素，turnover 在 index 6）
+/// - 分钟 K：`["202606180935", "开", "收", "高", "低", "量(手)", {}, "额"]`（≥6 元素，turnover 在 index 7，index 6 为空对象）
+/// `is_minute` 控制：date 格式转换（YYYYMMDDHHMM → YYYY-MM-DD HH:MM）、turnover 索引（7 vs 6）。
+fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::domain::KLineData> {
+    // 必须字段：date, open, close, high, low, volume（索引 0-5）
+    if arr.len() < 6 {
+        return None;
+    }
+    let t = arr[0].as_str()?;
+    let date = if is_minute && t.len() >= 12 {
+        format!("{}-{}-{} {}:{}", &t[0..4], &t[4..6], &t[6..8], &t[8..10], &t[10..12])
+    } else {
+        t.to_string()
+    };
+    let open: f64 = arr[1].as_str()?.parse().ok()?;
+    let close: f64 = arr[2].as_str()?.parse().ok()?;
+    let high: f64 = arr[3].as_str()?.parse().ok()?;
+    let low: f64 = arr[4].as_str()?.parse().ok()?;
+    let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+    let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
+    let turnover_idx = if is_minute { 7 } else { 6 };
+    let turnover: f64 = arr
+        .get(turnover_idx)
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    Some(crate::domain::KLineData {
+        date,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        turnover,
+    })
+}
+
+/// 解析腾讯 mkline 分钟 K 线数组为 KLineData 列表（委托到 parse_kline_bar）。
 fn parse_minute_klines(lines: &[serde_json::Value]) -> Vec<crate::domain::KLineData> {
     lines
         .iter()
-        .filter_map(|pt| {
-            let arr = pt.as_array()?;
-            if arr.len() < 6 {
-                return None;
-            }
-            let t = arr[0].as_str()?;
-            let date = if t.len() >= 12 {
-                format!("{}-{}-{} {}:{}", &t[0..4], &t[4..6], &t[6..8], &t[8..10], &t[10..12])
-            } else {
-                t.to_string()
-            };
-            let open: f64 = arr[1].as_str()?.parse().ok()?;
-            let close: f64 = arr[2].as_str()?.parse().ok()?;
-            let high: f64 = arr[3].as_str()?.parse().ok()?;
-            let low: f64 = arr[4].as_str()?.parse().ok()?;
-            let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
-            let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
-            let turnover: f64 = arr
-                .get(7)
-                .and_then(|v| v.as_str())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0.0);
-            Some(crate::domain::KLineData {
-                date,
-                open,
-                high,
-                low,
-                close,
-                volume,
-                turnover,
-            })
-        })
+        .filter_map(|pt| parse_kline_bar(pt.as_array()?, true))
         .collect()
 }
 
@@ -368,18 +374,18 @@ impl DataSource for TencentAdapter {
                 .json()
                 .await
                 .map_err(|e| AppError::network("tencent", format!("分钟K线解析失败: {}", e)))?;
-            let lines = body
+            let lines: &[serde_json::Value] = body
                 .pointer("/data")
                 .and_then(|d| d.as_object())
                 .and_then(|obj| obj.values().next())
                 .and_then(|stock| stock.get(format!("m{}", span).as_str()))
                 .and_then(|arr| arr.as_array())
-                .cloned()
-                .unwrap_or_default();
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
             if lines.is_empty() {
                 log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
             }
-            return Ok(parse_minute_klines(&lines));
+            return Ok(parse_minute_klines(lines));
         }
 
         // Map period to Tencent API parameter
@@ -432,28 +438,7 @@ impl DataSource for TencentAdapter {
 
         let data: Vec<crate::domain::KLineData> = klines
             .iter()
-            .filter_map(|pt| {
-                let arr = pt.as_array()?;
-                if arr.len() < 6 { return None; }
-                // Format: ["2026-06-19", "open", "close", "high", "low", "volume", ...]
-                let date = arr[0].as_str()?.to_string();
-                let open: f64 = arr[1].as_str()?.parse().ok()?;
-                let close: f64 = arr[2].as_str()?.parse().ok()?;
-                let high: f64 = arr[3].as_str()?.parse().ok()?;
-                let low: f64 = arr[4].as_str()?.parse().ok()?;
-                let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
-                let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
-                let turnover: f64 = arr.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                Some(crate::domain::KLineData {
-                    date,
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume,
-                    turnover,
-                })
-            })
+            .filter_map(|pt| parse_kline_bar(pt.as_array()?, false))
             .collect();
 
         Ok(data)
