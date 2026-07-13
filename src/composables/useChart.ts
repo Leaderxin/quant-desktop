@@ -67,12 +67,13 @@ export function useChart(options: {
       const endDate = earliest
         ? formatDate(earliest.timestamp - 86400000)
         : undefined;
+      const isMinute = isMinuteK(currentPeriod.value);
       const data = await invoke<KLineData[]>('get_kline', {
         code: unref(options.code),
         market: unref(options.market),
         period: currentPeriod.value,
         endDate,
-        count: 200,
+        count: isMinute ? 320 : 200,
       });
       const newBars = mapKLineToChart(data);
       if (newBars.length > 0) {
@@ -473,7 +474,7 @@ export function useChart(options: {
           // 存入 allData（按时间升序）
           allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
           // 分钟 K 一次性加载，不做左滑懒加载；新浪日K 600 条到底；腾讯日/周/月支持懒加载
-          hasMoreForward.value = !isMinuteK(period) && settings.activeDatasource !== 'sina';
+          hasMoreForward.value = settings.activeDatasource !== 'sina';
           // 保持 klineData 兼容性（对外暴露）
           klineData.value = mapped;
         }

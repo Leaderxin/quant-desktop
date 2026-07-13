@@ -360,12 +360,13 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
-        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛），一次性取约 320 根。
+        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛）。支持 end_date 分页。
         if let Some(span) = super::minute_span(period) {
+            let end_date_str = end_date.unwrap_or("");
             let cnt = count.unwrap_or(320);
             let url = format!(
-                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},,{}",
-                tc_code, span, cnt
+                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{}",
+                tc_code, span, end_date_str, cnt
             );
             let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
                 .send()
