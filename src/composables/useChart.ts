@@ -287,12 +287,11 @@ export function useChart(options: {
       } as any);
     }
 
-    // Always update symbol and period on stock/period change (even for reused chart)
+    // setSymbol + setPeriod are deferred to loadData so data arrives before
+    // klinecharts triggers getBars('init'), avoiding stale-data rendering.
     if (!chart.value) return;
-    chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
 
     currentPeriod.value = period;
-    chart.value.setPeriod(periodToKlinecharts(period) as any);
     applyChartStyles();
     if (period !== 'minute') {
       applyCandlestickStyles();
@@ -482,6 +481,8 @@ export function useChart(options: {
 
       if (signal.aborted) return;
       if (chart.value) {
+        chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
+        chart.value.setPeriod(periodToKlinecharts(period) as any);
         chart.value.setDataLoader(dataLoader);
         syncPrecision();
       }
