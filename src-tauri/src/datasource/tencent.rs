@@ -360,13 +360,15 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
-        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛）。使用累计数量翻页，
-        // 每次请求更多条数回推窗口；前端去重后得到更早的分钟 bar。
+        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛）。
+        // URL 格式：param={code},m{span},{start},{end_date},{count}
+        // start 留空 = 最早可用数据；end_date = 翻页截止日期（YYYY-MM-DD）
         if let Some(span) = super::minute_span(period) {
+            let end_date_str = end_date.unwrap_or("");
             let cnt = count.unwrap_or(320);
             let url = format!(
-                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},,{}",
-                tc_code, span, cnt
+                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{},{}",
+                tc_code, span, "", end_date_str, cnt
             );
             let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
                 .send()

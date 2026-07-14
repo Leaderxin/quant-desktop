@@ -63,13 +63,11 @@ export function useChart(options: {
     if (!hasMoreForward.value || loading.value) return [];
     loading.value = true;
     try {
-      const isMinute = isMinuteK(currentPeriod.value);
-      // 分钟 K 用累计数量翻页（每次请求已加载条数 + 320），端上 timestamp 去重；
-      // 日/周/月 K 用 end_date 翻页（API 原生支持分页）
-      const endDate = (!isMinute && allData.value[0])
-        ? formatDate(allData.value[0].timestamp - 86400000)
+      const earliest = allData.value[0];
+      const endDate = earliest
+        ? formatDate(earliest.timestamp - 86400000)
         : undefined;
-      const count = isMinute ? allData.value.length + 320 : 200;
+      const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {
         code: unref(options.code),
         market: unref(options.market),
