@@ -352,17 +352,52 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
-        // 统一使用 fqkline 端点（日/周/月/分钟 K 均支持），享有完整的 end_date 翻页能力。
-        // 分钟 K 的 period_param 为纯数字 span（如 "5"/"15"/"30"/"60"），
-        // fqkline 响应格式与日 K 一致，走 parse_kline_bar 解析。
-        let period_param = if let Some(span) = super::minute_span(period) {
-            span.to_string()
-        } else {
-            match period {
-                "weekly" => "week".to_string(),
-                "monthly" => "month".to_string(),
-                _ => "day".to_string(),
+        // ── 分钟 K 线：走 mkline 端点 ──
+        // fqkline 不支持分钟周期（返回 "bad params"），故分钟 K 单独走 mkline。
+        // URL 格式: param={code},m{span},{start},{end_YYYYMMDD},{count}
+        // end_date 去横线以匹配 mkline 响应时间戳格式（YYYYMMDDHHMM）
+        if let Some(span) = super::minute_span(period) {
+            let end_date_str = end_date.map(|d| d.replace('-', "")).unwrap_or_default();
+            let cnt = count.unwrap_or(320);
+            let url = format!(
+                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{},{}",
+                tc_code, span, "", end_date_str, cnt
+            );
+            log::debug!("Tencent mkline URL: {}", url);
+
+            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
+                .send()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {}", e)))?;
+            if !resp.status().is_success() {
+                return Err(AppError::network("tencent", format!("分钟K线 HTTP {}", resp.status())));
             }
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线解析失败: {}", e)))?;
+            let lines: &[serde_json::Value] = body
+                .pointer("/data")
+                .and_then(|d| d.as_object())
+                .and_then(|obj| obj.values().next())
+                .and_then(|stock| stock.get(format!("m{}", span).as_str()))
+                .and_then(|arr| arr.as_array())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            if lines.is_empty() {
+                log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
+            }
+            return Ok(lines.iter()
+                .filter_map(|pt| parse_kline_bar(pt.as_array()?, true))
+                .collect());
+        }
+
+        // ── 日/周/月 K：走 fqkline 端点 ──
+        // fqkline 支持完整的 end_date 翻页，历史数据可无限向左拖动
+        let period_param = match period {
+            "weekly" => "week",
+            "monthly" => "month",
+            _ => "day",
         };
 
         let cnt = count.unwrap_or(200);
@@ -373,8 +408,6 @@ impl DataSource for TencentAdapter {
             tc_code, period_param, end_date_str, cnt
         );
 
-        log::debug!("Tencent fqkline URL: {}", url);
-
         let resp = headers::with_browser_headers(
             self.client.get(&url),
             "https://gu.qq.com",
@@ -383,28 +416,11 @@ impl DataSource for TencentAdapter {
             .await
             .map_err(|e| AppError::network("tencent", format!("K线请求失败: {}", e)))?;
 
-        let status = resp.status();
-        let body_text = resp
-            .text()
+        let body: serde_json::Value = resp
+            .json()
             .await
-            .map_err(|e| AppError::network("tencent", format!("K线读取失败: {}", e)))?;
+            .map_err(|e| AppError::network("tencent", format!("K线解析失败: {}", e)))?;
 
-        log::debug!("Tencent fqkline status={}, body_len={}", status, body_text.len());
-
-        if !status.is_success() {
-            return Err(AppError::network("tencent", format!("K线 HTTP {}", status)));
-        }
-
-        let body: serde_json::Value = serde_json::from_str(&body_text)
-            .map_err(|e| {
-                // Log first 500 chars on parse failure for diagnosis
-                let preview: String = body_text.chars().take(500).collect();
-                log::error!("Tencent fqkline JSON parse failed: {}. Body preview: {}", e, preview);
-                AppError::network("tencent", format!("K线解析失败: {}", e))
-            })?;
-
-        // Extract K-line data array
-        // Format: { "data": { "sh600519": { "day": [...] or "qfqday": [...] } } }
         let stock_data = body
             .pointer("/data")
             .and_then(|d| d.as_object())
@@ -412,23 +428,15 @@ impl DataSource for TencentAdapter {
 
         let klines = stock_data
             .and_then(|stock| {
-                // Log available keys for diagnosis (only when minute-K, API may differ)
-                if let Some(span) = super::minute_span(period) {
-                    let keys: Vec<&str> = stock.as_object()
-                        .map(|o| o.keys().map(|s| s.as_str()).collect())
-                        .unwrap_or_default();
-                    log::debug!("Tencent fqkline stock keys for span={}: {:?}", span, keys);
-                }
-                stock.get(&period_param)
-                    .or_else(|| stock.get(&format!("qfq{}", &period_param)))
+                stock.get(period_param)
+                    .or_else(|| stock.get(&format!("qfq{}", period_param)))
             })
             .and_then(|arr| arr.as_array())
             .cloned()
             .unwrap_or_default();
 
         if klines.is_empty() {
-            let preview: String = body_text.chars().take(300).collect();
-            log::warn!("Tencent kline empty for code={} period={}, body_preview={}", tc_code, period_param, preview);
+            log::warn!("Tencent kline empty for code={} period={}", tc_code, period_param);
         }
 
         let data: Vec<crate::domain::KLineData> = klines
