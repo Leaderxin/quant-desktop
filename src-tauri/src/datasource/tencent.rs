@@ -373,6 +373,8 @@ impl DataSource for TencentAdapter {
             tc_code, period_param, end_date_str, cnt
         );
 
+        log::debug!("Tencent fqkline URL: {}", url);
+
         let resp = headers::with_browser_headers(
             self.client.get(&url),
             "https://gu.qq.com",
@@ -381,10 +383,25 @@ impl DataSource for TencentAdapter {
             .await
             .map_err(|e| AppError::network("tencent", format!("K线请求失败: {}", e)))?;
 
-        let body: serde_json::Value = resp
-            .json()
+        let status = resp.status();
+        let body_text = resp
+            .text()
             .await
-            .map_err(|e| AppError::network("tencent", format!("K线解析失败: {}", e)))?;
+            .map_err(|e| AppError::network("tencent", format!("K线读取失败: {}", e)))?;
+
+        log::debug!("Tencent fqkline status={}, body_len={}", status, body_text.len());
+
+        if !status.is_success() {
+            return Err(AppError::network("tencent", format!("K线 HTTP {}", status)));
+        }
+
+        let body: serde_json::Value = serde_json::from_str(&body_text)
+            .map_err(|e| {
+                // Log first 500 chars on parse failure for diagnosis
+                let preview: String = body_text.chars().take(500).collect();
+                log::error!("Tencent fqkline JSON parse failed: {}. Body preview: {}", e, preview);
+                AppError::network("tencent", format!("K线解析失败: {}", e))
+            })?;
 
         // Extract K-line data array
         // Format: { "data": { "sh600519": { "day": [...] or "qfqday": [...] } } }
@@ -395,6 +412,13 @@ impl DataSource for TencentAdapter {
 
         let klines = stock_data
             .and_then(|stock| {
+                // Log available keys for diagnosis (only when minute-K, API may differ)
+                if let Some(span) = super::minute_span(period) {
+                    let keys: Vec<&str> = stock.as_object()
+                        .map(|o| o.keys().map(|s| s.as_str()).collect())
+                        .unwrap_or_default();
+                    log::debug!("Tencent fqkline stock keys for span={}: {:?}", span, keys);
+                }
                 stock.get(&period_param)
                     .or_else(|| stock.get(&format!("qfq{}", &period_param)))
             })
@@ -403,7 +427,8 @@ impl DataSource for TencentAdapter {
             .unwrap_or_default();
 
         if klines.is_empty() {
-            log::warn!("Tencent kline empty for code={} period={}", tc_code, period_param);
+            let preview: String = body_text.chars().take(300).collect();
+            log::warn!("Tencent kline empty for code={} period={}, body_preview={}", tc_code, period_param, preview);
         }
 
         let data: Vec<crate::domain::KLineData> = klines
