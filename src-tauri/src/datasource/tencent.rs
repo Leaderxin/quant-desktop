@@ -46,14 +46,6 @@ fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::
     })
 }
 
-/// 解析腾讯 mkline 分钟 K 线数组为 KLineData 列表（委托到 parse_kline_bar）。
-fn parse_minute_klines(lines: &[serde_json::Value]) -> Vec<crate::domain::KLineData> {
-    lines
-        .iter()
-        .filter_map(|pt| parse_kline_bar(pt.as_array()?, true))
-        .collect()
-}
-
 pub struct TencentAdapter {
     client: Client,
 }
@@ -360,46 +352,17 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
-        // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛）。
-        // URL 格式：param={code},m{span},{start},{end_date},{count}
-        // end_date 去横线转为 YYYYMMDD 以匹配 mkline 响应中的时间戳格式
-        if let Some(span) = super::minute_span(period) {
-            let end_date_str = end_date.map(|d| d.replace('-', "")).unwrap_or_default();
-            let cnt = count.unwrap_or(320);
-            let url = format!(
-                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{},{}",
-                tc_code, span, "", end_date_str, cnt
-            );
-            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
-                .send()
-                .await
-                .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {:#}", e)))?;
-            if !resp.status().is_success() {
-                return Err(AppError::network("tencent", format!("分钟K线 HTTP {}", resp.status())));
+        // 统一使用 fqkline 端点（日/周/月/分钟 K 均支持），享有完整的 end_date 翻页能力。
+        // 分钟 K 的 period_param 为纯数字 span（如 "5"/"15"/"30"/"60"），
+        // fqkline 响应格式与日 K 一致，走 parse_kline_bar 解析。
+        let period_param = if let Some(span) = super::minute_span(period) {
+            span.to_string()
+        } else {
+            match period {
+                "weekly" => "week".to_string(),
+                "monthly" => "month".to_string(),
+                _ => "day".to_string(),
             }
-            let body: serde_json::Value = resp
-                .json()
-                .await
-                .map_err(|e| AppError::network("tencent", format!("分钟K线解析失败: {}", e)))?;
-            let lines: &[serde_json::Value] = body
-                .pointer("/data")
-                .and_then(|d| d.as_object())
-                .and_then(|obj| obj.values().next())
-                .and_then(|stock| stock.get(format!("m{}", span).as_str()))
-                .and_then(|arr| arr.as_array())
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]);
-            if lines.is_empty() {
-                log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
-            }
-            return Ok(parse_minute_klines(lines));
-        }
-
-        // Map period to Tencent API parameter
-        let period_param = match period {
-            "weekly" => "week",
-            "monthly" => "month",
-            _ => "day",
         };
 
         let cnt = count.unwrap_or(200);
@@ -432,8 +395,8 @@ impl DataSource for TencentAdapter {
 
         let klines = stock_data
             .and_then(|stock| {
-                stock.get(period_param)
-                    .or_else(|| stock.get(&format!("qfq{}", period_param)))
+                stock.get(&period_param)
+                    .or_else(|| stock.get(&format!("qfq{}", &period_param)))
             })
             .and_then(|arr| arr.as_array())
             .cloned()
@@ -539,19 +502,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_tencent_minute_klines() {
-        let lines: Vec<serde_json::Value> = serde_json::from_str(
-            r#"[["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]]"#,
+    fn parses_kline_bar_minute() {
+        let val: serde_json::Value = serde_json::from_str(
+            r#"["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]"#,
         )
         .unwrap();
-        let out = parse_minute_klines(&lines);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].date, "2026-06-18 09:35");
-        assert_eq!(out[0].open, 10.00);
-        assert_eq!(out[0].close, 10.20);
-        assert_eq!(out[0].high, 10.30);
-        assert_eq!(out[0].low, 9.90);
-        assert_eq!(out[0].volume, 150000); // 1500 手 ×100
-        assert_eq!(out[0].turnover, 1530000.0);
+        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        assert_eq!(out.date, "2026-06-18 09:35");
+        assert_eq!(out.open, 10.00);
+        assert_eq!(out.close, 10.20);
+        assert_eq!(out.high, 10.30);
+        assert_eq!(out.low, 9.90);
+        assert_eq!(out.volume, 150000); // 1500 手 ×100
+        assert_eq!(out.turnover, 1530000.0);
     }
 }
