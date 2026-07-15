@@ -362,9 +362,9 @@ impl DataSource for TencentAdapter {
 
         // 分钟 K 线：走 mkline 接口（返回日内 OHLC 蜡烛）。
         // URL 格式：param={code},m{span},{start},{end_date},{count}
-        // start 留空 = 最早可用数据；end_date = 翻页截止日期（YYYY-MM-DD）
+        // end_date 去横线转为 YYYYMMDD 以匹配 mkline 响应中的时间戳格式
         if let Some(span) = super::minute_span(period) {
-            let end_date_str = end_date.unwrap_or("");
+            let end_date_str = end_date.map(|d| d.replace('-', "")).unwrap_or_default();
             let cnt = count.unwrap_or(320);
             let url = format!(
                 "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{},{}",
