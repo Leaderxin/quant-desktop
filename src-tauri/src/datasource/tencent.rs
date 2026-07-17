@@ -364,7 +364,11 @@ impl DataSource for TencentAdapter {
 
         // ── 分钟 K 线：走 mkline 端点 ──
         // fqkline 不支持分钟周期（返回 "bad params"），故分钟 K 单独走 mkline。
-        // URL 格式: param={code},m{span},{start},{end_YYYYMMDD},{count}
+        // 复权取舍：mkline 端点不支持复权参数，故分钟K为【不复权原始价】；
+        // 而日/周/月走 fqkline 携带 qfq（【前复权】）。同一股票的分钟K与日K价格基准
+        // 在除权日会出现跳变（分钟K跳高/原价，日K平滑），这是依赖腾讯接口能力的设计取舍。
+        // 若前端需要一致性，可将日/周/月也改为不复权（fqkline 末参改空），代价为历史价位回退原始价。
+        // URL 格式: param={code},m{span},{start},{end_YYYYMMDDHHMM},{count}
         // end_date 去横线以匹配 mkline 响应时间戳格式（YYYYMMDDHHMM）
         if let Some(span) = super::minute_span(period) {
             let end_date_str = end_date.map(|d| d.replace('-', "")).unwrap_or_default();
