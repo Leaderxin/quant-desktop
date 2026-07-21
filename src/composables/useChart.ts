@@ -39,6 +39,14 @@ export function useChart(options: {
     return `${y}-${m}-${day}`;
   }
 
+  /** 将时间戳格式化为 YYYYMMDDHHMM 字符串（无分隔符），用于腾讯 mkline 的 end 参数。
+   *  与后端 parse_kline_bar 的分钟K date 格式(YYYYMMDDHHMM)对齐。 */
+  function formatDateMinuteStamp(ts: number): string {
+    const d = new Date(ts);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+
   /** 将后端 KLineData 映射为 klinecharts 需要的 KLineData 格式 */
   function mapKLineToChart(data: KLineData[]): KCLineData[] {
     return data.map((d) => {
@@ -57,11 +65,22 @@ export function useChart(options: {
   /** 加载更早的历史数据（getBars forward 和预加载共用） */
   async function loadMoreHistory(): Promise<KCLineData[]> {
     if (!hasMoreForward.value || loading.value) return [];
+    // 分钟K：腾讯源按 span 向前偏移取更早 bar；新浪源不支持分页，单独短路。
+    // 日/周/月：date 级 endDate(YYYY-MM-DD)，偏移一整天，沿用原逻辑。
+    const span = minuteKSpan(currentPeriod.value);
+    const isSina = settings.activeDatasource === 'sina';
+    if (span !== null && isSina) {
+      // 新浪端点不支持向后分页(#5)，直接结束懒加载
+      hasMoreForward.value = false;
+      return [];
+    }
     loading.value = true;
     try {
       const earliest = allData.value[0];
       const endDate = earliest
-        ? formatDate(earliest.timestamp - 86400000)
+        ? (span !== null
+            ? formatDateMinuteStamp(earliest.timestamp - span * 60_000)  // 分钟K: 前移一个 span
+            : formatDate(earliest.timestamp - 86_400_000))              // 日/周月: 前移一整天
         : undefined;
       const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {
