@@ -5,11 +5,7 @@ import type { Chart, KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData, KLineData, PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
-
-/** 判断某周期是否为分钟 K（区别于分时 'minute' 与日/周/月 K）。*/
-function isMinuteK(period: PeriodType): boolean {
-  return period !== 'minute' && period.endsWith('min');
-}
+import { isMinuteK, minuteKSpan } from './minutePeriod';
 
 export function useChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -250,8 +246,8 @@ export function useChart(options: {
   }
 
   function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
-    const minuteSpan = parseInt(period);
-    if (!isNaN(minuteSpan)) return { type: 'minute', span: minuteSpan };
+    const span = minuteKSpan(period);
+    if (span !== null) return { type: 'minute', span };
     switch (period) {
       case 'minute': return { type: 'minute', span: 5 };
       case 'weekly': return { type: 'week', span: 1 };
@@ -341,8 +337,8 @@ export function useChart(options: {
   }
 
   function getRefreshInterval(period: PeriodType): number {
-    const minuteSpan = parseInt(period);
-    if (!isNaN(minuteSpan)) return minuteSpan <= 5 ? 8000 : 20000; // 短分钟 K 8s / 长分钟 K 20s
+    const span = minuteKSpan(period);
+    if (span !== null) return span <= 5 ? 8000 : 20000; // 短分钟 K 8s / 长分钟 K 20s
     switch (period) {
       case 'minute': return 5000;    // 分时图：5 秒
       case 'daily':  return 30000;   // 日K：30 秒
