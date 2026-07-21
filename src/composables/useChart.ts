@@ -491,8 +491,10 @@ export function useChart(options: {
           const mapped = mapKLineToChart(data);
           // 存入 allData（按时间升序）
           allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
-          // 分钟 K 一次性加载，不做左滑懒加载；新浪日K 600 条到底；腾讯日/周/月支持懒加载
-          hasMoreForward.value = settings.activeDatasource !== 'sina';
+          // 分钟K：腾讯源支持左滑分页(mkline end 翻页)，新浪源不支持；
+          // 新浪日K 600 条到底；腾讯日/周/月支持 fqkline end_date 翻页
+          const isSina = settings.activeDatasource === 'sina';
+          hasMoreForward.value = !isSina;
           // 保持 klineData 兼容性（对外暴露）
           klineData.value = mapped;
         }
