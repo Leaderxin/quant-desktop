@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import type { IndexQuote, PeriodType } from '@/types';
-import { useSettingsStore } from '@/stores/settings';
 import { formatPrice, formatVolume } from '@/utils/format';
+import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
 import ChartSwitcher from './ChartSwitcher.vue';
@@ -19,17 +19,8 @@ const isUp = computed(() => props.index.change_pct >= 0);
 
 const activePeriod = ref<PeriodType>('minute');
 
-const settings = useSettingsStore();
-
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
-watch(
-  () => settings.activeDatasource,
-  (ds) => {
-    if (ds === 'sina' && activePeriod.value === '1min') {
-      activePeriod.value = '5min';
-    }
-  }
-);
+useMinuteKUnavailable(activePeriod);
 
 // 指数摘要卡片 (5 items — no open/high/low from API)
 const statCards = computed(() => [
