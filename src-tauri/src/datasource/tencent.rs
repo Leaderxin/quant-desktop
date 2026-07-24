@@ -10,8 +10,12 @@ const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 /// 解析腾讯 K 线数组为 KLineData（日 K / 分钟 K 共用）。
 /// 腾讯 K 线数组格式：`[date, open, close, high, low, volume(手), turnover_opt?, ...]`
 /// - 日 K：`["2026-06-19", "开", "收", "高", "低", "量(手)", "额", ...]`（≥6 元素，turnover 在 index 6）
-/// - 分钟 K：`["202606180935", "开", "收", "高", "低", "量(手)", "{}"|"额"|?, "额"?]`
+/// - 分钟 K：`["202606180935", "开", "收", "高", "低", "量(手)", "{}"|金额|缺失, 金额?|缺失]`
 ///   分钟K的 turnover 位置不固定(腾讯接口版本差异)，扫描 index 6/7 取首个可解析数值。
+///   index 6 既可能是 JSON 空对象 {} (由 as_str 返回 None 自动跳过), 也可能是金额字符串或缺失;
+///   index 7 同样可能是金额字符串或缺失。
+///   注: (6..=7) 扫描基于**实际观察到的**腾讯 m1/m5/m15/m30/m60 响应格式(已知 index 6/7 仅承载 turnover 或空对象),
+///   非接口文档; 若上游格式演进(index 6/7 改为均价等其它数值字段)需重新核实, 避免误取非金额数值写入 turnover。
 /// `is_minute` 控制：date 格式转换（YYYYMMDDHHMM → YYYY-MM-DD HH:MM）、turnover 扫描范围(6-7 vs 6)。
 fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::domain::KLineData> {
     // 必须字段：date, open, close, high, low, volume（索引 0-5）
@@ -30,8 +34,9 @@ fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::
     let low: f64 = arr[4].as_str()?.parse().ok()?;
     let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
     let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
-    // 分钟K 的 turnover 位置随腾讯接口版本变化: index 6 可能是空对象 {} 或金额字符串,
-    // index 7 也可能是金额。因此扫描 index 6 与 7, 取首个可解析为 f64 的字符串。
+    // 分钟K 的 turnover 位置随腾讯接口版本变化: index 6 可能是 JSON 空对象 {}、金额字符串或缺失,
+    // index 7 也可能是金额字符串或缺失。因此扫描 index 6 与 7, 取首个 as_str 非空且可解析为 f64 的字符串。
+    // (扫描范围基于实际观察到的 m1/m5/m15/m30/m60 响应, 非接口文档, 详见函数上方注释。)
     let turnover: f64 = if is_minute {
         (6..=7)
             .filter_map(|i| arr.get(i))

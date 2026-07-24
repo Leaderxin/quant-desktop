@@ -65,12 +65,14 @@ export function useChart(options: {
   /** 加载更早的历史数据（getBars forward 和预加载共用） */
   async function loadMoreHistory(): Promise<KCLineData[]> {
     if (!hasMoreForward.value || loading.value) return [];
-    // 分钟K：腾讯源按 span 向前偏移取更早 bar；新浪源不支持分页，单独短路。
+    // 分钟K：腾讯源用 earliest.timestamp 命中真实 bar 作 end, 由前端 Set 去重兜底; 新浪源不支持分页, 单独短路。
     // 日/周/月：date 级 endDate(YYYY-MM-DD)，偏移一整天，沿用原逻辑。
     const span = minuteKSpan(currentPeriod.value);
     const isSina = settings.activeDatasource === 'sina';
     if (span !== null && isSina) {
-      // 新浪端点不支持向后分页(#5)，直接结束懒加载
+      // 新浪端点不支持向后分页(#5)，直接结束懒加载。
+      // 双向保护: loadData 与 loadMoreHistory 各自兜底, 防御 switchDatasource 时序竞态
+      // (loadData 分钟K分支末尾已设 hasMoreForward=!isSina, 此处对竞态再兜一道)。
       hasMoreForward.value = false;
       return [];
     }
@@ -79,8 +81,8 @@ export function useChart(options: {
       const earliest = allData.value[0];
       const endDate = earliest
         ? (span !== null
-            ? formatDateMinuteStamp(earliest.timestamp - span * 60_000)  // 分钟K: 前移一个 span
-            : formatDate(earliest.timestamp - 86_400_000))              // 日/周月: 前移一整天
+            ? formatDateMinuteStamp(earliest.timestamp)        // 分钟K: end 命中最早真实 bar; 腾讯 end 语义为 ≤ 且必命中 bar, 比偏移非交易戳更稳妥; 前端 Set 按 timestamp 去重保证不重复
+            : formatDate(earliest.timestamp - 86_400_000))      // 日/周月: 前移一整天
         : undefined;
       const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {

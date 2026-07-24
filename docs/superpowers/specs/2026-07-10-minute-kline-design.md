@@ -123,6 +123,13 @@ ChartSwitcher（更多 ▾ → NDropdown 分钟档）
 
 原本列为「不在本次范围」，已在代码评审修复轮中**实现并修复**：
 
-- **腾讯源**：支持分钟K左滑。`loadMoreHistory` 改为输出分钟级 `endDate`（`YYYYMMDDHHMM`，偏移一个 `span`），由后端透传给 mkline 的 `end` 参数实现向左翻页。
+- **腾讯源**：支持分钟K左滑。`loadMoreHistory` 改为输出分钟级 `endDate`（`YYYYMMDDHHMM`，命中 `earliest.timestamp` 对应的真实 bar），由后端透传给 mkline 的 `end` 参数实现向左翻页。
 - **新浪源**：不支持（端点无分页能力），`loadMoreHistory` 对新浪源分钟K短路返回，`hasMoreForward=false`。
 - 边界：跨交易日/节假日空窗由腾讯响应不含非交易时段 bar 自然跨过；前端按 `timestamp` 去重。
+
+### 已知约束：跨时区依赖（2026-07-24 补记）
+
+- 分钟K的时间戳在前端以浏览器本地时区解析：`mapKLineToChart` 用 `new Date(d.date).getTime()`（`d.date` 形如 `"2026-06-18 09:35"`，无时区信息，按 ES 规范落到浏览器本地时区）；`formatDateMinuteStamp` 同样用本地时区格式化时间戳回 `YYYYMMDDHHMM`。
+- 该链路隐含依赖用户运行于 **UTC+8**（与 A 股交易时区 / 腾讯 `mkline` 端点比对时区一致）。跨时区用户（如 UTC-5）的浏览器会把 `09:35` 当作其当地时区，生成的时间戳与腾讯按 UTC+8 比对的历史窗口错位——左滑翻页传给腾讯的 `end` 会偏移到非交易视窗，可能返回错位数据或空批。
+- 后端 `market_clock.rs` 走 CST(UTC+8) 与前端用浏览器本地时区在时区模型上不一致，属既有设计（非本次分钟K引入），分钟K的 `endDate` 链路让该问题更可观察。
+- 本次**不改代码**（与「复权基准取舍」处理方式一致，避免承担范围外回归）；A 股桌面客户端默认面向中国大陆用户，跨时区场景非主要用例。如后续需支持，可在前端统一以 UTC+8 显式解析分钟戳（如 `new Date(Date.UTC(...))` + 固定偏移），需单独评估。
