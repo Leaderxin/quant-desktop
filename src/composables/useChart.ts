@@ -5,6 +5,7 @@ import type { Chart, KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData, KLineData, PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
+import { isMinuteK, minuteKSpan } from './minutePeriod';
 
 export function useChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -38,6 +39,14 @@ export function useChart(options: {
     return `${y}-${m}-${day}`;
   }
 
+  /** 将时间戳格式化为 YYYYMMDDHHMM 字符串（无分隔符），用于腾讯 mkline 的 end 参数。
+   *  与后端 parse_kline_bar 的分钟K date 格式(YYYYMMDDHHMM)对齐。 */
+  function formatDateMinuteStamp(ts: number): string {
+    const d = new Date(ts);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
+  }
+
   /** 将后端 KLineData 映射为 klinecharts 需要的 KLineData 格式 */
   function mapKLineToChart(data: KLineData[]): KCLineData[] {
     return data.map((d) => {
@@ -56,24 +65,40 @@ export function useChart(options: {
   /** 加载更早的历史数据（getBars forward 和预加载共用） */
   async function loadMoreHistory(): Promise<KCLineData[]> {
     if (!hasMoreForward.value || loading.value) return [];
+    // 分钟K：腾讯源用 earliest.timestamp 命中真实 bar 作 end, 由前端 Set 去重兜底; 新浪源不支持分页, 单独短路。
+    // 日/周/月：date 级 endDate(YYYY-MM-DD)，偏移一整天，沿用原逻辑。
+    const span = minuteKSpan(currentPeriod.value);
+    const isSina = settings.activeDatasource === 'sina';
+    if (span !== null && isSina) {
+      // 新浪端点不支持向后分页(#5)，直接结束懒加载。
+      // 双向保护: loadData 与 loadMoreHistory 各自兜底, 防御 switchDatasource 时序竞态
+      // (loadData 分钟K分支末尾已设 hasMoreForward=!isSina, 此处对竞态再兜一道)。
+      hasMoreForward.value = false;
+      return [];
+    }
     loading.value = true;
     try {
       const earliest = allData.value[0];
       const endDate = earliest
-        ? formatDate(earliest.timestamp - 86400000)
+        ? (span !== null
+            ? formatDateMinuteStamp(earliest.timestamp)        // 分钟K: end 命中最早真实 bar; 腾讯 end 语义为 ≤ 且必命中 bar, 比偏移非交易戳更稳妥; 前端 Set 按 timestamp 去重保证不重复
+            : formatDate(earliest.timestamp - 86_400_000))      // 日/周月: 前移一整天
         : undefined;
+      const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {
         code: unref(options.code),
         market: unref(options.market),
         period: currentPeriod.value,
         endDate,
-        count: 200,
+        count,
       });
       const newBars = mapKLineToChart(data);
+      let uniqueCount = 0;
       if (newBars.length > 0) {
         const existing = new Set(allData.value.map((d) => d.timestamp));
         const unique = newBars.filter((d) => !existing.has(d.timestamp));
-        if (unique.length > 0) {
+        uniqueCount = unique.length;
+        if (uniqueCount > 0) {
           allData.value = [
             ...unique.sort((a, b) => a.timestamp - b.timestamp),
             ...allData.value,
@@ -81,7 +106,8 @@ export function useChart(options: {
         }
       }
       klineData.value = allData.value;
-      hasMoreForward.value = newBars.length >= 100;
+      // 仅当返回了新的非重复 bar 且响应量充足时才认为还有更多历史数据
+      hasMoreForward.value = uniqueCount > 0 && newBars.length >= 100;
       return newBars;
     } catch (e) {
       console.error('[useChart] forward load failed:', e);
@@ -211,6 +237,7 @@ export function useChart(options: {
   function applyCandlestickStyles() {
     if (!chart.value) return;
     const c = themeColors();
+    const dateLabel = isMinuteK(currentPeriod.value) ? '时间' : '日期';
 
     chart.value.setStyles({
       candle: {
@@ -218,7 +245,7 @@ export function useChart(options: {
         bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
-          labels: ['日期', '开', '高', '低', '收', '量', '额'],
+          labels: [dateLabel, '开', '高', '低', '收', '量', '额'],
           title: { show: false } as any,
           rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
           text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
@@ -240,6 +267,8 @@ export function useChart(options: {
   }
 
   function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
+    const span = minuteKSpan(period);
+    if (span !== null) return { type: 'minute', span };
     switch (period) {
       case 'minute': return { type: 'minute', span: 5 };
       case 'weekly': return { type: 'week', span: 1 };
@@ -279,12 +308,11 @@ export function useChart(options: {
       } as any);
     }
 
-    // Always update symbol and period on stock/period change (even for reused chart)
+    // setSymbol + setPeriod are deferred to loadData so data arrives before
+    // klinecharts triggers getBars('init'), avoiding stale-data rendering.
     if (!chart.value) return;
-    chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
 
     currentPeriod.value = period;
-    chart.value.setPeriod(periodToKlinecharts(period) as any);
     applyChartStyles();
     if (period !== 'minute') {
       applyCandlestickStyles();
@@ -330,6 +358,8 @@ export function useChart(options: {
   }
 
   function getRefreshInterval(period: PeriodType): number {
+    const span = minuteKSpan(period);
+    if (span !== null) return span <= 5 ? 8000 : 20000; // 短分钟 K 8s / 长分钟 K 20s
     switch (period) {
       case 'minute': return 5000;    // 分时图：5 秒
       case 'daily':  return 30000;   // 日K：30 秒
@@ -463,8 +493,10 @@ export function useChart(options: {
           const mapped = mapKLineToChart(data);
           // 存入 allData（按时间升序）
           allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
-          // 新浪日K 600 条一次性加载到底，腾讯支持分页懒加载
-          hasMoreForward.value = settings.activeDatasource !== 'sina';
+          // 分钟K：腾讯源支持左滑分页(mkline end 翻页)，新浪源不支持；
+          // 新浪日K 600 条到底；腾讯日/周/月支持 fqkline end_date 翻页
+          const isSina = settings.activeDatasource === 'sina';
+          hasMoreForward.value = !isSina;
           // 保持 klineData 兼容性（对外暴露）
           klineData.value = mapped;
         }
@@ -472,6 +504,8 @@ export function useChart(options: {
 
       if (signal.aborted) return;
       if (chart.value) {
+        chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
+        chart.value.setPeriod(periodToKlinecharts(period) as any);
         chart.value.setDataLoader(dataLoader);
         syncPrecision();
       }

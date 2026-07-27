@@ -7,6 +7,21 @@ use super::{DataSource, INDEX_CODES, headers};
 
 const SINA_URL: &str = "http://hq.sinajs.cn/list=";
 
+/// 将图表周期映射为新浪 getKLineData 的 `scale` 参数（分钟数；日 K = 240）。
+/// 分钟周期的映射委托到 minute_span；新浪特有：日 K → 240、拒绝 1 分钟、拒绝未知周期。
+fn sina_scale(period: &str) -> Result<u32, AppError> {
+    match period {
+        "daily" => Ok(240),
+        "1min" => Err(AppError::Unsupported(
+            "新浪数据源不支持1分钟K线，请切换到腾讯数据源查看".into(),
+        )),
+        other => super::minute_span(other)
+            .ok_or_else(|| AppError::Unsupported(
+                "新浪数据源不支持该周期，请切换到腾讯数据源查看".into(),
+            )),
+    }
+}
+
 pub struct SinaAdapter {
     client: Client,
 }
@@ -21,6 +36,10 @@ impl SinaAdapter {
     /// Convert code to Sina format: "sh600519" or "sz000001"
     fn code_to_sina(code: &str, market: &str) -> String {
         if market == "CN" {
+            // Already has exchange prefix (e.g. "sh000001" from index codes)
+            if code.starts_with("sh") || code.starts_with("sz") {
+                return code.to_string();
+            }
             if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
                 format!("sh{}", code)
             } else {
@@ -389,17 +408,12 @@ impl DataSource for SinaAdapter {
             Self::code_to_sina(code, market)
         };
 
-        // Sina only supports daily K-line; reject minute/weekly/monthly.
-        // Minute data should use fetch_minute_data instead.
-        if period != "daily" {
-            return Err(AppError::Unsupported("新浪数据源不支持周K/月K/分钟K线，请切换到腾讯数据源查看".into()));
-        }
+        // 根据周期计算 scale（分钟数；日 K = 240）。1 分钟/周/月由 sina_scale 拒绝。
+        let scale = sina_scale(period)?;
 
         if end_date.is_some() || count.is_some() {
             log::debug!("Sina adapter does not support end_date/count pagination; ignoring");
         }
-
-        let scale = "240";
 
         let url = format!(
             "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=600",
@@ -555,5 +569,26 @@ impl DataSource for SinaAdapter {
         self.fetch_realtime(&codes, "CN")
             .await
             .map(|q| !q.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sina_scale_maps_supported_periods() {
+        assert_eq!(sina_scale("daily").unwrap(), 240);
+        assert_eq!(sina_scale("5min").unwrap(), 5);
+        assert_eq!(sina_scale("15min").unwrap(), 15);
+        assert_eq!(sina_scale("30min").unwrap(), 30);
+        assert_eq!(sina_scale("60min").unwrap(), 60);
+    }
+
+    #[test]
+    fn sina_scale_rejects_unsupported_periods() {
+        assert!(sina_scale("1min").is_err());
+        assert!(sina_scale("weekly").is_err());
+        assert!(sina_scale("monthly").is_err());
     }
 }

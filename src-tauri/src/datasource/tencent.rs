@@ -7,6 +7,60 @@ use super::{DataSource, INDEX_CODES, headers};
 
 const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 
+/// 解析腾讯 K 线数组为 KLineData（日 K / 分钟 K 共用）。
+/// 腾讯 K 线数组格式：`[date, open, close, high, low, volume(手), turnover_opt?, ...]`
+/// - 日 K：`["2026-06-19", "开", "收", "高", "低", "量(手)", "额", ...]`（≥6 元素，turnover 在 index 6）
+/// - 分钟 K：`["202606180935", "开", "收", "高", "低", "量(手)", "{}"|金额|缺失, 金额?|缺失]`
+///   分钟K的 turnover 位置不固定(腾讯接口版本差异)，扫描 index 6/7 取首个可解析数值。
+///   index 6 既可能是 JSON 空对象 {} (由 as_str 返回 None 自动跳过), 也可能是金额字符串或缺失;
+///   index 7 同样可能是金额字符串或缺失。
+///   注: (6..=7) 扫描基于**实际观察到的**腾讯 m1/m5/m15/m30/m60 响应格式(已知 index 6/7 仅承载 turnover 或空对象),
+///   非接口文档; 若上游格式演进(index 6/7 改为均价等其它数值字段)需重新核实, 避免误取非金额数值写入 turnover。
+/// `is_minute` 控制：date 格式转换（YYYYMMDDHHMM → YYYY-MM-DD HH:MM）、turnover 扫描范围(6-7 vs 6)。
+fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::domain::KLineData> {
+    // 必须字段：date, open, close, high, low, volume（索引 0-5）
+    if arr.len() < 6 {
+        return None;
+    }
+    let t = arr[0].as_str()?;
+    let date = if is_minute && t.len() >= 12 {
+        format!("{}-{}-{} {}:{}", &t[0..4], &t[4..6], &t[6..8], &t[8..10], &t[10..12])
+    } else {
+        t.to_string()
+    };
+    let open: f64 = arr[1].as_str()?.parse().ok()?;
+    let close: f64 = arr[2].as_str()?.parse().ok()?;
+    let high: f64 = arr[3].as_str()?.parse().ok()?;
+    let low: f64 = arr[4].as_str()?.parse().ok()?;
+    let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
+    let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
+    // 分钟K 的 turnover 位置随腾讯接口版本变化: index 6 可能是 JSON 空对象 {}、金额字符串或缺失,
+    // index 7 也可能是金额字符串或缺失。因此扫描 index 6 与 7, 取首个 as_str 非空且可解析为 f64 的字符串。
+    // (扫描范围基于实际观察到的 m1/m5/m15/m30/m60 响应, 非接口文档, 详见函数上方注释。)
+    let turnover: f64 = if is_minute {
+        (6..=7)
+            .filter_map(|i| arr.get(i))
+            .filter_map(|v| v.as_str())
+            .filter_map(|s| s.parse::<f64>().ok())
+            .next()
+            .unwrap_or(0.0)
+    } else {
+        arr.get(6)
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0)
+    };
+    Some(crate::domain::KLineData {
+        date,
+        open,
+        high,
+        low,
+        close,
+        volume,
+        turnover,
+    })
+}
+
 pub struct TencentAdapter {
     client: Client,
 }
@@ -20,6 +74,10 @@ impl TencentAdapter {
 
     fn code_to_tencent(code: &str, market: &str) -> String {
         if market == "CN" {
+            // Already has exchange prefix (e.g. "sh000001" from index codes)
+            if code.starts_with("sh") || code.starts_with("sz") {
+                return code.to_string();
+            }
             if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
                 format!("sh{}", code)
             } else {
@@ -309,7 +367,52 @@ impl DataSource for TencentAdapter {
             Self::code_to_tencent(code, market)
         };
 
-        // Map period to Tencent API parameter
+        // ── 分钟 K 线：走 mkline 端点 ──
+        // fqkline 不支持分钟周期（返回 "bad params"），故分钟 K 单独走 mkline。
+        // 复权取舍：mkline 端点不支持复权参数，故分钟K为【不复权原始价】；
+        // 而日/周/月走 fqkline 携带 qfq（【前复权】）。同一股票的分钟K与日K价格基准
+        // 在除权日会出现跳变（分钟K跳高/原价，日K平滑），这是依赖腾讯接口能力的设计取舍。
+        // 若前端需要一致性，可将日/周/月也改为不复权（fqkline 末参改空），代价为历史价位回退原始价。
+        // URL 格式: param={code},m{span},{start},{end_YYYYMMDDHHMM},{count}
+        // end_date 去横线以匹配 mkline 响应时间戳格式（YYYYMMDDHHMM）
+        if let Some(span) = super::minute_span(period) {
+            let end_date_str = end_date.map(|d| d.replace('-', "")).unwrap_or_default();
+            let cnt = count.unwrap_or(320);
+            let url = format!(
+                "http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m{},{},{},{}",
+                tc_code, span, "", end_date_str, cnt
+            );
+            log::debug!("Tencent mkline URL: {}", url);
+
+            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
+                .send()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {}", e)))?;
+            if !resp.status().is_success() {
+                return Err(AppError::network("tencent", format!("分钟K线 HTTP {}", resp.status())));
+            }
+            let body: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| AppError::network("tencent", format!("分钟K线解析失败: {}", e)))?;
+            let lines: &[serde_json::Value] = body
+                .pointer("/data")
+                .and_then(|d| d.as_object())
+                .and_then(|obj| obj.values().next())
+                .and_then(|stock| stock.get(format!("m{}", span).as_str()))
+                .and_then(|arr| arr.as_array())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            if lines.is_empty() {
+                log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
+            }
+            return Ok(lines.iter()
+                .filter_map(|pt| parse_kline_bar(pt.as_array()?, true))
+                .collect());
+        }
+
+        // ── 日/周/月 K：走 fqkline 端点 ──
+        // fqkline 支持完整的 end_date 翻页，历史数据可无限向左拖动
         let period_param = match period {
             "weekly" => "week",
             "monthly" => "month",
@@ -337,8 +440,6 @@ impl DataSource for TencentAdapter {
             .await
             .map_err(|e| AppError::network("tencent", format!("K线解析失败: {}", e)))?;
 
-        // Extract K-line data array
-        // Format: { "data": { "sh600519": { "day": [...] or "qfqday": [...] } } }
         let stock_data = body
             .pointer("/data")
             .and_then(|d| d.as_object())
@@ -359,28 +460,7 @@ impl DataSource for TencentAdapter {
 
         let data: Vec<crate::domain::KLineData> = klines
             .iter()
-            .filter_map(|pt| {
-                let arr = pt.as_array()?;
-                if arr.len() < 6 { return None; }
-                // Format: ["2026-06-19", "open", "close", "high", "low", "volume", ...]
-                let date = arr[0].as_str()?.to_string();
-                let open: f64 = arr[1].as_str()?.parse().ok()?;
-                let close: f64 = arr[2].as_str()?.parse().ok()?;
-                let high: f64 = arr[3].as_str()?.parse().ok()?;
-                let low: f64 = arr[4].as_str()?.parse().ok()?;
-                let volume_hands: f64 = arr[5].as_str()?.parse().unwrap_or(0.0);
-                let volume: u64 = (volume_hands * super::VOLUME_HANDS_TO_SHARES as f64) as u64;
-                let turnover: f64 = arr.get(6).and_then(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-                Some(crate::domain::KLineData {
-                    date,
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume,
-                    turnover,
-                })
-            })
+            .filter_map(|pt| parse_kline_bar(pt.as_array()?, false))
             .collect();
 
         Ok(data)
@@ -466,5 +546,61 @@ impl DataSource for TencentAdapter {
         self.fetch_realtime(&codes, "CN")
             .await
             .map(|q| !q.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_kline_bar_minute() {
+        let val: serde_json::Value = serde_json::from_str(
+            r#"["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]"#,
+        )
+        .unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        assert_eq!(out.date, "2026-06-18 09:35");
+        assert_eq!(out.open, 10.00);
+        assert_eq!(out.close, 10.20);
+        assert_eq!(out.high, 10.30);
+        assert_eq!(out.low, 9.90);
+        assert_eq!(out.volume, 150000); // 1500 手 ×100
+        assert_eq!(out.turnover, 1530000.0);
+    }
+
+    #[test]
+    fn parses_kline_bar_minute_turnover_at_index6() {
+        // 另一种分钟K格式: index 6 直接是金额字符串, 无空对象 {}
+        let val: serde_json::Value = serde_json::from_str(
+            r#"["202606180935","10.00","10.20","10.30","9.90","1500","1530000"]"#,
+        )
+        .unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        assert_eq!(out.date, "2026-06-18 09:35");
+        assert_eq!(out.volume, 150000); // 1500 手 ×100
+        assert_eq!(out.turnover, 1530000.0);
+    }
+
+    #[test]
+    fn parses_kline_bar_minute_turnover_at_index7() {
+        // 原有格式: index 6 为 {}, index 7 为金额
+        let val: serde_json::Value = serde_json::from_str(
+            r#"["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]"#,
+        )
+        .unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        assert_eq!(out.turnover, 1530000.0);
+    }
+
+    #[test]
+    fn parses_kline_bar_minute_no_turnover() {
+        // turnover 缺失: 回退 0
+        let val: serde_json::Value = serde_json::from_str(
+            r#"["202606180935","10.00","10.20","10.30","9.90","1500"]"#,
+        )
+        .unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        assert_eq!(out.turnover, 0.0);
     }
 }
