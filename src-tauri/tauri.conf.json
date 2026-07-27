@@ -47,6 +47,14 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "English"]
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
