@@ -14,21 +14,21 @@ const loading = ref(false);
 const error = ref('');
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-async function fetchDepth() {
-  loading.value = true;
+async function fetchDepth(showLoading = false) {
+  if (showLoading) loading.value = true;
   error.value = '';
   try {
     depth.value = await invoke<Depth>('get_depth', { code: props.code, market: props.market });
   } catch (e) {
     error.value = String(e);
   } finally {
-    loading.value = false;
+    if (showLoading) loading.value = false;
   }
 }
 
 function startAutoRefresh() {
   stopAutoRefresh();
-  refreshTimer = setInterval(fetchDepth, 3000);
+  refreshTimer = setInterval(() => fetchDepth(false), 3000);
 }
 
 function stopAutoRefresh() {
@@ -39,14 +39,14 @@ function stopAutoRefresh() {
 }
 
 onMounted(() => {
-  fetchDepth();
+  fetchDepth(true);
   startAutoRefresh();
 });
 
 onUnmounted(() => stopAutoRefresh());
 
 watch(() => [props.code, props.market], () => {
-  fetchDepth();
+  fetchDepth(true);
   startAutoRefresh();
 });
 

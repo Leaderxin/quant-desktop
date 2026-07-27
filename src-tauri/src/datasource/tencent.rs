@@ -290,8 +290,9 @@ impl DataSource for TencentAdapter {
         } else {
             Self::code_to_tencent(code, market)
         };
-        // Use 5-min K-line endpoint — same as Sina, returns multi-day data
-        let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m5,,240", tc_code);
+        // Use 1-min K-line endpoint — gives finer-grained intraday data (240 bars
+        // covers exactly one trading day: 9:30-11:30 + 13:00-15:00 = 240 min).
+        let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m1,,242", tc_code);
 
         let resp = headers::with_browser_headers(
             self.client.get(&url),
@@ -315,7 +316,7 @@ impl DataSource for TencentAdapter {
             .pointer("/data")
             .and_then(|d| d.as_object())
             .and_then(|obj| obj.values().next())
-            .and_then(|stock| stock.get("m5"))
+            .and_then(|stock| stock.get("m1"))
             .and_then(|arr| arr.as_array())
             .cloned()
             .unwrap_or_default();

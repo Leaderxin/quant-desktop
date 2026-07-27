@@ -62,6 +62,29 @@ export function useChart(options: {
     });
   }
 
+  /** 将后端 MinuteData 映射为 klinecharts 需要的 KLineData 格式 */
+  function mapMinuteToChart(data: MinuteData[]): KCLineData[] {
+    const today = new Date();
+    return data.map((d) => {
+      let h = 0, m = 0;
+      if (d.time.includes(':')) {
+        [h, m] = d.time.split(':').map(Number);
+      } else if (d.time.length >= 4) {
+        h = Number(d.time.slice(0, 2));
+        m = Number(d.time.slice(2, 4));
+      }
+      const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h || 0, m || 0).getTime();
+      return {
+        timestamp: ts,
+        open: d.open ?? d.price,
+        high: d.high ?? d.price,
+        low: d.low ?? d.price,
+        close: d.price,
+        volume: d.volume,
+      };
+    });
+  }
+
   /** 加载更早的历史数据（getBars forward 和预加载共用） */
   async function loadMoreHistory(): Promise<KCLineData[]> {
     if (!hasMoreForward.value || loading.value) return [];
@@ -270,7 +293,7 @@ export function useChart(options: {
     const span = minuteKSpan(period);
     if (span !== null) return { type: 'minute', span };
     switch (period) {
-      case 'minute': return { type: 'minute', span: 5 };
+      case 'minute': return { type: 'minute', span: 1 };
       case 'weekly': return { type: 'week', span: 1 };
       case 'monthly': return { type: 'month', span: 1 };
       default: return { type: 'day', span: 1 };
@@ -373,11 +396,37 @@ export function useChart(options: {
     stopAutoRefresh();
 
     if (period === 'minute') {
-      // Minute chart: use old full-reload behavior (calls get_intraday)
+      // 分时图增量刷新：仅拉取新数据，通过 barSubscriber 推送增量 bar
+      // （klinecharts 内部按 timestamp 做 upsert），避免 loadData →
+      // setDataLoader → Canvas 全量重绘导致的闪烁。
+      // 注意：get_intraday 返回全天 240 个模板点（含未来时段），需过滤掉
+      // 未来时间戳的 bar，否则 barSubscriber 会把 X 轴撑到 15:00。
       const interval = getRefreshInterval(period);
-      refreshTimer = setInterval(() => {
-        if (!loading.value) {
-          loadData(period);
+      refreshTimer = setInterval(async () => {
+        if (loading.value) return;
+        try {
+          const data = await invoke<MinuteData[]>('get_intraday', {
+            code: unref(options.code),
+            market: unref(options.market),
+          });
+          const allBars = mapMinuteToChart(data);
+          if (allBars.length > 0) {
+            // 过滤掉未来时点的模板 bar（分钟 K 也存在类似情况，但 K 线图增量
+            // 只取最近 10 条不会拉到未来；分时图取全量，必须过滤）
+            const now = Date.now();
+            const validBars = allBars.filter((b) => b.timestamp <= now);
+            const newLast = validBars[validBars.length - 1];
+            klineData.value = validBars;
+            if (barSubscriber) {
+              if (newLast) {
+                barSubscriber(newLast);
+              }
+            } else if (chart.value) {
+              chart.value.setDataLoader(dataLoader);
+            }
+          }
+        } catch (e) {
+          console.error('[useChart] minute incremental update failed:', e);
         }
       }, interval);
       return;
@@ -461,25 +510,7 @@ export function useChart(options: {
         if (signal.aborted) return;
 
         if (data.length) {
-          const today = new Date();
-          klineData.value = data.map((d) => {
-            let h = 0, m = 0;
-            if (d.time.includes(':')) {
-              [h, m] = d.time.split(':').map(Number);
-            } else if (d.time.length >= 4) {
-              h = Number(d.time.slice(0, 2));
-              m = Number(d.time.slice(2, 4));
-            }
-            const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h || 0, m || 0).getTime();
-            return {
-              timestamp: ts,
-              open: d.open ?? d.price,
-              high: d.high ?? d.price,
-              low: d.low ?? d.price,
-              close: d.price,
-              volume: d.volume,
-            };
-          });
+          klineData.value = mapMinuteToChart(data);
         }
       } else {
         const data = await invoke<KLineData[]>('get_kline', {
