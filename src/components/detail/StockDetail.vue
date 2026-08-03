@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { WatchItem, PeriodType } from '@/types';
+import type { WatchItem, PeriodType, SubIndicatorType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import StockSummary from './StockSummary.vue';
@@ -8,6 +8,7 @@ import DepthPanel from './DepthPanel.vue';
 import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
 import ChartSwitcher from './ChartSwitcher.vue';
+import SubIndicatorSwitcher from './SubIndicatorSwitcher.vue';
 
 const props = defineProps<{
   item: WatchItem;
@@ -21,6 +22,7 @@ const quoteStore = useQuoteStore();
 const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.market));
 
 const activePeriod = ref<PeriodType>('minute');
+const activeSubIndicator = ref<SubIndicatorType>('VOL');
 
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
 useMinuteKUnavailable(activePeriod);
@@ -42,7 +44,13 @@ useMinuteKUnavailable(activePeriod);
         <DepthPanel :code="item.code" :market="item.market" />
       </div>
       <div class="detail-right">
-        <ChartSwitcher v-model="activePeriod" />
+        <div class="chart-toolbar">
+          <ChartSwitcher v-model="activePeriod" />
+          <SubIndicatorSwitcher
+            v-if="activePeriod !== 'minute'"
+            v-model="activeSubIndicator"
+          />
+        </div>
         <MinuteChart
           v-if="activePeriod === 'minute'"
           :code="item.code"
@@ -55,6 +63,8 @@ useMinuteKUnavailable(activePeriod);
           :market="item.market"
           :name="item.name"
           :period="activePeriod"
+          :sub-indicator="activeSubIndicator"
+          @update:sub-indicator="activeSubIndicator = $event"
         />
       </div>
     </div>
@@ -112,6 +122,13 @@ useMinuteKUnavailable(activePeriod);
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 </style>

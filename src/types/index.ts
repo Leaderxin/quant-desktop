@@ -82,6 +82,8 @@ export type PeriodType =
   | 'weekly'
   | 'monthly';
 
+export type SubIndicatorType = 'VOL' | 'MACD';
+
 export interface UpdateInfo {
   current_version: string;
   latest_version: string;

@@ -2,7 +2,7 @@ import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { init, dispose } from 'klinecharts';
 import type { Chart, KLineData as KCLineData, DataLoader } from 'klinecharts';
-import type { MinuteData, KLineData, PeriodType } from '@/types';
+import type { MinuteData, KLineData, PeriodType, SubIndicatorType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
 import { isMinuteK, minuteKSpan } from './minutePeriod';
@@ -12,6 +12,7 @@ export function useChart(options: {
   code: MaybeRef<string>;
   market: MaybeRef<string>;
   name?: MaybeRef<string>;
+  subIndicator?: MaybeRef<SubIndicatorType>;
 }) {
   const settings = useSettingsStore();
 
@@ -21,6 +22,9 @@ export function useChart(options: {
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
   const currentPeriod = ref<PeriodType>('minute');
+
+  // 固定副图 pane ID，切换指标时复用同一个子窗格
+  const SUB_PANE_ID = 'sub_indicator_pane';
 
   // 累积全部已加载的 K 线数据（初始 + 历次懒加载），按时间升序
   const allData = ref<KCLineData[]>([]);
@@ -193,13 +197,24 @@ export function useChart(options: {
       separatorColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
       crosshairBg: isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)',
       crosshairText: isDark ? '#c9d1d9' : '#e6edf3',
+      // 副图指标配色 — 柱子与主图蜡烛一致，深色主题半透明度低些、浅色略高
+      indicatorBarUp: isDark ? 'rgba(248,81,73,0.7)' : 'rgba(248,81,73,0.72)',
+      indicatorBarDown: isDark ? 'rgba(63,185,80,0.7)' : 'rgba(63,185,80,0.72)',
+      indicatorBarNoChange: isDark ? 'rgba(139,148,158,0.6)' : 'rgba(139,148,158,0.6)',
+      // 量比柱低透明度
+      volumeBarUp: isDark ? 'rgba(248,81,73,0.5)' : 'rgba(248,81,73,0.55)',
+      volumeBarDown: isDark ? 'rgba(63,185,80,0.5)' : 'rgba(63,185,80,0.55)',
+      volumeBarNoChange: isDark ? 'rgba(139,148,158,0.45)' : 'rgba(139,148,158,0.5)',
+      // 多条均线配色 — 深色底亮色/浅色底暗色
+      lineColors: isDark
+        ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
+        : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A'],
     };
   }
 
   function applyChartStyles() {
     if (!chart.value) return;
     const c = themeColors();
-    const isDark = settings.theme === 'dark';
 
     chart.value.setStyles({
       grid: {
@@ -225,12 +240,12 @@ export function useChart(options: {
       },
       indicator: {
         ohlc: { upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' },
-        bars: [] as any,
-        // 均线配色：参考主流股票软件（同花顺/东方财富/通达信）白/黄/紫/绿
-        lines: (isDark
-          ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
-          : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A']
-        ).map(color => ({ style: 'solid', smooth: false, size: 1, color })),
+        // 副图柱子配色与主图蜡烛一致（A 股红涨绿跌），深/浅主题自适应
+        bars: [
+          { upColor: c.indicatorBarUp, downColor: c.indicatorBarDown, noChangeColor: c.indicatorBarNoChange },
+        ],
+        // 均线配色参考主流股票软件（同花顺/东方财富/通达信）白/黄/紫/绿
+        lines: c.lineColors.map(color => ({ style: 'solid', smooth: false, size: 1, color })),
         lastValueMark: { show: false } as any,
         tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any,
       },
@@ -300,6 +315,16 @@ export function useChart(options: {
     }
   }
 
+  /** 在固定副图 pane 中创建/替换副图指标（VOL / MACD 等） */
+  function syncSubIndicator(name: SubIndicatorType) {
+    if (!chart.value) return;
+    // isStack 默认 false，会自动移除同 pane 旧指标再创建新指标，pane 复用
+    chart.value.createIndicator(
+      { name },
+      { pane: { id: SUB_PANE_ID } },
+    );
+  }
+
   async function initChart(period: PeriodType) {
     if (!options.chartRef.value) return;
 
@@ -326,9 +351,15 @@ export function useChart(options: {
           { key: 'ma1', title: 'MA5: ', type: 'line' },
           { key: 'ma2', title: 'MA10: ', type: 'line' },
           { key: 'ma3', title: 'MA20: ', type: 'line' },
-          { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: 'rgba(248,81,73,0.4)', downColor: 'rgba(63,185,80,0.4)' } } as any,
+          { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: themeColors().volumeBarUp, downColor: themeColors().volumeBarDown, noChangeColor: themeColors().volumeBarNoChange } } as any,
         ],
       } as any);
+
+      // 新建图表时创建副图指标（仅 K 线图，分时图不创建）
+      // MinuteChart 不传 subIndicator，因此不会进入此分支
+      if (options.subIndicator) {
+        syncSubIndicator(unref(options.subIndicator)!);
+      }
     }
 
     // setSymbol + setPeriod are deferred to loadData so data arrives before
@@ -346,6 +377,15 @@ export function useChart(options: {
           name: 'MA',
           calcParams: [5, 10, 20, 60],
         }, { pane: { id: 'candle_pane' } });
+      }
+
+      // 周期切换后确保副图指标还在（仅 K 线图，分时图跳过）
+      if (options.subIndicator) {
+        const currentSub = unref(options.subIndicator)!;
+        const existingSub = chart.value.getIndicators({ paneId: SUB_PANE_ID });
+        if (existingSub.length === 0 || existingSub[0]?.name !== currentSub) {
+          syncSubIndicator(currentSub);
+        }
       }
     }
   }
@@ -569,6 +609,13 @@ export function useChart(options: {
   watch(() => settings.theme, () => {
     reapplyStyles();
   });
+
+  // 副图指标切换：用户通过下拉框选择不同指标时立即生效
+  if (options.subIndicator) {
+    watch(() => unref(options.subIndicator)!, (newVal) => {
+      syncSubIndicator(newVal);
+    });
+  }
 
   onUnmounted(() => {
     disposeChart();

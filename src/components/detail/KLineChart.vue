@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useChart } from '@/composables/useChart';
-import type { PeriodType } from '@/types';
+import type { PeriodType, SubIndicatorType } from '@/types';
 
 const props = defineProps<{
   code: string;
   market: string;
   name?: string;
   period: PeriodType;
+  subIndicator: SubIndicatorType;
 }>();
 
 const chartRef = ref<HTMLElement | null>(null);
@@ -17,6 +18,7 @@ const { loading, error, initChart, loadData } = useChart({
   code: computed(() => props.code),
   market: computed(() => props.market),
   name: computed(() => props.name ?? ''),
+  subIndicator: computed(() => props.subIndicator),
 });
 
 onMounted(async () => {
@@ -54,7 +56,7 @@ watch(() => [props.code, props.market, props.period], async () => {
 
 .kline-chart {
   flex: 1;
-  min-height: 320px;
+  min-height: 420px;
   position: relative;
 }
 </style>

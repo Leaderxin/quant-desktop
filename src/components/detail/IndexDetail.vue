@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { IndexQuote, PeriodType } from '@/types';
+import type { IndexQuote, PeriodType, SubIndicatorType } from '@/types';
 import { formatPrice, formatVolume } from '@/utils/format';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
 import ChartSwitcher from './ChartSwitcher.vue';
+import SubIndicatorSwitcher from './SubIndicatorSwitcher.vue';
 
 const props = defineProps<{
   index: IndexQuote;
@@ -18,6 +19,7 @@ const emit = defineEmits<{
 const isUp = computed(() => props.index.change_pct >= 0);
 
 const activePeriod = ref<PeriodType>('minute');
+const activeSubIndicator = ref<SubIndicatorType>('VOL');
 
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
 useMinuteKUnavailable(activePeriod);
@@ -89,7 +91,13 @@ const statCards = computed(() => [
 
       <!-- 全宽图表 -->
       <div class="chart-section">
-        <ChartSwitcher v-model="activePeriod" />
+        <div class="chart-toolbar">
+          <ChartSwitcher v-model="activePeriod" />
+          <SubIndicatorSwitcher
+            v-if="activePeriod !== 'minute'"
+            v-model="activeSubIndicator"
+          />
+        </div>
         <MinuteChart
           v-if="activePeriod === 'minute'"
           :code="index.code"
@@ -102,6 +110,8 @@ const statCards = computed(() => [
           market="CN"
           :name="index.name"
           :period="activePeriod"
+          :sub-indicator="activeSubIndicator"
+          @update:sub-indicator="activeSubIndicator = $event"
         />
       </div>
     </div>
@@ -207,6 +217,14 @@ const statCards = computed(() => [
 .card-value.down { color: var(--color-down); }
 
 .chart-section {
-  min-height: 320px;
+  min-height: 420px;
+}
+
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 </style>
