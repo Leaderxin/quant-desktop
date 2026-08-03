@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
-import { useChart } from '@/composables/useChart';
+import { useMinuteChart } from '@/composables/useMinuteChart';
 
 const props = defineProps<{
   code: string;
@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const chartRef = ref<HTMLElement | null>(null);
 
-const { loading, error, initChart, loadData } = useChart({
+const { loading, error, initChart, loadData } = useMinuteChart({
   chartRef,
   code: computed(() => props.code),
   market: computed(() => props.market),
@@ -19,15 +19,15 @@ const { loading, error, initChart, loadData } = useChart({
 
 onMounted(async () => {
   await nextTick();
-  await initChart('minute');
-  await loadData('minute');
+  initChart();
+  await loadData();
 });
 
 // Reload when code/market changes
 watch(() => [props.code, props.market], async () => {
   await nextTick();
-  await initChart('minute');
-  await loadData('minute');
+  initChart();
+  await loadData();
 });
 </script>
 
@@ -42,7 +42,7 @@ watch(() => [props.code, props.market], async () => {
         <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
       <span class="chart-error-text">{{ error }}</span>
-      <button class="chart-retry-btn" @click="loadData('minute')" aria-label="重新加载分时图">重试</button>
+      <button class="chart-retry-btn" @click="loadData()" aria-label="重新加载分时图">重试</button>
     </div>
     <div ref="chartRef" class="chart-container"></div>
   </div>

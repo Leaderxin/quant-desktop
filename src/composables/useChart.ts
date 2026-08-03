@@ -1,12 +1,18 @@
-import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
+import { ref, watch, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { init, dispose } from 'klinecharts';
-import type { Chart, KLineData as KCLineData, DataLoader } from 'klinecharts';
-import type { MinuteData, KLineData, PeriodType, SubIndicatorType } from '@/types';
+import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
+import type { KLineData, PeriodType, SubIndicatorType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
-import { getPricePrecision } from '@/utils/format';
-import { isMinuteK, minuteKSpan } from './minutePeriod';
+import { minuteKSpan } from './minutePeriod';
+import { useChartCore } from './useChartCore';
 
+/** 固定副图 pane ID — 切换指标时复用同一个子窗格 */
+const SUB_PANE_ID = 'sub_indicator_pane';
+
+/**
+ * K 线图 composable — 用于日/周/月 K 及分钟 K 线图。
+ * 含历史数据懒加载、MA 主图叠加、副图指标切换等逻辑。
+ */
 export function useChart(options: {
   chartRef: Ref<HTMLElement | null>;
   code: MaybeRef<string>;
@@ -15,16 +21,10 @@ export function useChart(options: {
   subIndicator?: MaybeRef<SubIndicatorType>;
 }) {
   const settings = useSettingsStore();
+  const { chart, loading, error, currentPeriod, themeColors, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
 
-  const chart = ref<Chart | null>(null);
-  const loading = ref(false);
-  const error = ref('');
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
-  const currentPeriod = ref<PeriodType>('minute');
-
-  // 固定副图 pane ID，切换指标时复用同一个子窗格
-  const SUB_PANE_ID = 'sub_indicator_pane';
 
   // 累积全部已加载的 K 线数据（初始 + 历次懒加载），按时间升序
   const allData = ref<KCLineData[]>([]);
@@ -34,7 +34,8 @@ export function useChart(options: {
   /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
   let barSubscriber: ((bar: KCLineData) => void) | null = null;
 
-  /** 将时间戳格式化为 YYYY-MM-DD 字符串，用于 API end_date 参数 */
+  // ---- 日期格式化 ----
+
   function formatDate(ts: number): string {
     const d = new Date(ts);
     const y = d.getFullYear();
@@ -43,15 +44,14 @@ export function useChart(options: {
     return `${y}-${m}-${day}`;
   }
 
-  /** 将时间戳格式化为 YYYYMMDDHHMM 字符串（无分隔符），用于腾讯 mkline 的 end 参数。
-   *  与后端 parse_kline_bar 的分钟K date 格式(YYYYMMDDHHMM)对齐。 */
   function formatDateMinuteStamp(ts: number): string {
     const d = new Date(ts);
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
   }
 
-  /** 将后端 KLineData 映射为 klinecharts 需要的 KLineData 格式 */
+  // ---- 数据映射 ----
+
   function mapKLineToChart(data: KLineData[]): KCLineData[] {
     return data.map((d) => {
       const ts = new Date(d.date).getTime();
@@ -66,40 +66,13 @@ export function useChart(options: {
     });
   }
 
-  /** 将后端 MinuteData 映射为 klinecharts 需要的 KLineData 格式 */
-  function mapMinuteToChart(data: MinuteData[]): KCLineData[] {
-    const today = new Date();
-    return data.map((d) => {
-      let h = 0, m = 0;
-      if (d.time.includes(':')) {
-        [h, m] = d.time.split(':').map(Number);
-      } else if (d.time.length >= 4) {
-        h = Number(d.time.slice(0, 2));
-        m = Number(d.time.slice(2, 4));
-      }
-      const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h || 0, m || 0).getTime();
-      return {
-        timestamp: ts,
-        open: d.open ?? d.price,
-        high: d.high ?? d.price,
-        low: d.low ?? d.price,
-        close: d.price,
-        volume: d.volume,
-      };
-    });
-  }
+  // ---- 懒加载历史数据 ----
 
-  /** 加载更早的历史数据（getBars forward 和预加载共用） */
   async function loadMoreHistory(): Promise<KCLineData[]> {
     if (!hasMoreForward.value || loading.value) return [];
-    // 分钟K：腾讯源用 earliest.timestamp 命中真实 bar 作 end, 由前端 Set 去重兜底; 新浪源不支持分页, 单独短路。
-    // 日/周/月：date 级 endDate(YYYY-MM-DD)，偏移一整天，沿用原逻辑。
     const span = minuteKSpan(currentPeriod.value);
     const isSina = settings.activeDatasource === 'sina';
     if (span !== null && isSina) {
-      // 新浪端点不支持向后分页(#5)，直接结束懒加载。
-      // 双向保护: loadData 与 loadMoreHistory 各自兜底, 防御 switchDatasource 时序竞态
-      // (loadData 分钟K分支末尾已设 hasMoreForward=!isSina, 此处对竞态再兜一道)。
       hasMoreForward.value = false;
       return [];
     }
@@ -108,8 +81,8 @@ export function useChart(options: {
       const earliest = allData.value[0];
       const endDate = earliest
         ? (span !== null
-            ? formatDateMinuteStamp(earliest.timestamp)        // 分钟K: end 命中最早真实 bar; 腾讯 end 语义为 ≤ 且必命中 bar, 比偏移非交易戳更稳妥; 前端 Set 按 timestamp 去重保证不重复
-            : formatDate(earliest.timestamp - 86_400_000))      // 日/周月: 前移一整天
+            ? formatDateMinuteStamp(earliest.timestamp)
+            : formatDate(earliest.timestamp - 86_400_000))
         : undefined;
       const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {
@@ -133,7 +106,6 @@ export function useChart(options: {
         }
       }
       klineData.value = allData.value;
-      // 仅当返回了新的非重复 bar 且响应量充足时才认为还有更多历史数据
       hasMoreForward.value = uniqueCount > 0 && newBars.length >= 100;
       return newBars;
     } catch (e) {
@@ -144,21 +116,18 @@ export function useChart(options: {
     }
   }
 
+  // ---- 数据加载器 ----
+
   const klineData = ref<KCLineData[]>([]);
 
   const dataLoader: DataLoader = {
     getBars: async (params) => {
       if (params.type === 'init') {
-        if (currentPeriod.value === 'minute') {
-          params.callback(klineData.value, { forward: false, backward: false });
-        } else {
-          params.callback(allData.value, {
-            forward: hasMoreForward.value,
-            backward: false,
-          });
-        }
+        params.callback(allData.value, {
+          forward: hasMoreForward.value,
+          backward: false,
+        });
       } else if (params.type === 'forward') {
-        // 用户向左拖动（getBars 触发或预加载触发）
         if (!hasMoreForward.value) {
           params.callback([], { forward: false, backward: false });
           return;
@@ -169,7 +138,6 @@ export function useChart(options: {
           backward: false,
         });
       } else {
-        // backward: 不需要处理
         params.callback([], {
           forward: hasMoreForward.value,
           backward: false,
@@ -184,293 +152,21 @@ export function useChart(options: {
     },
   };
 
-  function themeColors() {
-    const isDark = settings.theme === 'dark';
-    return {
-      lineColor: isDark ? '#58a6ff' : '#0969da',
-      gridHColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
-      gridVColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
-      axisColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
-      tickColor: isDark ? '#8b949e' : '#656d76',
-      tooltipBg: isDark ? 'rgba(22,27,34,0.95)' : 'rgba(255,255,255,0.95)',
-      tooltipText: isDark ? '#c9d1d9' : '#24292f',
-      separatorColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-      crosshairBg: isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)',
-      crosshairText: isDark ? '#c9d1d9' : '#e6edf3',
-      // 副图指标配色 — 柱子与主图蜡烛一致，深色主题半透明度低些、浅色略高
-      indicatorBarUp: isDark ? 'rgba(248,81,73,0.7)' : 'rgba(248,81,73,0.72)',
-      indicatorBarDown: isDark ? 'rgba(63,185,80,0.7)' : 'rgba(63,185,80,0.72)',
-      indicatorBarNoChange: isDark ? 'rgba(139,148,158,0.6)' : 'rgba(139,148,158,0.6)',
-      // 量比柱低透明度
-      volumeBarUp: isDark ? 'rgba(248,81,73,0.5)' : 'rgba(248,81,73,0.55)',
-      volumeBarDown: isDark ? 'rgba(63,185,80,0.5)' : 'rgba(63,185,80,0.55)',
-      volumeBarNoChange: isDark ? 'rgba(139,148,158,0.45)' : 'rgba(139,148,158,0.5)',
-      // 多条均线配色 — 深色底亮色/浅色底暗色
-      lineColors: isDark
-        ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
-        : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A'],
-    };
-  }
-
-  function applyChartStyles() {
-    if (!chart.value) return;
-    const c = themeColors();
-
-    chart.value.setStyles({
-      grid: {
-        show: true,
-        horizontal: { show: true, color: c.gridHColor, size: 1, dashedValue: [2, 2] },
-        vertical: { show: true, color: c.gridVColor, size: 1, dashedValue: [2, 2] },
-      },
-      candle: {
-        type: 'area',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
-        area: { lineSize: 1.5, lineColor: '#58a6ff' },
-        tooltip: {
-          labels: ['时间', '开', '高', '低', '收', '量', '额'],
-          title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
-          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
-        } as any,
-        priceMark: {
-          high: { show: false } as any,
-          low: { show: false } as any,
-          last: { show: false, extendTexts: [] } as any,
-        },
-      },
-      indicator: {
-        ohlc: { upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'previous_close' },
-        // 副图柱子配色与主图蜡烛一致（A 股红涨绿跌），深/浅主题自适应
-        bars: [
-          { upColor: c.indicatorBarUp, downColor: c.indicatorBarDown, noChangeColor: c.indicatorBarNoChange },
-        ],
-        // 均线配色参考主流股票软件（同花顺/东方财富/通达信）白/黄/紫/绿
-        lines: c.lineColors.map(color => ({ style: 'solid', smooth: false, size: 1, color })),
-        lastValueMark: { show: false } as any,
-        tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any,
-      },
-      xAxis: {
-        show: true,
-        size: 'auto',
-        axisLine: { show: true, color: c.axisColor, size: 1 },
-        tickLine: { show: false } as any,
-        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)', marginStart: 0, marginEnd: 0 } as any,
-      },
-      yAxis: {
-        show: true,
-        size: 'auto',
-        axisLine: { show: false } as any,
-        tickLine: { show: false } as any,
-        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)' } as any,
-      },
-      separator: { size: 1, color: c.separatorColor, fill: false, activeBackgroundColor: 'rgba(255,255,255,0.02)' },
-      crosshair: {
-        show: true,
-        horizontal: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
-        vertical: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
-      },
-    });
-  }
-
-  function applyCandlestickStyles() {
-    if (!chart.value) return;
-    const c = themeColors();
-    const dateLabel = isMinuteK(currentPeriod.value) ? '时间' : '日期';
-
-    chart.value.setStyles({
-      candle: {
-        type: 'candle_solid',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
-        area: { lineSize: 1.5, lineColor: '#58a6ff' },
-        tooltip: {
-          labels: [dateLabel, '开', '高', '低', '收', '量', '额'],
-          title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
-          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
-        } as any,
-        priceMark: {
-          high: { show: false } as any,
-          low: { show: false } as any,
-          last: { show: false, extendTexts: [] } as any,
-        },
-      },
-    });
-  }
-
-  function reapplyStyles() {
-    applyChartStyles();
-    if (currentPeriod.value !== 'minute') {
-      applyCandlestickStyles();
-    }
-  }
-
-  function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
-    const span = minuteKSpan(period);
-    if (span !== null) return { type: 'minute', span };
-    switch (period) {
-      case 'minute': return { type: 'minute', span: 1 };
-      case 'weekly': return { type: 'week', span: 1 };
-      case 'monthly': return { type: 'month', span: 1 };
-      default: return { type: 'day', span: 1 };
-    }
-  }
-
-  /** 在固定副图 pane 中创建/替换副图指标（VOL / MACD 等） */
-  function syncSubIndicator(name: SubIndicatorType) {
-    if (!chart.value) return;
-    // isStack 默认 false，会自动移除同 pane 旧指标再创建新指标，pane 复用
-    chart.value.createIndicator(
-      { name },
-      { pane: { id: SUB_PANE_ID } },
-    );
-  }
-
-  async function initChart(period: PeriodType) {
-    if (!options.chartRef.value) return;
-
-    const isNew = !chart.value;
-    if (isNew) {
-      chart.value = init(options.chartRef.value, {
-        locale: 'zh-CN',
-        layout: { basicParams: { yAxisInside: true } },
-      });
-      if (!chart.value) {
-        error.value = '图表初始化失败';
-        return;
-      }
-
-      chart.value.overrideIndicator({
-        name: 'VOL',
-        shortName: '成交量',
-        series: 'volume',
-        calcParams: [5, 10, 20],
-        precision: 0,
-        shouldFormatBigNumber: true,
-        minValue: 0,
-        figures: [
-          { key: 'ma1', title: 'MA5: ', type: 'line' },
-          { key: 'ma2', title: 'MA10: ', type: 'line' },
-          { key: 'ma3', title: 'MA20: ', type: 'line' },
-          { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: themeColors().volumeBarUp, downColor: themeColors().volumeBarDown, noChangeColor: themeColors().volumeBarNoChange } } as any,
-        ],
-      } as any);
-
-      // 新建图表时创建副图指标（仅 K 线图，分时图不创建）
-      // MinuteChart 不传 subIndicator，因此不会进入此分支
-      if (options.subIndicator) {
-        syncSubIndicator(unref(options.subIndicator)!);
-      }
-    }
-
-    // setSymbol + setPeriod are deferred to loadData so data arrives before
-    // klinecharts triggers getBars('init'), avoiding stale-data rendering.
-    if (!chart.value) return;
-
-    currentPeriod.value = period;
-    applyChartStyles();
-    if (period !== 'minute') {
-      applyCandlestickStyles();
-      // 叠加价格均线 MA5/MA10/MA20 到主图（仅 K 线图，分时图不叠加）
-      const existingMA = chart.value.getIndicators({ name: 'MA' });
-      if (existingMA.length === 0) {
-        chart.value.createIndicator({
-          name: 'MA',
-          calcParams: [5, 10, 20, 60],
-        }, { pane: { id: 'candle_pane' } });
-      }
-
-      // 周期切换后确保副图指标还在（仅 K 线图，分时图跳过）
-      if (options.subIndicator) {
-        const currentSub = unref(options.subIndicator)!;
-        const existingSub = chart.value.getIndicators({ paneId: SUB_PANE_ID });
-        if (existingSub.length === 0 || existingSub[0]?.name !== currentSub) {
-          syncSubIndicator(currentSub);
-        }
-      }
-    }
-  }
-
-  /**
-   * 根据 K 线数据自适应价格精度。
-   * 扫描最近 10 根 K 线的 OHLC 值（共 40 个价格点）来检测价格的小数位数，
-   * 避免单点采样（仅收盘价）在第三位小数为零时（如 0.950 → JSON 传 0.95）
-   * 误判为 2 位小数，导致 ETF/可转债等 3 位精度品种的图表价格标注错误。
-   */
-  function syncPrecision() {
-    if (!chart.value || klineData.value.length === 0) return;
-    let precision = 2;
-    const barsToCheck = klineData.value.slice(-10);
-    for (const bar of barsToCheck) {
-      for (const val of [bar.open, bar.high, bar.low, bar.close]) {
-        if (val != null && !isNaN(val) && val !== 0 && getPricePrecision(val) === 3) {
-          precision = 3;
-          break;
-        }
-      }
-      if (precision === 3) break;
-    }
-    const last = klineData.value[klineData.value.length - 1];
-    if (last.close != null && !isNaN(last.close) && last.close !== 0) {
-      chart.value.setSymbol({
-        ticker: unref(options.code),
-        name: unref(options.name) || unref(options.code),
-        pricePrecision: precision,
-        volumePrecision: 0,
-      });
-    }
-  }
+  // ---- 自动刷新 ----
 
   function getRefreshInterval(period: PeriodType): number {
     const span = minuteKSpan(period);
-    if (span !== null) return span <= 5 ? 8000 : 20000; // 短分钟 K 8s / 长分钟 K 20s
+    if (span !== null) return span <= 5 ? 8000 : 20000;
     switch (period) {
-      case 'minute': return 5000;    // 分时图：5 秒
-      case 'daily':  return 30000;   // 日K：30 秒
-      case 'weekly': return 60000;   // 周K：60 秒
-      case 'monthly':return 60000;   // 月K：60 秒
+      case 'daily':  return 30000;
+      case 'weekly': return 60000;
+      case 'monthly':return 60000;
       default:       return 30000;
     }
   }
 
   function startAutoRefresh(period: PeriodType) {
     stopAutoRefresh();
-
-    if (period === 'minute') {
-      // 分时图增量刷新：仅拉取新数据，通过 barSubscriber 推送增量 bar
-      // （klinecharts 内部按 timestamp 做 upsert），避免 loadData →
-      // setDataLoader → Canvas 全量重绘导致的闪烁。
-      // 注意：get_intraday 返回全天 240 个模板点（含未来时段），需过滤掉
-      // 未来时间戳的 bar，否则 barSubscriber 会把 X 轴撑到 15:00。
-      const interval = getRefreshInterval(period);
-      refreshTimer = setInterval(async () => {
-        if (loading.value) return;
-        try {
-          const data = await invoke<MinuteData[]>('get_intraday', {
-            code: unref(options.code),
-            market: unref(options.market),
-          });
-          const allBars = mapMinuteToChart(data);
-          if (allBars.length > 0) {
-            // 过滤掉未来时点的模板 bar（分钟 K 也存在类似情况，但 K 线图增量
-            // 只取最近 10 条不会拉到未来；分时图取全量，必须过滤）
-            const now = Date.now();
-            const validBars = allBars.filter((b) => b.timestamp <= now);
-            const newLast = validBars[validBars.length - 1];
-            klineData.value = validBars;
-            if (barSubscriber) {
-              if (newLast) {
-                barSubscriber(newLast);
-              }
-            } else if (chart.value) {
-              chart.value.setDataLoader(dataLoader);
-            }
-          }
-        } catch (e) {
-          console.error('[useChart] minute incremental update failed:', e);
-        }
-      }, interval);
-      return;
-    }
 
     // Sina doesn't support incremental refresh; use old full-reload behavior
     if (settings.activeDatasource === 'sina') {
@@ -488,7 +184,6 @@ export function useChart(options: {
     refreshTimer = setInterval(async () => {
       if (loading.value) return;
       try {
-        // 增量刷新：只取最新 10 条，更新末尾
         const data = await invoke<KLineData[]>('get_kline', {
           code: unref(options.code),
           market: unref(options.market),
@@ -497,14 +192,12 @@ export function useChart(options: {
         });
         const newBars = mapKLineToChart(data);
         if (newBars.length > 0) {
-          // 合并到 allData：按 timestamp 去重、更新
           const map = new Map(allData.value.map((d) => [d.timestamp, d]));
           for (const bar of newBars) {
             map.set(bar.timestamp, bar);
           }
           allData.value = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
           klineData.value = allData.value;
-          // 优先 subscribeBar 增量推送（无抖动），未注册时回退到 setDataLoader
           if (barSubscriber) {
             for (const bar of newBars) {
               barSubscriber(bar);
@@ -514,7 +207,6 @@ export function useChart(options: {
           }
         }
       } catch (e) {
-        // 静默失败，不影响用户浏览
         console.error('[useChart] incremental update failed:', e);
       }
     }, interval);
@@ -526,6 +218,18 @@ export function useChart(options: {
       refreshTimer = null;
     }
   }
+
+  // ---- 副图指标 ----
+
+  function syncSubIndicator(name: SubIndicatorType) {
+    if (!chart.value) return;
+    chart.value.createIndicator(
+      { name },
+      { pane: { id: SUB_PANE_ID } },
+    );
+  }
+
+  // ---- 数据加载 ----
 
   async function loadData(period: PeriodType) {
     if (abortController) {
@@ -542,35 +246,19 @@ export function useChart(options: {
     hasMoreForward.value = true;
 
     try {
-      if (period === 'minute') {
-        const data = await invoke<MinuteData[]>('get_intraday', {
-          code: unref(options.code),
-          market: unref(options.market),
-        });
-        if (signal.aborted) return;
+      const data = await invoke<KLineData[]>('get_kline', {
+        code: unref(options.code),
+        market: unref(options.market),
+        period: period,
+      });
+      if (signal.aborted) return;
 
-        if (data.length) {
-          klineData.value = mapMinuteToChart(data);
-        }
-      } else {
-        const data = await invoke<KLineData[]>('get_kline', {
-          code: unref(options.code),
-          market: unref(options.market),
-          period: period,
-        });
-        if (signal.aborted) return;
-
-        if (data.length) {
-          const mapped = mapKLineToChart(data);
-          // 存入 allData（按时间升序）
-          allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
-          // 分钟K：腾讯源支持左滑分页(mkline end 翻页)，新浪源不支持；
-          // 新浪日K 600 条到底；腾讯日/周/月支持 fqkline end_date 翻页
-          const isSina = settings.activeDatasource === 'sina';
-          hasMoreForward.value = !isSina;
-          // 保持 klineData 兼容性（对外暴露）
-          klineData.value = mapped;
-        }
+      if (data.length) {
+        const mapped = mapKLineToChart(data);
+        allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
+        const isSina = settings.activeDatasource === 'sina';
+        hasMoreForward.value = !isSina;
+        klineData.value = mapped;
       }
 
       if (signal.aborted) return;
@@ -578,7 +266,7 @@ export function useChart(options: {
         chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
         chart.value.setPeriod(periodToKlinecharts(period) as any);
         chart.value.setDataLoader(dataLoader);
-        syncPrecision();
+        syncPrecisionCore(klineData.value);
       }
       startAutoRefresh(period);
     } catch (e) {
@@ -592,6 +280,58 @@ export function useChart(options: {
     }
   }
 
+  // ---- 初始化 ----
+
+  function initChart(period: PeriodType) {
+    const isNew = initChartCore(period);
+
+    if (isNew) {
+      // 首次创建：注册 VOL 自定义外观 + 创建初始副图指标
+      const colors = themeColors();
+      chart.value!.overrideIndicator({
+        name: 'VOL',
+        shortName: '成交量',
+        series: 'volume',
+        calcParams: [5, 10, 20],
+        precision: 0,
+        shouldFormatBigNumber: true,
+        minValue: 0,
+        figures: [
+          { key: 'ma1', title: 'MA5: ', type: 'line' },
+          { key: 'ma2', title: 'MA10: ', type: 'line' },
+          { key: 'ma3', title: 'MA20: ', type: 'line' },
+          { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: colors.volumeBarUp, downColor: colors.volumeBarDown, noChangeColor: colors.volumeBarNoChange } } as any,
+        ],
+      } as any);
+
+      if (options.subIndicator) {
+        syncSubIndicator(unref(options.subIndicator)!);
+      }
+    }
+
+    if (!chart.value) return;
+
+    if (period !== 'minute') {
+      // 叠加价格均线 MA5/MA10/MA20/MA60 到主图
+      const existingMA = chart.value.getIndicators({ name: 'MA' });
+      if (existingMA.length === 0) {
+        chart.value.createIndicator({
+          name: 'MA',
+          calcParams: [5, 10, 20, 60],
+        }, { pane: { id: 'candle_pane' } });
+      }
+
+      // 周期切换后确保副图指标还在
+      if (options.subIndicator) {
+        const currentSub = unref(options.subIndicator)!;
+        const existingSub = chart.value.getIndicators({ paneId: SUB_PANE_ID });
+        if (existingSub.length === 0 || existingSub[0]?.name !== currentSub) {
+          syncSubIndicator(currentSub);
+        }
+      }
+    }
+  }
+
   function disposeChart() {
     stopAutoRefresh();
     barSubscriber = null;
@@ -599,27 +339,20 @@ export function useChart(options: {
       abortController.abort();
       abortController = null;
     }
-    if (chart.value) {
-      dispose(chart.value);
-      chart.value = null;
-    }
+    disposeChartCore();
   }
 
-  // Theme change: reapply the correct style set for the current period
+  // ---- 主题/副图监听 ----
+
   watch(() => settings.theme, () => {
     reapplyStyles();
   });
 
-  // 副图指标切换：用户通过下拉框选择不同指标时立即生效
   if (options.subIndicator) {
     watch(() => unref(options.subIndicator)!, (newVal) => {
       syncSubIndicator(newVal);
     });
   }
-
-  onUnmounted(() => {
-    disposeChart();
-  });
 
   return {
     chart,
