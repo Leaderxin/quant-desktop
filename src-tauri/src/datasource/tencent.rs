@@ -16,15 +16,29 @@ const TENCENT_URL: &str = "http://qt.gtimg.cn/q=";
 ///   index 7 同样可能是金额字符串或缺失。
 ///   注: (6..=7) 扫描基于**实际观察到的**腾讯 m1/m5/m15/m30/m60 响应格式(已知 index 6/7 仅承载 turnover 或空对象),
 ///   非接口文档; 若上游格式演进(index 6/7 改为均价等其它数值字段)需重新核实, 避免误取非金额数值写入 turnover。
-/// `is_minute` 控制：date 格式转换（YYYYMMDDHHMM → YYYY-MM-DD HH:MM）、turnover 扫描范围(6-7 vs 6)。
-fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::domain::KLineData> {
+///   **重要**：腾讯 mkline API 分钟K线时间戳采用同花顺惯例：
+///   - 1 分钟 K：返回周期**开始**时间（如 `202608070930` → 09:30）
+///   - 5/15/30/60 分钟 K：返回周期**结束**时间（如 30 分钟 `202608071000` → 10:00）
+///   两种格式均为行业惯例，直接透传即可，无需时间偏移修正。
+/// `span_minutes` 控制：Some(span) 为分钟 K（date 格式转换 + 时间偏移修正 + turnover 扫描 6-7），
+/// None 为日/周/月 K（date 直接使用为 `t.to_string()` + turnover 仅 index 6）。
+fn parse_kline_bar(arr: &[serde_json::Value], span_minutes: Option<u32>) -> Option<crate::domain::KLineData> {
     // 必须字段：date, open, close, high, low, volume（索引 0-5）
     if arr.len() < 6 {
         return None;
     }
     let t = arr[0].as_str()?;
-    let date = if is_minute && t.len() >= 12 {
-        format!("{}-{}-{} {}:{}", &t[0..4], &t[4..6], &t[6..8], &t[8..10], &t[10..12])
+    let date = if let Some(_span) = span_minutes {
+        if t.len() >= 12 {
+            // 腾讯 mkline 返回的是周期结束时间，需减去 span 得到周期开始时间
+            let naive = chrono::NaiveDateTime::parse_from_str(t, "%Y%m%d%H%M").ok()?;
+            // 腾讯 mkline 分钟 K 时间戳直接透传（见上方注释）
+            let corrected = naive;
+            corrected.format("%Y-%m-%d %H:%M").to_string()
+        } else {
+            // 时间戳格式异常时降级为原始字符串（防御性处理）
+            t.to_string()
+        }
     } else {
         t.to_string()
     };
@@ -37,7 +51,7 @@ fn parse_kline_bar(arr: &[serde_json::Value], is_minute: bool) -> Option<crate::
     // 分钟K 的 turnover 位置随腾讯接口版本变化: index 6 可能是 JSON 空对象 {}、金额字符串或缺失,
     // index 7 也可能是金额字符串或缺失。因此扫描 index 6 与 7, 取首个 as_str 非空且可解析为 f64 的字符串。
     // (扫描范围基于实际观察到的 m1/m5/m15/m30/m60 响应, 非接口文档, 详见函数上方注释。)
-    let turnover: f64 = if is_minute {
+    let turnover: f64 = if span_minutes.is_some() {
         (6..=7)
             .filter_map(|i| arr.get(i))
             .filter_map(|v| v.as_str())
@@ -408,7 +422,7 @@ impl DataSource for TencentAdapter {
                 log::warn!("Tencent minute kline empty for code={} span={}", tc_code, span);
             }
             return Ok(lines.iter()
-                .filter_map(|pt| parse_kline_bar(pt.as_array()?, true))
+                .filter_map(|pt| parse_kline_bar(pt.as_array()?, Some(span)))
                 .collect());
         }
 
@@ -461,7 +475,7 @@ impl DataSource for TencentAdapter {
 
         let data: Vec<crate::domain::KLineData> = klines
             .iter()
-            .filter_map(|pt| parse_kline_bar(pt.as_array()?, false))
+            .filter_map(|pt| parse_kline_bar(pt.as_array()?, None))
             .collect();
 
         Ok(data)
