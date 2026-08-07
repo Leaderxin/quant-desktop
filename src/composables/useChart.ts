@@ -221,12 +221,33 @@ export function useChart(options: {
 
   // ---- 副图指标 ----
 
+  /**
+   * VOL 副图自定义外观（成交量 + MA5/10/20 均量线，柱子配色随主题）。
+   * 注意：不覆盖内置 `figures` —— v10 内置 VOL 的 volume 柱用了一个 styles 回调函数
+   * 从 `indicator.styles.bars[0]` 取色，若用静态 figure 覆盖会丢失取色逻辑导致柱子不显示。
+   * 因此仅通过 `styles.bars[0]` 传入柱子配色，保留内置 figures/calc。
+   */
+  function volIndicatorConfig() {
+    const colors = themeColors();
+    return {
+      name: 'VOL',
+      paneId: SUB_PANE_ID,
+      shortName: '成交量',
+      calcParams: [5, 10, 20],
+      styles: {
+        bars: [
+          { upColor: colors.volumeBarUp, downColor: colors.volumeBarDown, noChangeColor: colors.volumeBarNoChange },
+        ],
+      },
+    };
+  }
+
   function syncSubIndicator(name: SubIndicatorType) {
     if (!chart.value) return;
-    chart.value.createIndicator(
-      { name },
-      { pane: { id: SUB_PANE_ID } },
-    );
+    // v10：createIndicator(value, isStack?)，paneId 须写入 value 内；同一 paneId 且 isStack=false 会替换旧指标。
+    // VOL 需带自定义外观（v10 overrideIndicator 仅对已存在指标生效，故在创建时一次性传入）。
+    const create = name === 'VOL' ? volIndicatorConfig() : { name, paneId: SUB_PANE_ID };
+    chart.value.createIndicator(create as any);
   }
 
   // ---- 数据加载 ----
@@ -264,7 +285,7 @@ export function useChart(options: {
       if (signal.aborted) return;
       if (chart.value) {
         chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
-        chart.value.setPeriod(periodToKlinecharts(period) as any);
+        chart.value.setPeriod(periodToKlinecharts(period));
         chart.value.setDataLoader(dataLoader);
         syncPrecisionCore(klineData.value);
       }
@@ -286,24 +307,7 @@ export function useChart(options: {
     const isNew = initChartCore(period);
 
     if (isNew) {
-      // 首次创建：注册 VOL 自定义外观 + 创建初始副图指标
-      const colors = themeColors();
-      chart.value!.overrideIndicator({
-        name: 'VOL',
-        shortName: '成交量',
-        series: 'volume',
-        calcParams: [5, 10, 20],
-        precision: 0,
-        shouldFormatBigNumber: true,
-        minValue: 0,
-        figures: [
-          { key: 'ma1', title: 'MA5: ', type: 'line' },
-          { key: 'ma2', title: 'MA10: ', type: 'line' },
-          { key: 'ma3', title: 'MA20: ', type: 'line' },
-          { key: 'volume', title: 'VOLUME: ', type: 'bar', baseValue: 0, styles: { upColor: colors.volumeBarUp, downColor: colors.volumeBarDown, noChangeColor: colors.volumeBarNoChange } } as any,
-        ],
-      } as any);
-
+      // 首次创建副图指标（VOL 自定义外观在 volIndicatorConfig 中一次性传入）
       if (options.subIndicator) {
         syncSubIndicator(unref(options.subIndicator)!);
       }
@@ -312,13 +316,14 @@ export function useChart(options: {
     if (!chart.value) return;
 
     if (period !== 'minute') {
-      // 叠加价格均线 MA5/MA10/MA20/MA60 到主图
+      // 叠加价格均线 MA5/MA10/MA20/MA60 到主图（v10：isStack=true 才会叠加，否则会替换主图已有指标）
       const existingMA = chart.value.getIndicators({ name: 'MA' });
       if (existingMA.length === 0) {
         chart.value.createIndicator({
           name: 'MA',
           calcParams: [5, 10, 20, 60],
-        }, { pane: { id: 'candle_pane' } });
+          paneId: 'candle_pane',
+        }, true);
       }
 
       // 周期切换后确保副图指标还在

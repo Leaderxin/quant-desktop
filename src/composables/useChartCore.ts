@@ -1,6 +1,6 @@
 import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
 import { init, dispose } from 'klinecharts';
-import type { Chart, KLineData as KCLineData } from 'klinecharts';
+import type { Chart, KLineData as KCLineData, Period } from 'klinecharts';
 import type { PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
@@ -67,18 +67,18 @@ export function useChartCore(options: {
       },
       candle: {
         type: 'area',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
+        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           labels: ['时间', '开', '高', '低', '收', '量', '额'],
-          title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
-          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
-        } as any,
+          title: { show: false },
+          rect: { position: 'pointer', paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg },
+          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' },
+        } as any, // labels/text 为遗留字段，不在 v10 CandleTooltipStyle 类型中
         priceMark: {
-          high: { show: false } as any,
-          low: { show: false } as any,
-          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] } as any,
+          high: { show: false },
+          low: { show: false },
+          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] },
         },
       },
       indicator: {
@@ -87,28 +87,28 @@ export function useChartCore(options: {
           { upColor: c.indicatorBarUp, downColor: c.indicatorBarDown, noChangeColor: c.indicatorBarNoChange },
         ],
         lines: c.lineColors.map(color => ({ style: 'solid', smooth: false, size: 1, color })),
-        lastValueMark: { show: false } as any,
-        tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any,
+        lastValueMark: { show: false },
+        tooltip: { show: true, labels: ['', '', '', '', '', '量', '额'], text: { size: 11, color: c.tooltipText } } as any, // labels/text 为遗留字段
       },
       xAxis: {
         show: true,
         size: 'auto',
         axisLine: { show: true, color: c.axisColor, size: 1 },
-        tickLine: { show: false } as any,
-        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)', marginStart: 0, marginEnd: 0 } as any,
+        tickLine: { show: false },
+        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)', marginStart: 0, marginEnd: 0 },
       },
       yAxis: {
         show: true,
         size: 'auto',
-        axisLine: { show: false } as any,
-        tickLine: { show: false } as any,
-        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)' } as any,
+        axisLine: { show: false },
+        tickLine: { show: false },
+        tickText: { size: 10, color: c.tickColor, family: 'var(--font-sans)' },
       },
       separator: { size: 1, color: c.separatorColor, fill: false, activeBackgroundColor: 'rgba(255,255,255,0.02)' },
       crosshair: {
         show: true,
-        horizontal: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
-        vertical: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any } as any,
+        horizontal: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any }, // backgroundColor 不在 StateTextStyle 中
+        vertical: { show: true, line: { show: true, color: c.lineColor, size: 1 }, text: { show: true, size: 10, color: c.crosshairText, family: 'var(--font-mono)', backgroundColor: c.crosshairBg, paddingLeft: 4, paddingTop: 2, paddingRight: 4, paddingBottom: 2 } as any },
       },
     });
   }
@@ -121,7 +121,7 @@ export function useChartCore(options: {
     chart.value.setStyles({
       candle: {
         type: 'candle_solid',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
+        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           legend: {
@@ -135,14 +135,14 @@ export function useChartCore(options: {
               { title: '量', value: '{volume}' },
             ],
           },
-          title: { show: false } as any,
-          rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
-          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
-        } as any,
+          title: { show: false },
+          rect: { position: 'pointer', paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg },
+          text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' },
+        } as any, // text 为遗留字段
         priceMark: {
-          high: { show: false } as any,
-          low: { show: false } as any,
-          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] } as any,
+          high: { show: false },
+          low: { show: false },
+          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] },
         },
       },
     });
@@ -157,7 +157,8 @@ export function useChartCore(options: {
 
   // ---- 工具 ----
 
-  function periodToKlinecharts(period: PeriodType): { type: string; span: number } {
+  /** 将自定义 PeriodType 映射为 klinecharts Period 对象 */
+  function periodToKlinecharts(period: PeriodType): Period {
     const span = minuteKSpan(period);
     if (span !== null) return { type: 'minute', span };
     switch (period) {
@@ -206,7 +207,7 @@ export function useChartCore(options: {
     if (isNew) {
       chart.value = init(options.chartRef.value, {
         locale: 'zh-CN',
-        layout: { basicParams: { yAxisInside: true } },
+        layout: { yAxis: { inside: true } },
       });
       if (!chart.value) {
         error.value = '图表初始化失败';

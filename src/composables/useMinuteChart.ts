@@ -132,7 +132,7 @@ export function useMinuteChart(options: {
       if (signal.aborted) return;
       if (chart.value) {
         chart.value.setSymbol({ ticker: unref(options.code), name: unref(options.name) || unref(options.code) });
-        chart.value.setPeriod(periodToKlinecharts('minute') as any);
+        chart.value.setPeriod(periodToKlinecharts('minute'));
         chart.value.setDataLoader(dataLoader);
         syncPrecision(klineData.value);
       }
