@@ -78,7 +78,7 @@ export function useChartCore(options: {
         priceMark: {
           high: { show: false } as any,
           low: { show: false } as any,
-          last: { show: false, extendTexts: [] } as any,
+          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] } as any,
         },
       },
       indicator: {
@@ -124,7 +124,17 @@ export function useChartCore(options: {
         bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'previous_close' as any },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
-          labels: [dateLabel, '开', '高', '低', '收', '量', '额'],
+          legend: {
+            template: [
+              { title: dateLabel, value: '{time}' },
+              { title: '开', value: '{open}' },
+              { title: '高', value: '{high}' },
+              { title: '低', value: '{low}' },
+              { title: '收', value: '{close}' },
+              { title: '涨跌幅', value: '{change}' },
+              { title: '量', value: '{volume}' },
+            ],
+          },
           title: { show: false } as any,
           rect: { position: 'pointer' as any, paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg } as any,
           text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' } as any,
@@ -132,7 +142,7 @@ export function useChartCore(options: {
         priceMark: {
           high: { show: false } as any,
           low: { show: false } as any,
-          last: { show: false, extendTexts: [] } as any,
+          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] } as any,
         },
       },
     });
