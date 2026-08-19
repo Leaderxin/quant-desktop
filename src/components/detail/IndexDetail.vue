@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { IndexQuote, PeriodType, SubIndicatorType } from '@/types';
+import type { IndexQuote, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { formatPrice, formatVolume } from '@/utils/format';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
 import ChartSwitcher from './ChartSwitcher.vue';
 import SubIndicatorSwitcher from './SubIndicatorSwitcher.vue';
+import MainOverlaySwitcher from './MainOverlaySwitcher.vue';
 
 const props = defineProps<{
   index: IndexQuote;
@@ -20,6 +21,7 @@ const isUp = computed(() => props.index.change_pct >= 0);
 
 const activePeriod = ref<PeriodType>('minute');
 const activeSubIndicator = ref<SubIndicatorType>('VOL');
+const activeMainOverlay = ref<MainOverlayType>('MA');
 
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
 useMinuteKUnavailable(activePeriod);
@@ -92,7 +94,13 @@ const statCards = computed(() => [
       <!-- 全宽图表 -->
       <div class="chart-section">
         <div class="chart-toolbar">
-          <ChartSwitcher v-model="activePeriod" />
+          <div class="chart-toolbar-group">
+            <ChartSwitcher v-model="activePeriod" />
+            <MainOverlaySwitcher
+              v-if="activePeriod !== 'minute'"
+              v-model="activeMainOverlay"
+            />
+          </div>
           <SubIndicatorSwitcher
             v-if="activePeriod !== 'minute'"
             v-model="activeSubIndicator"
@@ -111,7 +119,7 @@ const statCards = computed(() => [
           :name="index.name"
           :period="activePeriod"
           :sub-indicator="activeSubIndicator"
-          @update:sub-indicator="activeSubIndicator = $event"
+          :main-overlay="activeMainOverlay"
         />
       </div>
     </div>
@@ -226,5 +234,11 @@ const statCards = computed(() => [
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.chart-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

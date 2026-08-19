@@ -84,6 +84,9 @@ export type PeriodType =
 
 export type SubIndicatorType = 'VOL' | 'MACD';
 
+/** 主图叠加指标 — 均线 / 布林通道，叠加在蜡烛 pane 上（区别于副图指标） */
+export type MainOverlayType = 'MA' | 'BOLL';
+
 export interface UpdateInfo {
   current_version: string;
   latest_version: string;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { WatchItem, PeriodType, SubIndicatorType } from '@/types';
+import type { WatchItem, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import StockSummary from './StockSummary.vue';
@@ -9,6 +9,7 @@ import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
 import ChartSwitcher from './ChartSwitcher.vue';
 import SubIndicatorSwitcher from './SubIndicatorSwitcher.vue';
+import MainOverlaySwitcher from './MainOverlaySwitcher.vue';
 
 const props = defineProps<{
   item: WatchItem;
@@ -23,6 +24,7 @@ const quote = computed(() => quoteStore.getQuote(props.item.code, props.item.mar
 
 const activePeriod = ref<PeriodType>('minute');
 const activeSubIndicator = ref<SubIndicatorType>('VOL');
+const activeMainOverlay = ref<MainOverlayType>('MA');
 
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
 useMinuteKUnavailable(activePeriod);
@@ -45,7 +47,13 @@ useMinuteKUnavailable(activePeriod);
       </div>
       <div class="detail-right">
         <div class="chart-toolbar">
-          <ChartSwitcher v-model="activePeriod" />
+          <div class="chart-toolbar-group">
+            <ChartSwitcher v-model="activePeriod" />
+            <MainOverlaySwitcher
+              v-if="activePeriod !== 'minute'"
+              v-model="activeMainOverlay"
+            />
+          </div>
           <SubIndicatorSwitcher
             v-if="activePeriod !== 'minute'"
             v-model="activeSubIndicator"
@@ -64,7 +72,7 @@ useMinuteKUnavailable(activePeriod);
           :name="item.name"
           :period="activePeriod"
           :sub-indicator="activeSubIndicator"
-          @update:sub-indicator="activeSubIndicator = $event"
+          :main-overlay="activeMainOverlay"
         />
       </div>
     </div>
@@ -129,6 +137,12 @@ useMinuteKUnavailable(activePeriod);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.chart-toolbar-group {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 </style>

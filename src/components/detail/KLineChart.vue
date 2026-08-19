@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useChart } from '@/composables/useChart';
-import type { PeriodType, SubIndicatorType } from '@/types';
+import type { PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 
 const props = defineProps<{
   code: string;
@@ -9,6 +9,7 @@ const props = defineProps<{
   name?: string;
   period: PeriodType;
   subIndicator: SubIndicatorType;
+  mainOverlay: MainOverlayType;
 }>();
 
 const chartRef = ref<HTMLElement | null>(null);
@@ -19,6 +20,7 @@ const { loading, error, initChart, loadData } = useChart({
   market: computed(() => props.market),
   name: computed(() => props.name ?? ''),
   subIndicator: computed(() => props.subIndicator),
+  mainOverlay: computed(() => props.mainOverlay),
 });
 
 onMounted(async () => {

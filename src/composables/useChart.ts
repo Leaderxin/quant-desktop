@@ -1,7 +1,7 @@
 import { ref, watch, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
-import type { KLineData, PeriodType, SubIndicatorType } from '@/types';
+import type { KLineData, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { minuteKSpan } from './minutePeriod';
 import { useChartCore } from './useChartCore';
@@ -19,6 +19,7 @@ export function useChart(options: {
   market: MaybeRef<string>;
   name?: MaybeRef<string>;
   subIndicator?: MaybeRef<SubIndicatorType>;
+  mainOverlay?: MaybeRef<MainOverlayType>;
 }) {
   const settings = useSettingsStore();
   const { chart, loading, error, currentPeriod, themeColors, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
@@ -250,6 +251,32 @@ export function useChart(options: {
     chart.value.createIndicator(create as any);
   }
 
+  // ---- 主图叠加指标 ----
+
+  /** 主图叠加的指标名集合 — 切换时用于移除另一个 */
+  const MAIN_OVERLAY_NAMES: MainOverlayType[] = ['MA', 'BOLL'];
+
+  /**
+   * 同步主图叠加指标（MA / BOLL）。
+   * 二者均为价格类指标（series: 'price'），叠加在蜡烛 pane（candle_pane）上，而非副图窗格。
+   * isStack=true 表示叠加，避免替换主图；切换时先移除另一个再确保当前指标存在。
+   */
+  function syncMainOverlay(name: MainOverlayType) {
+    if (!chart.value) return;
+    for (const other of MAIN_OVERLAY_NAMES) {
+      if (other !== name) {
+        chart.value.removeIndicator({ paneId: 'candle_pane', name: other });
+      }
+    }
+    const existing = chart.value.getIndicators({ paneId: 'candle_pane', name });
+    if (existing.length === 0) {
+      const config = name === 'MA'
+        ? { name, calcParams: [5, 10, 20, 60], paneId: 'candle_pane' }
+        : { name, paneId: 'candle_pane' };
+      chart.value.createIndicator(config, true);
+    }
+  }
+
   // ---- 数据加载 ----
 
   async function loadData(period: PeriodType) {
@@ -316,15 +343,8 @@ export function useChart(options: {
     if (!chart.value) return;
 
     if (period !== 'minute') {
-      // 叠加价格均线 MA5/MA10/MA20/MA60 到主图（v10：isStack=true 才会叠加，否则会替换主图已有指标）
-      const existingMA = chart.value.getIndicators({ name: 'MA' });
-      if (existingMA.length === 0) {
-        chart.value.createIndicator({
-          name: 'MA',
-          calcParams: [5, 10, 20, 60],
-          paneId: 'candle_pane',
-        }, true);
-      }
+      // 叠加主图指标（MA/BOLL）到蜡烛 pane
+      syncMainOverlay(unref(options.mainOverlay) ?? 'MA');
 
       // 周期切换后确保副图指标还在
       if (options.subIndicator) {
@@ -356,6 +376,12 @@ export function useChart(options: {
   if (options.subIndicator) {
     watch(() => unref(options.subIndicator)!, (newVal) => {
       syncSubIndicator(newVal);
+    });
+  }
+
+  if (options.mainOverlay) {
+    watch(() => unref(options.mainOverlay)!, (newVal) => {
+      syncMainOverlay(newVal);
     });
   }
 
