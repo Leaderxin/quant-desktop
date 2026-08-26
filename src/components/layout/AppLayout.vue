@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import TopBar from './TopBar.vue';
 import IndexBar from '@/components/index/IndexBar.vue';
+import MarketOverviewPanel from '@/components/market/MarketOverviewPanel.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
 import StatusBar from './StatusBar.vue';
 import { provide, ref } from 'vue';
@@ -73,6 +74,7 @@ defineEmits<{
 
     <TopBar />
     <IndexBar />
+    <MarketOverviewPanel />
     <main class="main-content">
       <WatchlistTable />
     </main>

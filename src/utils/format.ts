@@ -22,6 +22,19 @@ export function formatPrice(price: number | null | undefined, fallback = '--'): 
 }
 
 /**
+ * 格式化金额（输入为元，输出为 万亿/亿/万/元）。
+ * 用于成交额等大额金额的展示。
+ * Display: ≥ 1万亿 → "1.84万亿"; ≥ 1亿 → "884.20亿"; ≥ 1万 → "12.34万"; 其余 → "1234元"
+ */
+export function formatAmount(amount: number | null | undefined, fallback = '--'): string {
+  if (amount == null || isNaN(amount) || amount <= 0) return fallback;
+  if (amount >= 1e12) return (amount / 1e12).toFixed(2) + '万亿';
+  if (amount >= 1e8) return (amount / 1e8).toFixed(2) + '亿';
+  if (amount >= 1e4) return (amount / 1e4).toFixed(2) + '万';
+  return amount.toFixed(0) + '元';
+}
+
+/**
  * 格式化成交量（输入为股，输出为手/万手/亿手）
  * Stock and index volume are normalized to shares (股) by data source adapters.
  * Display: < 1万手 → "1234手"; ≥ 1万手 → "12.34万手";

@@ -244,6 +244,7 @@ mod tests {
 
 pub mod sina;
 pub mod tencent;
+pub mod market;
 pub mod market_clock;
 pub mod search;
 pub mod headers;

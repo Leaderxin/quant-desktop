@@ -574,7 +574,7 @@ mod tests {
             r#"["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]"#,
         )
         .unwrap();
-        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), Some(1)).unwrap();
         assert_eq!(out.date, "2026-06-18 09:35");
         assert_eq!(out.open, 10.00);
         assert_eq!(out.close, 10.20);
@@ -591,7 +591,7 @@ mod tests {
             r#"["202606180935","10.00","10.20","10.30","9.90","1500","1530000"]"#,
         )
         .unwrap();
-        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), Some(1)).unwrap();
         assert_eq!(out.date, "2026-06-18 09:35");
         assert_eq!(out.volume, 150000); // 1500 手 ×100
         assert_eq!(out.turnover, 1530000.0);
@@ -604,7 +604,7 @@ mod tests {
             r#"["202606180935","10.00","10.20","10.30","9.90","1500",{},"1530000"]"#,
         )
         .unwrap();
-        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), Some(1)).unwrap();
         assert_eq!(out.turnover, 1530000.0);
     }
 
@@ -615,7 +615,7 @@ mod tests {
             r#"["202606180935","10.00","10.20","10.30","9.90","1500"]"#,
         )
         .unwrap();
-        let out = parse_kline_bar(val.as_array().unwrap(), true).unwrap();
+        let out = parse_kline_bar(val.as_array().unwrap(), Some(1)).unwrap();
         assert_eq!(out.turnover, 0.0);
     }
 }

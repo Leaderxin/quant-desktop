@@ -31,6 +31,23 @@ export interface StockBrief {
   name: string;
 }
 
+export interface SectorItem {
+  code: string;
+  name: string;
+  change_pct: number;
+  leader_name: string | null;
+  leader_pct: number | null;
+}
+
+export interface MarketOverview {
+  turnover: number;
+  up: number;
+  down: number;
+  flat: number;
+  industry: SectorItem[];
+  concept: SectorItem[];
+}
+
 export interface WatchItem {
   id: number;
   code: string;
