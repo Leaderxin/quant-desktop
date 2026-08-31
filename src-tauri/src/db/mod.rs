@@ -53,7 +53,7 @@ impl Database {
             ("active_datasource", "tencent"),
             ("refresh_interval", "3"),
             ("theme", "light"),
-            ("ticker_visible", "true"),
+            ("ticker_visible", "1"),
             ("auto_launch", "false"),
         ];
         for (k, v) in defaults {

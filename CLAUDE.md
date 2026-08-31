@@ -164,7 +164,7 @@ DataSource switching triggers a `Notify` wakeup → Scheduler immediately refres
 | `active_datasource` | `tencent` | Active market data provider (default: Tencent, persisted per user preference) |
 | `refresh_interval` | `3` | Polling interval in seconds (overridden by market_clock + adaptive polling) |
 | `theme` | `dark` | UI theme (dark/light) |
-| `ticker_visible` | `true` | Ticker bar visibility |
+| `ticker_visible` | `1` | Ticker bar visibility (persisted on tray toggle) |
 
 ### Window position persistence
 
