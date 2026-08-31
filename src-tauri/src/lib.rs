@@ -248,7 +248,8 @@ pub fn run() {
                         }
                         "toggle_ticker" => {
                             if let Some(window) = app.get_webview_window("ticker") {
-                                if window.is_visible().unwrap_or(false) {
+                                let was_visible = window.is_visible().unwrap_or(false);
+                                if was_visible {
                                     let _ = window.hide();
                                 } else {
                                     let _ = window.show();
@@ -290,6 +291,12 @@ pub fn run() {
                                         );
                                     }
                                 }
+                                // Persist the ticker's visibility so it restores the same
+                                // state on next launch (default = visible).
+                                let _ = db.set_setting(
+                                    "ticker_visible",
+                                    if was_visible { "0" } else { "1" },
+                                );
                             }
                         }
                         "check_update" => {
@@ -578,13 +585,25 @@ pub fn run() {
                     let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
                 }
 
-                // Now show the ticker at the correct position (config has visible: false)
-                let _ = ticker.show();
                 // Remove ticker from taskbar at both levels:
                 //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)
                 //   apply_tool_window → WS_EX_TOOLWINDOW (survives Explorer restart)
                 let _ = ticker.set_skip_taskbar(true);
                 apply_tool_window_style(&ticker);
+
+                // Restore visibility from last session (config starts hidden).
+                // Default to visible unless the user explicitly hid the ticker.
+                let ticker_hidden = db
+                    .get_setting("ticker_visible")
+                    .ok()
+                    .flatten()
+                    .map(|v| v == "0")
+                    .unwrap_or(false);
+                if ticker_hidden {
+                    let _ = ticker.hide();
+                } else {
+                    let _ = ticker.show();
+                }
             }
 
             Ok(())
