@@ -93,12 +93,39 @@ impl MarketOverviewClient {
         fs: &str,
         direction: &str,
     ) -> Result<Vec<SectorItem>, AppError> {
+        self.fetch_sector_ranking_paged(fs, direction, 5).await
+    }
+
+    /// 概念板块排名 —— 与 `fetch_sector_ranking` 相同,但先多拉一些再剔除
+    /// 风格/指数/资金/业绩等「非主题概念」板块,最后截取前 5。
+    ///
+    /// 为什么不能 `pz=5` 直接过滤:东财 `m:90+t:3` 的「概念」实为主题概念 +
+    /// 风格因子(历史新高、微盘股…) + 指数成分(中证500、茅指数…) + 资金持仓的
+    /// 大杂烩,若榜首就是这类板块,直接过滤会导致列数不足 5。
+    pub async fn fetch_concept_ranking(
+        &self,
+        direction: &str,
+    ) -> Result<Vec<SectorItem>, AppError> {
+        let mut items = self
+            .fetch_sector_ranking_paged("m:90+t:3", direction, 30)
+            .await?;
+        items.retain(|s| !is_non_concept_board(&s.code));
+        items.truncate(5);
+        Ok(items)
+    }
+
+    async fn fetch_sector_ranking_paged(
+        &self,
+        fs: &str,
+        direction: &str,
+        pz: usize,
+    ) -> Result<Vec<SectorItem>, AppError> {
         // po=1 降序(涨幅榜:涨跌幅从高到低), po=0 升序(跌幅榜:从低到高)。
         let po = if direction == "down" { "0" } else { "1" };
 
         let url = format!(
-            "{}/api/qt/clist/get?pn=1&pz=5&po={}&np=1&fltt=2&invt=2&fid=f3&fs={}&fields=f12,f14,f3,f128,f136",
-            EASTMONEY_PUSH2DELAY, po, fs
+            "{}/api/qt/clist/get?pn=1&pz={}&po={}&np=1&fltt=2&invt=2&fid=f3&fs={}&fields=f12,f14,f3,f128,f136",
+            EASTMONEY_PUSH2DELAY, pz, po, fs
         );
         let resp = headers::with_browser_headers(
             self.client.get(&url),
@@ -119,6 +146,56 @@ impl MarketOverviewClient {
 
         Ok(parse_clist(&body))
     }
+}
+
+/// 概念板块黑名单 —— 东财 `m:90+t:3` 的「概念」实为主题概念 + 风格因子 + 指数成分 +
+/// 资金持仓 + 业绩预披露的大杂烩。这里列出非「主题概念」的板块代码(取自 `f12`,如
+/// `BK1675` 历史新高),在概念排名中剔除,只保留真正的主题概念(5G/AI/芯片/新能源…)。
+///
+/// 接口层面无法拆分:`t:1` 地域 / `t:2` 行业 / `t:3` 概念是仅有的合法筛选串,`t:4`+
+/// 均返回空。故只能用代码黑名单兜底。
+mod concept_blacklist {
+    /// 宽基/成分指数(HS300_、中证500、茅指数…)
+    pub const INDEX: &[&str] = &[
+        "BK0498", "BK0499", "BK0500", "BK0568", "BK0610", "BK0611", "BK0612",
+        "BK0636", "BK0638", "BK0701", "BK0705", "BK0742", "BK0743", "BK0821",
+        "BK0867", "BK0879", "BK0999", "BK1000",
+    ];
+
+    /// 风格/因子(历史新高、微盘股、破净、大小盘成长价值、昨日涨停系列…)
+    pub const STYLE: &[&str] = &[
+        "BK0501", "BK0505", "BK0511",
+        "BK0815", "BK0816", "BK0817",
+        "BK1050", "BK1051", "BK1053", "BK1059",
+        "BK1112", "BK1158",
+        "BK1630", "BK1631", "BK1632", "BK1633", "BK1635", "BK1636", "BK1637",
+        "BK1638", "BK1639", "BK1640", "BK1641", "BK1642", "BK1643", "BK1644",
+        "BK1645", "BK1661", "BK1662", "BK1663", "BK1664", "BK1665", "BK1666",
+        "BK1667", "BK1668", "BK1669", "BK1670", "BK1671", "BK1672", "BK1673",
+        "BK1674", "BK1675", "BK1676", "BK1693", "BK1698", "BK1699", "BK1700",
+        "BK1710", "BK1711", "BK1712", "BK1713", "BK1714", "BK1715", "BK1716",
+        "BK1717", "BK1721", "BK1722", "BK1723", "BK1743",
+    ];
+
+    /// 资金/持仓/互联互通(基金重仓、沪股通、融资融券…)
+    pub const FUND: &[&str] = &[
+        "BK0520", "BK0528", "BK0535", "BK0536", "BK0552", "BK0596", "BK0707",
+        "BK0718", "BK0804", "BK0823",
+    ];
+
+    /// 业绩预披露(预增/预减/扭亏/首亏…)
+    pub const EARNINGS: &[&str] = &[
+        "BK1198", "BK1199", "BK1628", "BK1680", "BK1681", "BK1682", "BK1749",
+        "BK1750", "BK1751", "BK1752",
+    ];
+}
+
+/// 判断板块代码是否属于「非主题概念」(风格/指数/资金/业绩),应从概念排名中剔除。
+fn is_non_concept_board(code: &str) -> bool {
+    concept_blacklist::INDEX.contains(&code)
+        || concept_blacklist::STYLE.contains(&code)
+        || concept_blacklist::FUND.contains(&code)
+        || concept_blacklist::EARNINGS.contains(&code)
 }
 
 /// 解析新浪指数响应,累加两行(上证 + 深证)的成交额(字段索引 9)。
@@ -238,6 +315,22 @@ var hq_str_sz399106="深证综指,1,2,3,4,5,0,0,57760736028,951499754726.529,0";
         assert_eq!(items[0].change_pct, 6.59);
         assert_eq!(items[0].leader_name.as_deref(), Some("ST豆神"));
         assert_eq!(items[0].leader_pct, Some(12.92));
+    }
+
+    #[test]
+    fn concept_blacklist_flags_non_concept_boards() {
+        // 风格因子、指数成分、资金持仓、业绩预披露 → 剔除
+        assert!(is_non_concept_board("BK1675")); // 历史新高(风格)
+        assert!(is_non_concept_board("BK1639")); // 周期股(风格)
+        assert!(is_non_concept_board("BK0500")); // HS300_(指数)
+        assert!(is_non_concept_board("BK0999")); // 茅指数(指数)
+        assert!(is_non_concept_board("BK0536")); // 基金重仓(资金)
+        assert!(is_non_concept_board("BK0707")); // 沪股通(资金)
+        assert!(is_non_concept_board("BK1749")); // 2026中报预增(业绩)
+        // 主题概念 → 保留
+        assert!(!is_non_concept_board("BK0917")); // 半导体概念
+        assert!(!is_non_concept_board("BK0800")); // 人工智能
+        assert!(!is_non_concept_board("BK0900")); // 新能源车
     }
 
     #[test]

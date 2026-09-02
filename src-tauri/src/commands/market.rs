@@ -39,8 +39,8 @@ pub async fn get_market_overview(
         }
     };
 
-    // 4. 概念板块 —— 东财 push2delay clist
-    let concept = match client.fetch_sector_ranking("m:90+t:3", &direction).await {
+    // 4. 概念板块 —— 东财 push2delay clist,剔除风格/指数/资金/业绩等非主题概念
+    let concept = match client.fetch_concept_ranking(&direction).await {
         Ok(v) => v,
         Err(e) => {
             log::warn!("[market] 概念板块获取失败,降级为空: {}", e);
