@@ -61,6 +61,44 @@ pub fn normalize_turnover(turnover_wan: f64) -> f64 {
     turnover_wan * TURNOVER_WAN_TO_YUAN
 }
 
+/// Derive a display category from a full CN symbol (sh/sz + 6-digit code),
+/// following the A-share code-assignment convention:
+///   sh 0xxxxx → 指数 (上证/中证);  sh 5xxxxx → ETF;  sh 6xxxxx → A股;  sh 9xxxxx → B股
+///   sz 399xxx → 指数 (深证);      sz 159xxx → ETF; sz 16xxxx → LOF;  sz 2xxxxx → B股;  其余 → A股
+/// Returns "" for symbols without a CN exchange prefix (HK/US etc.).
+pub fn cn_category(full_code: &str) -> &'static str {
+    if full_code.starts_with("sh") {
+        let code = &full_code[2..];
+        if code.starts_with('0') {
+            return "ZS";
+        }
+        if code.starts_with('5') {
+            return "ETF";
+        }
+        if code.starts_with('9') {
+            return "GP-B";
+        }
+        return "GP-A";
+    }
+    if full_code.starts_with("sz") {
+        let code = &full_code[2..];
+        if code.starts_with("39") {
+            return "ZS";
+        }
+        if code.starts_with("159") {
+            return "ETF";
+        }
+        if code.starts_with("16") {
+            return "LOF";
+        }
+        if code.starts_with('2') {
+            return "GP-B";
+        }
+        return "GP-A";
+    }
+    ""
+}
+
 /// 将图表周期字符串映射为分钟跨度（仅分钟周期返回 Some）。
 /// 用于区分分钟 K 线与日/周/月 K 线。
 pub fn minute_span(period: &str) -> Option<u32> {
@@ -239,6 +277,20 @@ mod tests {
         assert_eq!(minute_span("60min"), Some(60));
         assert_eq!(minute_span("daily"), None);
         assert_eq!(minute_span("weekly"), None);
+    }
+
+    #[test]
+    fn cn_category_classifies_cn_symbols() {
+        assert_eq!(cn_category("sh600519"), "GP-A");
+        assert_eq!(cn_category("sz000001"), "GP-A");
+        assert_eq!(cn_category("sz300750"), "GP-A");
+        assert_eq!(cn_category("sh000852"), "ZS");
+        assert_eq!(cn_category("sz399006"), "ZS");
+        assert_eq!(cn_category("sh510050"), "ETF");
+        assert_eq!(cn_category("sz159915"), "ETF");
+        assert_eq!(cn_category("sz161725"), "LOF");
+        assert_eq!(cn_category("sh900901"), "GP-B");
+        assert_eq!(cn_category(""), "");
     }
 }
 

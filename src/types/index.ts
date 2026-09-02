@@ -29,6 +29,7 @@ export interface StockBrief {
   code: string;
   market: string;
   name: string;
+  category: string;
 }
 
 export interface WatchItem {

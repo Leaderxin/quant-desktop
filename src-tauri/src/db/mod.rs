@@ -16,6 +16,7 @@ impl Database {
         let conn = Connection::open(db_path)?;
         let db = Self { conn: Mutex::new(conn) };
         db.migrate()?;
+        db.migrate_watchlist_codes()?;
         db.init_defaults()?;
         Ok(db)
     }
@@ -44,6 +45,54 @@ impl Database {
                 PRIMARY KEY (code, market)
             );"
         )?;
+        Ok(())
+    }
+
+    /// One-time data migration: prefix bare 6-digit CN watchlist codes with their
+    /// exchange (`sh`/`sz`). Historical rows stored the bare code (e.g. "600519"),
+    /// which is ambiguous when a code is shared between an index and a stock —
+    /// e.g. 000852 is both sh000852 (中证1000 index) and sz000852 (石化机械 stock).
+    /// The quote pipeline now keys on the full symbol, so legacy rows are upgraded.
+    ///
+    /// Idempotent: a full symbol already carries the sh/sz prefix (length 8) and is
+    /// left untouched. The quote_cache is cleared because it holds serialized quotes
+    /// keyed by the old bare code; it repopulates on the next poll.
+    fn migrate_watchlist_codes(&self) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare("SELECT id, code FROM watchlist WHERE market = 'CN'")?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<SqliteResult<_>>()?;
+        drop(stmt);
+
+        let mut migrated = false;
+        for (id, code) in rows {
+            if code.starts_with("sh") || code.starts_with("sz") {
+                continue;
+            }
+            if code.len() == 6 && code.chars().all(|c| c.is_ascii_digit()) {
+                let prefix = if code.starts_with('6')
+                    || code.starts_with('5')
+                    || code.starts_with('9')
+                {
+                    "sh"
+                } else {
+                    "sz"
+                };
+                let full = format!("{}{}", prefix, code);
+                conn.execute(
+                    "UPDATE watchlist SET code = ?1 WHERE id = ?2",
+                    params![full, id],
+                )?;
+                migrated = true;
+            }
+        }
+        // Only clear the cache when legacy codes were actually rewritten. The
+        // cache keys change from bare to full code, so stale entries are invalid;
+        // but clearing it on every launch would defeat startup cache restoration.
+        if migrated {
+            conn.execute("DELETE FROM quote_cache", [])?;
+        }
         Ok(())
     }
 

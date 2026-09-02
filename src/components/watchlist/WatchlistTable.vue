@@ -6,8 +6,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import type { WatchItem } from '@/types';
-import { formatPrice, formatVolume } from '@/utils/format';
+import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
 import AddStockDialog from './AddStockDialog.vue';
+import MarketTag from './MarketTag.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
@@ -126,7 +127,15 @@ function handleCtxSelect(key: string) {
 }
 
 const columns: DataTableColumns<WatchItem> = [
-  { title: '代码', key: 'code', width: 68 },
+  {
+    title: '代码', key: 'code', width: 116,
+    render(row) {
+      return h('div', { class: 'code-cell' }, [
+        h(MarketTag, { code: row.code, category: cnCategory(row.code) }),
+        h('span', { class: 'code-text' }, formatCode(row.code)),
+      ]);
+    }
+  },
   {
     title: '名称', key: 'name', width: 120, ellipsis: true,
     sorter: (a: WatchItem, b: WatchItem) => a.name.localeCompare(b.name),
@@ -373,4 +382,15 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 :deep(.pct-col) { font-weight: 500; }
 :deep(.pct-col.up) { color: var(--color-up); }
 :deep(.pct-col.down) { color: var(--color-down); }
+/* Code column — tag + code rendered via h() inside NDataTable, so use :deep() */
+:deep(.code-cell) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+:deep(.code-text) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 </style>

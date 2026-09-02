@@ -65,7 +65,9 @@ impl SinaAdapter {
         } else {
             "CN"
         };
-        let code = if code_raw.len() >= 3 { code_raw[2..].to_string() } else { code_raw.to_string() };
+        // Preserve the full symbol (sh/sz + code) so ambiguous codes that map to
+        // both an index and a stock (e.g. 000852) remain distinguishable.
+        let code = code_raw.to_string();
 
         // Extract data between quotes
         let quote_start = line[eq_pos + 1..].find('"')? + eq_pos + 2;
@@ -304,10 +306,12 @@ impl DataSource for SinaAdapter {
             for line in body.lines() {
                 if let Some(quote) = Self::parse_sina_line(line) {
                     if !quote.name.is_empty() {
+                        let category = super::cn_category(&quote.code).to_string();
                         return Ok(vec![StockBrief {
                             code: quote.code,
                             market: quote.market,
                             name: quote.name,
+                            category,
                         }]);
                     }
                 }
@@ -492,15 +496,9 @@ impl DataSource for SinaAdapter {
         // quote endpoint which embeds 5-level depth in fields 9-28.
         use crate::domain::Level;
 
-        let tc_code = if market == "CN" {
-            if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
-                format!("sh{}", code)
-            } else {
-                format!("sz{}", code)
-            }
-        } else {
-            code.to_string()
-        };
+        // Reuse the shared code mapping so full symbols (sh/sz + code) pass
+        // through unchanged, matching the quote pipeline's canonical form.
+        let tc_code = Self::code_to_sina(code, market);
         let url = format!("http://qt.gtimg.cn/q={}", tc_code);
 
         let resp = headers::with_browser_headers(
@@ -575,6 +573,15 @@ impl DataSource for SinaAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_sina_line_preserves_exchange_prefix() {
+        let line = "var hq_str_sz000852=\"石化机械,6.00,5.51,6.06,6.10,5.90,0,0,581842,348293126.000\"";
+        let q = SinaAdapter::parse_sina_line(line).unwrap();
+        assert_eq!(q.code, "sz000852");
+        assert_eq!(q.name, "石化机械");
+        assert_eq!(q.price, 6.06);
+    }
 
     #[test]
     fn sina_scale_maps_supported_periods() {

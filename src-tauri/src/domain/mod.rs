@@ -72,6 +72,8 @@ pub struct StockBrief {
     pub code: String,
     pub market: String,
     pub name: String,
+    /// Security category: "GP-A" (A股), "GP-B" (B股), "ETF", "LOF", "ZS" (指数).
+    pub category: String,
 }
 
 // ── Structured Error Type ──
