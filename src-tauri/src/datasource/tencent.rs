@@ -89,7 +89,7 @@ impl TencentAdapter {
     fn code_to_tencent(code: &str, market: &str) -> String {
         if market == "CN" {
             // Already has exchange prefix (e.g. "sh000001" from index codes)
-            if code.starts_with("sh") || code.starts_with("sz") {
+            if code.starts_with("sh") || code.starts_with("sz") || code.starts_with("bj") {
                 return code.to_string();
             }
             if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
@@ -107,7 +107,9 @@ impl TencentAdapter {
         let var_part = &line[..eq_pos];
         let code_raw = var_part.strip_prefix("v_")?;
         let market = if code_raw.starts_with("sh") { "CN" } else if code_raw.starts_with("sz") { "CN" } else { "CN" };
-        let code = if code_raw.len() >= 2 { code_raw[2..].to_string() } else { code_raw.to_string() };
+        // Preserve the full symbol (sh/sz + code) so ambiguous codes that map to
+        // both an index and a stock (e.g. 000852) remain distinguishable.
+        let code = code_raw.to_string();
 
         let quote_start = line[eq_pos + 1..].find('"')? + eq_pos + 2;
         let quote_end = line[quote_start..].find('"')?;
@@ -281,10 +283,12 @@ impl DataSource for TencentAdapter {
             for line in body.lines() {
                 if let Some(quote) = Self::parse_quote_line(line) {
                     if !quote.name.is_empty() {
+                        let category = super::cn_category(&quote.code).to_string();
                         return Ok(vec![StockBrief {
                             code: quote.code,
                             market: quote.market,
                             name: quote.name,
+                            category,
                         }]);
                     }
                 }
@@ -567,6 +571,37 @@ impl DataSource for TencentAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_quote_line_preserves_exchange_prefix() {
+        // Build a minimal 39-field Tencent quote line for sz000852 (石化机械).
+        let mut fields: Vec<&str> = vec![
+            "51",       // 0  market
+            "石化机械", // 1  name
+            "000852",   // 2  code
+            "6.06",     // 3  price
+            "5.51",     // 4  prev_close
+            "5.82",     // 5  open
+            "581842",   // 6  volume(手)
+        ];
+        // 7..=31 filler (unused fields)
+        for _ in 0..25 {
+            fields.push("0");
+        }
+        fields.push("9.98");  // 32 change_pct
+        fields.push("6.06");  // 33 high
+        fields.push("5.68");  // 34 low
+        fields.push("0");     // 35
+        fields.push("0");     // 36
+        fields.push("34829"); // 37 turnover(万元)
+        fields.push("1.84");  // 38 turnover_rate
+        let line = format!("v_sz000852=\"{}\"", fields.join("~"));
+
+        let q = TencentAdapter::parse_quote_line(&line).unwrap();
+        assert_eq!(q.code, "sz000852");
+        assert_eq!(q.name, "石化机械");
+        assert_eq!(q.price, 6.06);
+    }
 
     #[test]
     fn parses_kline_bar_minute() {

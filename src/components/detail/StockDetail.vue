@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import type { WatchItem, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
+import { formatCode } from '@/utils/format';
 import StockSummary from './StockSummary.vue';
 import DepthPanel from './DepthPanel.vue';
 import MinuteChart from './MinuteChart.vue';
@@ -35,7 +36,7 @@ useMinuteKUnavailable(activePeriod);
     <div class="detail-header">
       <div class="detail-title">
         <span class="detail-name">{{ item.name }}</span>
-        <span class="detail-code">{{ item.code }}</span>
+        <span class="detail-code">{{ formatCode(item.code) }}</span>
       </div>
       <button class="detail-close" @click="emit('close')" aria-label="关闭详情">&times;</button>
     </div>

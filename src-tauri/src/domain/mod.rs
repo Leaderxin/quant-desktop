@@ -72,6 +72,8 @@ pub struct StockBrief {
     pub code: String,
     pub market: String,
     pub name: String,
+    /// Security category: "GP-A" (A股), "GP-B" (B股), "ETF", "LOF", "ZS" (指数).
+    pub category: String,
 }
 
 /// 单个板块(行业/概念)的涨跌排名条目

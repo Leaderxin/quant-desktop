@@ -4,6 +4,8 @@ import { NModal, NCard, NInput, NSpace, useMessage } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
 import { useWatchlistStore } from '@/stores/watchlist';
+import { formatCode } from '@/utils/format';
+import MarketTag from './MarketTag.vue';
 
 const props = defineProps<{ show: boolean }>();
 const emit = defineEmits<{ (e: 'update:show', val: boolean): void }>();
@@ -90,8 +92,9 @@ async function handleAdd(stock: StockBrief) {
               @click="handleAdd(s)"
             >
               <div class="result-info">
+                <MarketTag :code="s.code" :category="s.category" />
                 <span class="result-name">{{ s.name }}</span>
-                <span class="result-code tabular-nums">{{ s.code }}</span>
+                <span class="result-code tabular-nums">{{ formatCode(s.code) }}</span>
               </div>
               <button class="result-add-btn" @click.stop="handleAdd(s)">
                 添加自选

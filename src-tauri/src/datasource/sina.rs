@@ -7,11 +7,14 @@ use super::{DataSource, INDEX_CODES, headers};
 
 const SINA_URL: &str = "http://hq.sinajs.cn/list=";
 
-/// 将图表周期映射为新浪 getKLineData 的 `scale` 参数（分钟数；日 K = 240）。
-/// 分钟周期的映射委托到 minute_span；新浪特有：日 K → 240、拒绝 1 分钟、拒绝未知周期。
+/// 将图表周期映射为新浪 getKLineData 的 `scale` 参数：
+/// 分钟 5/15/30/60 → 对应分钟数，日 K → 240，周 K → 1200，月 K → 7200。
+/// 新浪不支持 1 分钟 K 线。
 fn sina_scale(period: &str) -> Result<u32, AppError> {
     match period {
         "daily" => Ok(240),
+        "weekly" => Ok(1200),
+        "monthly" => Ok(7200),
         "1min" => Err(AppError::Unsupported(
             "新浪数据源不支持1分钟K线，请切换到腾讯数据源查看".into(),
         )),
@@ -37,7 +40,7 @@ impl SinaAdapter {
     fn code_to_sina(code: &str, market: &str) -> String {
         if market == "CN" {
             // Already has exchange prefix (e.g. "sh000001" from index codes)
-            if code.starts_with("sh") || code.starts_with("sz") {
+            if code.starts_with("sh") || code.starts_with("sz") || code.starts_with("bj") {
                 return code.to_string();
             }
             if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
@@ -65,7 +68,9 @@ impl SinaAdapter {
         } else {
             "CN"
         };
-        let code = if code_raw.len() >= 3 { code_raw[2..].to_string() } else { code_raw.to_string() };
+        // Preserve the full symbol (sh/sz + code) so ambiguous codes that map to
+        // both an index and a stock (e.g. 000852) remain distinguishable.
+        let code = code_raw.to_string();
 
         // Extract data between quotes
         let quote_start = line[eq_pos + 1..].find('"')? + eq_pos + 2;
@@ -194,6 +199,80 @@ impl SinaAdapter {
             turnover,
         })
     }
+
+    /// 拉取并解析新浪 K 线（给定 scale），返回日/分钟 K 线。
+    async fn fetch_raw_kline(
+        &self,
+        symbol: &str,
+        scale: u32,
+    ) -> Result<Vec<crate::domain::KLineData>, AppError> {
+        let url = format!(
+            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=600",
+            symbol, scale
+        );
+
+        let resp = headers::with_browser_headers(
+            self.client.get(&url),
+            "https://finance.sina.com.cn",
+        )
+            .send()
+            .await
+            .map_err(|e| AppError::network("sina", format!("K线请求失败: {:#}", e)))?;
+
+        if !resp.status().is_success() {
+            return Err(AppError::network("sina", format!("K线 HTTP {}", resp.status())));
+        }
+
+        let body_text = resp
+            .text()
+            .await
+            .map_err(|e| AppError::network("sina", format!("K线读取失败: {:#}", e)))?;
+
+        if body_text.is_empty() || body_text == "null" {
+            log::warn!("Sina kline empty body for code={}", symbol);
+            return Ok(vec![]);
+        }
+
+        let json_str = body_text.trim_end_matches(|c| c != ']').trim();
+        // Guard against format changes producing empty or non-array responses
+        if json_str.is_empty() || !json_str.starts_with('[') {
+            return Err(AppError::network(
+                "sina",
+                "K线响应格式异常：未找到 JSON 数组",
+            ));
+        }
+        let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
+            .map_err(|e| AppError::network("sina", format!("K线解析失败: {}", e)))?;
+
+        if raw.is_empty() {
+            log::warn!("Sina kline empty for code={} scale={}", symbol, scale);
+        }
+
+        let data: Vec<crate::domain::KLineData> = raw
+            .iter()
+            .filter_map(|pt| {
+                let date = pt.get("day")?.as_str()?.to_string();
+                let open: f64 = pt.get("open")?.as_str()?.parse().ok()?;
+                let high: f64 = pt.get("high")?.as_str()?.parse().ok()?;
+                let low: f64 = pt.get("low")?.as_str()?.parse().ok()?;
+                let close: f64 = pt.get("close")?.as_str()?.parse().ok()?;
+                let volume: u64 = pt.get("volume")?.as_str()?.parse().unwrap_or(0u64);
+                // Sina doesn't provide turnover in K-line data, default to 0
+                let turnover: f64 = 0.0;
+                Some(crate::domain::KLineData {
+                    date,
+                    open,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    turnover,
+                })
+            })
+            .collect();
+
+        Ok(data)
+    }
 }
 
 #[async_trait]
@@ -304,10 +383,12 @@ impl DataSource for SinaAdapter {
             for line in body.lines() {
                 if let Some(quote) = Self::parse_sina_line(line) {
                     if !quote.name.is_empty() {
+                        let category = super::cn_category(&quote.code).to_string();
                         return Ok(vec![StockBrief {
                             code: quote.code,
                             market: quote.market,
                             name: quote.name,
+                            category,
                         }]);
                     }
                 }
@@ -408,79 +489,12 @@ impl DataSource for SinaAdapter {
             Self::code_to_sina(code, market)
         };
 
-        // 根据周期计算 scale（分钟数；日 K = 240）。1 分钟/周/月由 sina_scale 拒绝。
-        let scale = sina_scale(period)?;
-
         if end_date.is_some() || count.is_some() {
             log::debug!("Sina adapter does not support end_date/count pagination; ignoring");
         }
 
-        let url = format!(
-            "http://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData?symbol={}&scale={}&ma=no&datalen=600",
-            symbol, scale
-        );
-
-        let resp = headers::with_browser_headers(
-            self.client.get(&url),
-            "https://finance.sina.com.cn",
-        )
-            .send()
-            .await
-            .map_err(|e| AppError::network("sina", format!("K线请求失败: {:#}", e)))?;
-
-        if !resp.status().is_success() {
-            return Err(AppError::network("sina", format!("K线 HTTP {}", resp.status())));
-        }
-
-        let body_text = resp
-            .text()
-            .await
-            .map_err(|e| AppError::network("sina", format!("K线读取失败: {:#}", e)))?;
-
-        if body_text.is_empty() || body_text == "null" {
-            log::warn!("Sina kline empty body for code={}", symbol);
-            return Ok(vec![]);
-        }
-
-        let json_str = body_text.trim_end_matches(|c| c != ']').trim();
-        // Guard against format changes producing empty or non-array responses
-        if json_str.is_empty() || !json_str.starts_with('[') {
-            return Err(AppError::network(
-                "sina",
-                "K线响应格式异常：未找到 JSON 数组",
-            ));
-        }
-        let raw: Vec<serde_json::Value> = serde_json::from_str(json_str)
-            .map_err(|e| AppError::network("sina", format!("K线解析失败: {}", e)))?;
-
-        if raw.is_empty() {
-            log::warn!("Sina kline empty for code={} period={}", symbol, scale);
-        }
-
-        let data: Vec<crate::domain::KLineData> = raw
-            .iter()
-            .filter_map(|pt| {
-                let date = pt.get("day")?.as_str()?.to_string();
-                let open: f64 = pt.get("open")?.as_str()?.parse().ok()?;
-                let high: f64 = pt.get("high")?.as_str()?.parse().ok()?;
-                let low: f64 = pt.get("low")?.as_str()?.parse().ok()?;
-                let close: f64 = pt.get("close")?.as_str()?.parse().ok()?;
-                let volume: u64 = pt.get("volume")?.as_str()?.parse().unwrap_or(0u64);
-                // Sina doesn't provide turnover in K-line data, default to 0
-                let turnover: f64 = 0.0;
-                Some(crate::domain::KLineData {
-                    date,
-                    open,
-                    high,
-                    low,
-                    close,
-                    volume,
-                    turnover,
-                })
-            })
-            .collect();
-
-        Ok(data)
+        let scale = sina_scale(period)?;
+        self.fetch_raw_kline(&symbol, scale).await
     }
 
     async fn fetch_depth(
@@ -492,15 +506,9 @@ impl DataSource for SinaAdapter {
         // quote endpoint which embeds 5-level depth in fields 9-28.
         use crate::domain::Level;
 
-        let tc_code = if market == "CN" {
-            if code.starts_with("6") || code.starts_with("5") || code.starts_with("9") {
-                format!("sh{}", code)
-            } else {
-                format!("sz{}", code)
-            }
-        } else {
-            code.to_string()
-        };
+        // Reuse the shared code mapping so full symbols (sh/sz + code) pass
+        // through unchanged, matching the quote pipeline's canonical form.
+        let tc_code = Self::code_to_sina(code, market);
         let url = format!("http://qt.gtimg.cn/q={}", tc_code);
 
         let resp = headers::with_browser_headers(
@@ -577,8 +585,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_sina_line_preserves_exchange_prefix() {
+        let line = "var hq_str_sz000852=\"石化机械,6.00,5.51,6.06,6.10,5.90,0,0,581842,348293126.000\"";
+        let q = SinaAdapter::parse_sina_line(line).unwrap();
+        assert_eq!(q.code, "sz000852");
+        assert_eq!(q.name, "石化机械");
+        assert_eq!(q.price, 6.06);
+    }
+
+    #[test]
     fn sina_scale_maps_supported_periods() {
         assert_eq!(sina_scale("daily").unwrap(), 240);
+        assert_eq!(sina_scale("weekly").unwrap(), 1200);
+        assert_eq!(sina_scale("monthly").unwrap(), 7200);
         assert_eq!(sina_scale("5min").unwrap(), 5);
         assert_eq!(sina_scale("15min").unwrap(), 15);
         assert_eq!(sina_scale("30min").unwrap(), 30);
@@ -588,7 +607,5 @@ mod tests {
     #[test]
     fn sina_scale_rejects_unsupported_periods() {
         assert!(sina_scale("1min").is_err());
-        assert!(sina_scale("weekly").is_err());
-        assert!(sina_scale("monthly").is_err());
     }
 }

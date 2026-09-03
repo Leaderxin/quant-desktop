@@ -140,11 +140,17 @@ fn parse_tencent_smartbox(body: &str, limit: usize) -> Vec<StockBrief> {
             _ => "CN",
         };
 
-        if seen.insert(code.clone()) {
+        // Preserve the full symbol (exchange + code) so ambiguous codes
+        // (index vs stock sharing a 6-digit code) stay distinct.
+        let full_code = format!("{}{}", fields[0], code);
+        let category = super::cn_category(&full_code).to_string();
+
+        if seen.insert(full_code.clone()) {
             results.push(StockBrief {
-                code,
+                code: full_code,
                 market: market.to_string(),
                 name,
+                category,
             });
         }
     }
@@ -255,22 +261,22 @@ fn parse_sina_suggest(body: &str, limit: usize) -> Vec<StockBrief> {
             continue;
         }
 
-        // Determine market from full code prefix
-        let full_code = fields[0];
-        let market = if full_code.starts_with("sh") {
-            "CN"
-        } else if full_code.starts_with("sz") {
-            "CN"
-        } else {
-            "CN"
-        };
+        // Preserve the full symbol (sh/sz/bj + code). The exchange-prefixed symbol
+        // is at [3]: for 北交所 (bj) entries Sina puts the name at [0] and the
+        // symbol at [3], so [3] is the reliable source. A bare code can be
+        // ambiguous — e.g. 000852 is both sh000852 (中证1000 index) and sz000852
+        // (石化机械 stock) — so we key on the full symbol to keep them distinct.
+        let full_code = fields[3].to_string();
+        let market = "CN".to_string();
+        let category = super::cn_category(&full_code).to_string();
 
-        // Deduplicate by code
-        if seen.insert(code.clone()) {
+        // Deduplicate by full symbol, not bare code.
+        if seen.insert(full_code.clone()) {
             results.push(StockBrief {
-                code,
-                market: market.to_string(),
+                code: full_code,
+                market,
                 name,
+                category,
             });
         }
     }
@@ -305,7 +311,7 @@ mod tests {
         let body = "var cn=\"sh600519,11,600519,sh600519,\u{8d35}\u{5dde}\u{8305}\u{53f0},,\u{8d35}\u{5dde}\u{8305}\u{53f0},99,1,ESG,,\"";
         let results = parse_sina_suggest(body, 20);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].code, "600519");
+        assert_eq!(results[0].code, "sh600519");
         assert_eq!(results[0].market, "CN");
     }
 
@@ -314,8 +320,8 @@ mod tests {
         let body = "var cn=\"sh600519,11,600519,sh600519,MT,,\u{8d35}\u{5dde}\u{8305}\u{53f0},99,1,ESG,,;sz000001,11,000001,sz000001,PB,,\u{5e73}\u{5b89}\u{94f6}\u{884c},99,1,ESG,,;00883,31,00883,00883,CM,,\u{4e2d}\u{56fd}\u{6d77}\u{6d0b}\u{77f3}\u{6cb9},99,1,ESG,,\"";
         let results = parse_sina_suggest(body, 20);
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].code, "600519");
-        assert_eq!(results[1].code, "000001");
+        assert_eq!(results[0].code, "sh600519");
+        assert_eq!(results[1].code, "sz000001");
     }
 
     #[test]
@@ -324,7 +330,31 @@ mod tests {
         let body = "var cn=\"sh510050,203,510050,sh510050,ETF_50,,\u{4e0a}\u{8bc1}50ETF,99,1,,,\"";
         let results = parse_sina_suggest(body, 20);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].code, "510050");
+        assert_eq!(results[0].code, "sh510050");
+    }
+
+    #[test]
+    fn test_parse_sina_suggest_code_collision() {
+        // 000852 is ambiguous: sh000852 = 中证1000 (index), sz000852 = 石化机械 (stock).
+        // Dedup must key on the full symbol so both instruments survive.
+        let body = "var cn=\"sh000852,11,000852,sh000852,中证1000,,中证1000,99,1,,,;sz000852,11,000852,sz000852,石化机械,,石化机械,99,1,,,\"";
+        let results = parse_sina_suggest(body, 20);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].code, "sh000852");
+        assert_eq!(results[0].name, "中证1000");
+        assert_eq!(results[1].code, "sz000852");
+        assert_eq!(results[1].name, "石化机械");
+    }
+
+    #[test]
+    fn test_parse_sina_suggest_bse_name_format() {
+        // 北交所 (bj) entries put the name at [0] and the full symbol at [3].
+        let body = "var cn=\"贝特瑞,11,920185,bj920185,贝特瑞,,贝特瑞,99,1,,,\"";
+        let results = parse_sina_suggest(body, 20);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].code, "bj920185");
+        assert_eq!(results[0].name, "贝特瑞");
+        assert_eq!(results[0].category, "GP-A");
     }
 
     #[test]
@@ -332,7 +362,7 @@ mod tests {
         let body = "var cn=\"sh600030,11,600030,sh600030,ZX,,\u{4e2d}\u{4fe1}\u{8bc1}\u{5238},99,1,ESG,,;01114,31,01114,01114,HC,,\u{534e}\u{6668}\u{4e2d}\u{56fd},99,1,ESG,,\"";
         let results = parse_sina_suggest(body, 20);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].code, "600030");
+        assert_eq!(results[0].code, "sh600030");
     }
 
     // ── Tencent smartbox tests ──
@@ -342,7 +372,7 @@ mod tests {
         let body = "v_hint=\"sh~600519~\\u8d35\\u5dde\\u8305\\u53f0~gzmt~GP-A\"";
         let results = parse_tencent_smartbox(body, 20);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].code, "600519");
+        assert_eq!(results[0].code, "sh600519");
         assert_eq!(results[0].name, "贵州茅台");
         assert_eq!(results[0].market, "CN");
     }
@@ -353,8 +383,8 @@ mod tests {
         let results = parse_tencent_smartbox(body, 20);
         // Only 2 A-shares, HK stock (GP) filtered out
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].code, "600519");
-        assert_eq!(results[1].code, "000600");
+        assert_eq!(results[0].code, "sh600519");
+        assert_eq!(results[1].code, "sz000600");
     }
 
     #[test]
@@ -370,7 +400,7 @@ mod tests {
         let results = parse_tencent_smartbox(body, 20);
         // Only GP-A, fund (KJ-HB) filtered out
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].code, "600519");
+        assert_eq!(results[0].code, "sh600519");
     }
 
     #[test]
@@ -380,7 +410,7 @@ mod tests {
         // The HK ETF (type ETF but code not 6-digit) should be filtered out
         // Plus the ETF type now passes
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].code, "510050");
-        assert_eq!(results[1].code, "159915");
+        assert_eq!(results[0].code, "sh510050");
+        assert_eq!(results[1].code, "sz159915");
     }
 }
