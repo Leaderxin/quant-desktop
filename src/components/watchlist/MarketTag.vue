@@ -21,6 +21,9 @@ const cls = computed(() => {
 .market-tag {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  /* 固定最小宽度，让「沪指/深A/ETF」等不同字数标签等宽，代码列对齐 */
+  min-width: 36px;
   height: 18px;
   padding: 0 6px;
   font-size: var(--text-xs);

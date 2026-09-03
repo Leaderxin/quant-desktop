@@ -261,10 +261,12 @@ fn parse_sina_suggest(body: &str, limit: usize) -> Vec<StockBrief> {
             continue;
         }
 
-        // Preserve the full symbol (sh/sz + code). A bare code can be ambiguous —
-        // e.g. 000852 is both sh000852 (中证1000 index) and sz000852 (石化机械
-        // stock) — so we key on the full symbol to keep the two distinct.
-        let full_code = fields[0].to_string();
+        // Preserve the full symbol (sh/sz/bj + code). The exchange-prefixed symbol
+        // is at [3]: for 北交所 (bj) entries Sina puts the name at [0] and the
+        // symbol at [3], so [3] is the reliable source. A bare code can be
+        // ambiguous — e.g. 000852 is both sh000852 (中证1000 index) and sz000852
+        // (石化机械 stock) — so we key on the full symbol to keep them distinct.
+        let full_code = fields[3].to_string();
         let market = "CN".to_string();
         let category = super::cn_category(&full_code).to_string();
 
@@ -342,6 +344,17 @@ mod tests {
         assert_eq!(results[0].name, "中证1000");
         assert_eq!(results[1].code, "sz000852");
         assert_eq!(results[1].name, "石化机械");
+    }
+
+    #[test]
+    fn test_parse_sina_suggest_bse_name_format() {
+        // 北交所 (bj) entries put the name at [0] and the full symbol at [3].
+        let body = "var cn=\"贝特瑞,11,920185,bj920185,贝特瑞,,贝特瑞,99,1,,,\"";
+        let results = parse_sina_suggest(body, 20);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].code, "bj920185");
+        assert_eq!(results[0].name, "贝特瑞");
+        assert_eq!(results[0].category, "GP-A");
     }
 
     #[test]

@@ -26,7 +26,7 @@ export function formatPrice(price: number | null | undefined, fallback = '--'): 
  * 无前缀的代码（HK/US 等）原样返回。
  */
 export function formatCode(code: string): string {
-  if (code.startsWith('sh') || code.startsWith('sz')) {
+  if (code.startsWith('sh') || code.startsWith('sz') || code.startsWith('bj')) {
     return code.slice(2);
   }
   return code;
@@ -39,12 +39,13 @@ export function formatCode(code: string): string {
 export function marketTag(code: string, category: string): string {
   const isSh = code.startsWith('sh');
   const isSz = code.startsWith('sz');
+  const isBj = code.startsWith('bj');
   switch (category) {
-    case 'ZS': return isSh ? '沪指' : isSz ? '深指' : '指数';
+    case 'ZS': return isSh ? '沪指' : isSz ? '深指' : isBj ? '北指' : '指数';
     case 'ETF': return 'ETF';
     case 'LOF': return 'LOF';
     case 'GP-B': return isSh ? '沪B' : isSz ? '深B' : 'B股';
-    case 'GP-A': return isSh ? '沪A' : isSz ? '深A' : 'A股';
+    case 'GP-A': return isSh ? '沪A' : isSz ? '深A' : isBj ? '北A' : 'A股';
     default: return '';
   }
 }
@@ -53,6 +54,7 @@ export function marketTag(code: string, category: string): string {
  * 从完整代码推导证券类别（与 Rust 端 `cn_category` 保持一致）：
  * sh 0xxxxx → 指数；sh 5xxxxx → ETF；sh 6xxxxx → A股；sh 9xxxxx → B股
  * sz 399xxx → 指数；sz 159xxx → ETF；sz 16xxxx → LOF；sz 2xxxxx → B股；其余 → A股
+ * bj 899xxx → 指数；其余 bj → 北交所 A股
  */
 export function cnCategory(code: string): string {
   if (code.startsWith('sh')) {
@@ -68,6 +70,11 @@ export function cnCategory(code: string): string {
     if (n.startsWith('159')) return 'ETF';
     if (n.startsWith('16')) return 'LOF';
     if (n.startsWith('2')) return 'GP-B';
+    return 'GP-A';
+  }
+  if (code.startsWith('bj')) {
+    const n = code.slice(2);
+    if (n.startsWith('899')) return 'ZS';
     return 'GP-A';
   }
   return '';

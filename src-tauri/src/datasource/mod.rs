@@ -61,10 +61,11 @@ pub fn normalize_turnover(turnover_wan: f64) -> f64 {
     turnover_wan * TURNOVER_WAN_TO_YUAN
 }
 
-/// Derive a display category from a full CN symbol (sh/sz + 6-digit code),
+/// Derive a display category from a full CN symbol (sh/sz/bj + 6-digit code),
 /// following the A-share code-assignment convention:
 ///   sh 0xxxxx → 指数 (上证/中证);  sh 5xxxxx → ETF;  sh 6xxxxx → A股;  sh 9xxxxx → B股
 ///   sz 399xxx → 指数 (深证);      sz 159xxx → ETF; sz 16xxxx → LOF;  sz 2xxxxx → B股;  其余 → A股
+///   bj 899xxx → 指数 (北证50 等);  其余 bj → 北交所 A股
 /// Returns "" for symbols without a CN exchange prefix (HK/US etc.).
 pub fn cn_category(full_code: &str) -> &'static str {
     if full_code.starts_with("sh") {
@@ -93,6 +94,13 @@ pub fn cn_category(full_code: &str) -> &'static str {
         }
         if code.starts_with('2') {
             return "GP-B";
+        }
+        return "GP-A";
+    }
+    if full_code.starts_with("bj") {
+        let code = &full_code[2..];
+        if code.starts_with("899") {
+            return "ZS";
         }
         return "GP-A";
     }
@@ -290,6 +298,8 @@ mod tests {
         assert_eq!(cn_category("sz159915"), "ETF");
         assert_eq!(cn_category("sz161725"), "LOF");
         assert_eq!(cn_category("sh900901"), "GP-B");
+        assert_eq!(cn_category("bj920185"), "GP-A");
+        assert_eq!(cn_category("bj899050"), "ZS");
         assert_eq!(cn_category(""), "");
     }
 }
