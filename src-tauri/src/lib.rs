@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use simplelog::{CombinedLogger, WriteLogger, TermLogger, LevelFilter, Config, TerminalMode, ColorChoice};
 use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder},
+    menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
@@ -53,6 +53,15 @@ mod windows_util {
             cy: i32,
             uFlags: u32,
         ) -> i32;
+    }
+
+    pub unsafe fn set_profit_bounds(hwnd: isize, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
+        // Move and resize atomically. cx/cy include the invisible Windows frame.
+        if SetWindowPos(hwnd as HWND, std::ptr::null_mut(), x, y, width as i32, height as i32,
+            SWP_NOACTIVATE | SWP_NOZORDER) == 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(())
     }
 
     /// Set WS_EX_TOOLWINDOW on a window identified by its raw HWND.
@@ -223,6 +232,9 @@ pub fn run() {
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
+            let profit_menu = CheckMenuItemBuilder::with_id("ticker_profit", "行情条显示盈亏（中键切换）")
+                .checked(commands::ticker_profit::profit_visible(&db)).build(app)?;
+            app.manage(commands::ticker_profit::TickerProfitMenu(profit_menu.clone()));
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
             // Portable mode and Store builds both skip the "check update" tray
@@ -231,6 +243,7 @@ pub fn run() {
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .item(&toggle_ticker)
+                .item(&profit_menu)
                 .separator();
 
             #[cfg(not(feature = "store"))]
@@ -256,6 +269,12 @@ pub fn run() {
                     let db = db.clone();
                     move |app, event| {
                     match event.id().as_ref() {
+                        "ticker_profit" => {
+                            let visible = !commands::ticker_profit::profit_visible(&db);
+                            if let Err(e) = commands::ticker_profit::apply_profit_visibility(app, &db, visible, false) {
+                                log::warn!("[ticker] profit visibility failed: {e}");
+                            }
+                        }
                         "show" => {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
@@ -608,6 +627,10 @@ pub fn run() {
                 let _ = ticker.set_skip_taskbar(true);
                 apply_tool_window_style(&ticker);
 
+                let visible = commands::ticker_profit::profit_visible(&db);
+                let _ = ticker.set_size(tauri::LogicalSize::new(if visible { 260 } else { 186 }, 38));
+                let _ = commands::ticker_profit::apply_profit_visibility(app.handle(), &db, visible, true);
+
                 // Restore visibility from last session (config starts hidden).
                 // Default to visible unless the user explicitly hid the ticker.
                 let ticker_hidden = db
@@ -651,6 +674,9 @@ pub fn run() {
             commands::market::get_market_overview,
             commands::market::get_overview_interval,
             commands::window::show_main_window,
+            commands::ticker_profit::get_ticker_profit_visible,
+            commands::ticker_profit::toggle_ticker_profit,
+            commands::watchlist::set_watch_position,
             commands::updater::check_update,
             commands::updater::install_update,
             commands::updater::is_trading_session,

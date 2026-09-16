@@ -51,6 +51,19 @@ pub fn set_watch_ticker_enabled(
 }
 
 #[tauri::command]
+pub fn set_watch_position(
+    app_handle: tauri::AppHandle,
+    db: State<'_, Arc<Database>>,
+    id: i64,
+    cost_price: Option<f64>,
+    quantity: Option<f64>,
+) -> Result<(), String> {
+    db.set_watch_position(id, cost_price, quantity)?;
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 pub fn reorder_watch(
     app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,

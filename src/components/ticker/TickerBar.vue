@@ -7,6 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
+import { positionProfit, formatProfit } from '@/utils/position';
 import { formatPrice } from '@/utils/format';
 
 const quoteStore = useQuoteStore();
@@ -14,6 +15,36 @@ const watchlist = useWatchlistStore();
 const settings = useSettingsStore();
 const paused = ref(false);
 const page = ref(0);
+const profitVisible = ref(false);
+let unlistenProfit: UnlistenFn | null = null;
+let privacyVersion = 0;
+let profitQueue: Promise<void> = Promise.resolve();
+
+async function initializePrivacy() {
+  unlistenProfit?.();
+  unlistenProfit = await listen<boolean>('ticker-profit-changed', ({ payload }) => {
+    privacyVersion++;
+    profitVisible.value = payload;
+  });
+  const version = privacyVersion;
+  const visible = await invoke<boolean>('get_ticker_profit_visible');
+  if (version === privacyVersion) profitVisible.value = visible;
+}
+
+function toggleProfit() {
+  // Immediately remove amounts and tooltips; requests remain ordered for rapid clicks.
+  profitVisible.value = false;
+  profitQueue = profitQueue.then(async () => {
+    await invoke<boolean>('toggle_ticker_profit');
+    const version = privacyVersion;
+    const visible = await invoke<boolean>('get_ticker_profit_visible');
+    if (version === privacyVersion) profitVisible.value = visible;
+    openError.value = '';
+  }).catch((e) => {
+    profitVisible.value = false;
+    openError.value = `盈亏显示切换失败，请重试：${e}`;
+  });
+}
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let unlistenTheme: UnlistenFn | null = null;
 let unlistenDatasource: UnlistenFn | null = null;
@@ -24,6 +55,7 @@ const initFailed = ref(false);
 
 onMounted(async () => {
   try {
+    await initializePrivacy();
     await settings.fetchSettings();
     settings.applyTheme(settings.theme);
     await watchlist.fetchWatchlist();
@@ -39,6 +71,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  unlistenProfit?.();
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (unlistenTheme) unlistenTheme();
@@ -97,6 +130,7 @@ const tickerItems = computed(() =>
         code: item.code,
         price: q?.price ?? null,
         changePct: q?.change_pct ?? null,
+        profit: positionProfit(q?.price, item.cost_price, item.quantity),
       };
     })
 );
@@ -126,6 +160,7 @@ const visibleItems = computed(() => {
 });
 
 const retryHintVisible = ref(false);
+const openError = ref('');
 
 // ── Dragging ──
 // Uses Tauri's startDragging() API (Win32 DefWindowProc) for smooth
@@ -141,6 +176,7 @@ const retryHintVisible = ref(false);
 let isDragging = false;
 
 function onMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return;
   isDragging = false;
   if (initFailed.value) {
     return;
@@ -169,8 +205,8 @@ function onMouseDown(e: MouseEvent) {
   document.addEventListener('mouseup', onMouseUp);
 }
 
-async function handleClick() {
-  if (isDragging) return;
+async function handleClick(event: MouseEvent | KeyboardEvent) {
+  if (event instanceof MouseEvent && (event.button !== 0 || isDragging)) return;
   if (initFailed.value) {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
@@ -181,7 +217,8 @@ async function handleClick() {
     initFailed.value = false;
     retryHintVisible.value = true;
     try {
-      await settings.fetchSettings();
+      await initializePrivacy();
+    await settings.fetchSettings();
       settings.applyTheme(settings.theme);
       await watchlist.fetchWatchlist();
       await quoteStore.startListening();
@@ -204,12 +241,16 @@ async function handleClick() {
 <template>
   <div
     class="ticker-bar"
+    :class="{ 'profit-hidden': !profitVisible }"
+    :title="openError || undefined"
     role="button"
     tabindex="0"
     aria-label="显示主界面"
     @keydown.enter="handleClick"
     @keydown.space.prevent="handleClick"
     @mousedown="onMouseDown"
+    @mousedown.middle.prevent
+    @auxclick.middle.stop.prevent="toggleProfit"
     @mouseenter="paused = true"
     @mouseleave="paused = false"
     @click="handleClick"
@@ -239,6 +280,11 @@ async function handleClick() {
           class="ticker-change tabular-nums"
           :class="item.changePct >= 0 ? 'up' : 'down'"
         >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
+        <span v-else class="ticker-change ticker-muted">--</span>
+        <span v-if="profitVisible" class="ticker-profit tabular-nums"
+          :class="item.profit !== null && item.profit > 0 ? 'up' : item.profit !== null && item.profit < 0 ? 'down' : 'ticker-muted'"
+          :title="`持仓盈亏：${formatProfit(item.profit)}`"
+        >{{ formatProfit(item.profit, true) }}</span>
       </div>
     </template>
     <!-- 区分两种为空：诚然没有自选，与有自选但全部关闭了播报 -->
@@ -250,27 +296,33 @@ async function handleClick() {
 
 <style scoped>
 .ticker-bar {
+  position: relative;
+  box-sizing: border-box;
   width: 100%;
-  height: 100%;
+  height: 100vh;
   background: transparent;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   user-select: none;
   cursor: grab;
   overflow: hidden;
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-1) 6px;
   transition: background var(--transition-fast);
 }
 .ticker-bar:hover {
   background: rgba(255, 255, 255, 0.03);
 }
 .ticker-row {
-  display: flex;
+  height: 15px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 48px 70px;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
   line-height: 1.4;
 }
+.profit-hidden .ticker-row { grid-template-columns: minmax(0, 1fr) 46px 48px; }
 .ticker-name {
   flex: 1;
   min-width: 0;
@@ -281,12 +333,20 @@ async function handleClick() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.ticker-values {
+  display: contents;
+}
+.ticker-price, .ticker-na, .ticker-change, .ticker-profit {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ticker-price {
   flex-shrink: 0;
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 46px;
   text-align: right;
   color: var(--color-text-primary);
 }
@@ -295,36 +355,22 @@ async function handleClick() {
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 46px;
   text-align: right;
 }
 .ticker-change {
   flex-shrink: 0;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 48px;
   text-align: right;
 }
-.up { color: var(--color-up); }
-.down { color: var(--color-down); }
-.ticker-empty {
-  color: var(--color-text-tertiary);
+.ticker-profit {
+  flex-shrink: 0;
+  text-align: right;
   font-size: var(--text-xs);
-  text-align: center;
-  width: 100%;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.ticker-error-row {
-  justify-content: center;
-}
-.ticker-error-text {
-  color: var(--color-text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.05em;
-}
-.ticker-retry-hint {
-  color: var(--color-warning);
-  font-size: 9px;
-  opacity: 0.7;
-}
+.ticker-muted { color: var(--color-text-tertiary); }
 </style>

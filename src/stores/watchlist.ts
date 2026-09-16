@@ -75,5 +75,14 @@ export const useWatchlistStore = defineStore('watchlist', () => {
     }
   }
 
-  return { items, loading, error, fetchWatchlist, addStock, removeStock, setTickerEnabled };
+  async function setPosition(id: number, costPrice: number | null, quantity: number | null) {
+    await invoke('set_watch_position', { id, costPrice, quantity });
+    const item = items.value.find((i) => i.id === id);
+    if (item) {
+      item.cost_price = costPrice;
+      item.quantity = quantity;
+    }
+  }
+
+  return { items, loading, error, fetchWatchlist, addStock, removeStock, setTickerEnabled, setPosition };
 });

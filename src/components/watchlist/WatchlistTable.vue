@@ -8,6 +8,8 @@ import { useQuoteStore } from '@/stores/quote';
 import { useMarketStore } from '@/stores/market';
 import type { WatchItem } from '@/types';
 import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
+import PositionDialog from './PositionDialog.vue';
+import { positionProfit, formatProfit } from '@/utils/position';
 import AddStockDialog from './AddStockDialog.vue';
 import MarketTag from './MarketTag.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
@@ -17,6 +19,7 @@ const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const market = useMarketStore();
 const showAddDialog = ref(false);
+const positionItem = ref<WatchItem | null>(null);
 
 const indexDetailCoord = inject<{
   clearIndexDetail: () => void;
@@ -112,6 +115,7 @@ const iconDelete = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14,
 ]);
 
 const ctxOptions = [
+  { label: '设置成本 / 持仓', key: 'position' },
   { label: '置顶', key: 'top', icon: iconTop },
   { label: '上移', key: 'up', icon: iconUp },
   { label: '下移', key: 'down', icon: iconDown },
@@ -121,6 +125,7 @@ const ctxOptions = [
 
 function handleCtxSelect(key: string) {
   switch (key) {
+    case 'position': positionItem.value = ctxMenuItem.value; showCtxMenu.value = false; break;
     case 'top': handleMoveTop(); break;
     case 'up': handleMoveUp(); break;
     case 'down': handleMoveDown(); break;
@@ -233,6 +238,27 @@ const columns: DataTableColumns<WatchItem> = [
     }
   },
   {
+    title: '成本 / 股数', key: 'position', width: 120,
+    render(row) {
+      const text = row.cost_price == null ? '--' : `${row.cost_price} / ${row.quantity}`;
+      return h('span', { class: 'position-summary', title: text }, text);
+    }
+  },
+  {
+    title: '持仓盈亏', key: 'profit', width: 110,
+    sorter: (a: WatchItem, b: WatchItem) => {
+      const pa = positionProfit(quoteStore.getQuote(a.code, a.market)?.price, a.cost_price, a.quantity);
+      const pb = positionProfit(quoteStore.getQuote(b.code, b.market)?.price, b.cost_price, b.quantity);
+      if (pa === null) return pb === null ? 0 : -1;
+      if (pb === null) return 1;
+      return pa - pb;
+    },
+    render(row) {
+      const amount = positionProfit(quoteStore.getQuote(row.code, row.market)?.price, row.cost_price, row.quantity);
+      return h('span', { class: `pct-col ${amount !== null && amount > 0 ? 'up' : amount !== null && amount < 0 ? 'down' : ''}` }, formatProfit(amount));
+    }
+  },
+  {
     title: '行情条播报', key: 'ticker_enabled', width: 96,
     render(row) {
       // 包一层 div 并阻止冒泡：表格行的 onClick 会展开/收起详情面板，
@@ -321,6 +347,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
     />
 
     <AddStockDialog v-model:show="showAddDialog" />
+    <PositionDialog :item="positionItem" @close="positionItem = null" />
 
     <NDropdown
       :show="showCtxMenu"

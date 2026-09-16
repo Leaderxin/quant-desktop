@@ -18,6 +18,7 @@ impl Database {
         db.migrate()?;
         db.migrate_watchlist_codes()?;
         db.migrate_ticker_enabled()?;
+        db.migrate_position()?;
         db.init_defaults()?;
         Ok(db)
     }
@@ -127,6 +128,35 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_position(&self) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let columns = conn.prepare("PRAGMA table_info(watchlist)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<SqliteResult<Vec<_>>>()?;
+        for column in ["cost_price", "quantity"] {
+            if !columns.iter().any(|name| name == column) {
+                conn.execute(&format!("ALTER TABLE watchlist ADD COLUMN {column} REAL"), [])?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_watch_position(&self, id: i64, cost_price: Option<f64>, quantity: Option<f64>) -> Result<(), String> {
+        match (cost_price, quantity) {
+            (None, None) => {},
+            (Some(cost), Some(qty)) if cost.is_finite() && cost >= 0.0 && cost <= 1e9
+                && qty.is_finite() && qty >= 0.0 && qty <= 1e12 && qty.fract() == 0.0 => {},
+            _ => return Err("请填写有效的成本价及整数股数，或同时清空两项".into()),
+        }
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = conn.execute(
+            "UPDATE watchlist SET cost_price = ?1, quantity = ?2 WHERE id = ?3",
+            params![cost_price, quantity, id],
+        ).map_err(|e| e.to_string())?;
+        if changed == 0 { return Err("自选已不存在".into()); }
+        Ok(())
+    }
+
     /// Insert default settings values (default data source is Tencent)
     pub fn init_defaults(&self) -> SqliteResult<()> {
         let defaults = [
@@ -149,7 +179,7 @@ impl Database {
     pub fn get_watchlist(&self) -> SqliteResult<Vec<WatchItem>> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
-            "SELECT id, code, market, name, sort_order, added_at, ticker_enabled
+            "SELECT id, code, market, name, sort_order, added_at, ticker_enabled, cost_price, quantity
              FROM watchlist ORDER BY sort_order ASC, id ASC"
         )?;
         let rows = stmt.query_map([], |row| {
@@ -161,6 +191,8 @@ impl Database {
                 sort_order: row.get(4)?,
                 added_at: row.get(5)?,
                 ticker_enabled: row.get(6)?,
+                cost_price: row.get(7)?,
+                quantity: row.get(8)?,
             })
         })?;
         rows.collect()
@@ -409,6 +441,8 @@ pub struct WatchItem {
     pub added_at: String,
     /// 是否参与行情条（ticker 窗口）滚动播报。新行默认 true。
     pub ticker_enabled: bool,
+    pub cost_price: Option<f64>,
+    pub quantity: Option<f64>,
 }
 
 #[cfg(test)]
@@ -456,6 +490,38 @@ mod tests {
             VALUES ('sh600519', 'CN', '贵州茅台', 0, '2026-01-01T00:00:00');",
         )
         .unwrap();
+    }
+
+    #[test]
+    fn position_migrates_persists_and_clears() {
+        let dir = temp_app_dir("position");
+        seed_legacy_db(&dir);
+        let id = {
+            let db = Database::open(dir.clone()).unwrap();
+            let item = db.get_watchlist().unwrap().remove(0);
+            assert_eq!(item.cost_price, None);
+            assert_eq!(item.quantity, None);
+            db.set_watch_position(item.id, Some(12.345), Some(200.0)).unwrap();
+            item.id
+        };
+        let db = Database::open(dir.clone()).unwrap();
+        let item = db.get_watchlist().unwrap().remove(0);
+        assert_eq!(item.cost_price, Some(12.345));
+        assert_eq!(item.quantity, Some(200.0));
+        assert!(db.set_watch_position(id, Some(-1.0), Some(200.0)).is_err());
+        assert!(db.set_watch_position(id, Some(f64::NAN), Some(200.0)).is_err());
+        assert!(db.set_watch_position(id, Some(10.0), Some(1.5)).is_err());
+        assert!(db.set_watch_position(id, Some(10.0), None).is_err());
+        assert!(db.set_watch_position(-1, None, None).is_err());
+        assert_eq!(db.get_watchlist().unwrap()[0].cost_price, Some(12.345));
+        db.set_watch_position(id, None, None).unwrap();
+        drop(db);
+        let db = Database::open(dir.clone()).unwrap();
+        let item = db.get_watchlist().unwrap().remove(0);
+        assert_eq!(item.cost_price, None);
+        assert_eq!(item.quantity, None);
+        drop(db);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
