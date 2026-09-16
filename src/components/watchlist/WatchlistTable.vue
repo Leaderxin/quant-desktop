@@ -17,7 +17,6 @@ const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const market = useMarketStore();
 const showAddDialog = ref(false);
-
 const indexDetailCoord = inject<{
   clearIndexDetail: () => void;
   registerClearStockFn?: (fn: () => void) => void;
@@ -41,8 +40,8 @@ const selectedRow = ref<WatchItem | null>(null);
 function handleContextMenu(e: MouseEvent, row: WatchItem) {
   e.preventDefault();
   // Clamp menu position to viewport so it never renders off-screen
-  const menuW = 140; // approximate menu width
-  const menuH = 200; // approximate menu height
+  const menuW = 210; // approximate menu width
+  const menuH = 280; // approximate menu height
   ctxMenuX.value = Math.min(e.clientX, window.innerWidth - menuW);
   ctxMenuY.value = Math.min(e.clientY, window.innerHeight - menuH);
   ctxMenuItem.value = row;
@@ -130,13 +129,13 @@ function handleCtxSelect(key: string) {
 
 const columns: DataTableColumns<WatchItem> = [
   {
-    title: '代码', key: 'code', width: 72,
+    title: '代码', key: 'code', width: 72, fixed: 'left',
     render(row) {
       return h('span', { class: 'code-text' }, formatCode(row.code));
     }
   },
   {
-    title: '名称', key: 'name', width: 168,
+    title: '名称', key: 'name', width: 150, fixed: 'left',
     render(row) {
       return h('div', { class: 'name-cell' }, [
         h(MarketTag, { code: row.code, category: cnCategory(row.code) }),
@@ -233,31 +232,27 @@ const columns: DataTableColumns<WatchItem> = [
     }
   },
   {
-    title: '行情条播报', key: 'ticker_enabled', width: 96,
+    title: '操作', key: 'actions', width: 130, fixed: 'right',
     render(row) {
-      // 包一层 div 并阻止冒泡：表格行的 onClick 会展开/收起详情面板，
-      // 不拦截的话拨开关会连带触发。
-      return h(
-        'div',
-        {
-          class: 'ticker-toggle-cell',
-          onClick: (e: MouseEvent) => e.stopPropagation(),
-        },
-        [
+      return h('div', { class: 'watch-actions', onClick: (e: MouseEvent) => e.stopPropagation() }, [
+        h('label', { class: 'broadcast-action' }, [
+          h('span', '播报'),
           h(NSwitch, {
-            value: row.ticker_enabled,
-            size: 'small',
+            value: row.ticker_enabled, size: 'small',
             'aria-label': `${row.name} 行情条播报`,
-            'onUpdate:value': (v: boolean) => {
-              // store 内部已 try/catch 并回滚，不会 reject，这里无需再兜错。
-              void watchlist.setTickerEnabled(row.id, v);
-            },
+            'onUpdate:value': (v: boolean) => { void watchlist.setTickerEnabled(row.id, v); },
           }),
-        ],
-      );
+        ]),
+        h(NDropdown, {
+          trigger: 'click', options: ctxOptions,
+          onSelect: (key: string) => { ctxMenuItem.value = row; handleCtxSelect(key); },
+        }, { default: () => h(NButton, { size: 'tiny', quaternary: true, 'aria-label': `${row.name} 更多操作` }, { default: () => '更多' }) }),
+      ]);
     }
   },
 ];
+
+const tableWidth = columns.reduce((total, column) => total + Number(column.width ?? 0), 0);
 
 defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 </script>
@@ -292,6 +287,9 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
     <NDataTable
       v-else
       :columns="columns"
+      :scroll-x="tableWidth"
+      :scrollbar-props="{ trigger: 'none' }"
+      table-layout="fixed"
       :data="watchlist.items"
       :bordered="false"
       :single-line="true"
@@ -431,9 +429,12 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:deep(.ticker-toggle-cell) {
+:deep(.watch-actions), :deep(.broadcast-action) {
   display: flex;
   align-items: center;
   height: 100%;
+  gap: 6px;
+  white-space: nowrap;
 }
+:deep(.broadcast-action) { font-size: 11px; gap: 4px; }
 </style>
