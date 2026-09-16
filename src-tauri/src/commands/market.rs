@@ -60,3 +60,9 @@ pub async fn get_market_overview(
         concept,
     })
 }
+
+/// Fetch only breadth and retain errors so the ticker can mark stale values.
+#[tauri::command]
+pub async fn get_ticker_breadth(client: State<'_, Arc<MarketOverviewClient>>) -> Result<(u32, u32, u32), String> {
+    client.fetch_market_breadth().await.map_err(|e| e.to_string())
+}

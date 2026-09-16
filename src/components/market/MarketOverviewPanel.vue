@@ -1,10 +1,35 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useMarketStore, type MarketDirection } from '@/stores/market';
+import { invoke } from '@tauri-apps/api/core';
 import type { SectorItem } from '@/types';
 import { formatAmount } from '@/utils/format';
 
 const market = useMarketStore();
+const tickerMarket = ref(false);
+const tickerReady = ref(false);
+const tickerPending = ref(false);
+const tickerError = ref('');
+async function loadTickerMarket() {
+  try {
+    tickerMarket.value = await invoke<boolean>('get_ticker_market_visible');
+    tickerReady.value = true;
+    tickerError.value = '';
+  } catch { tickerError.value = '读取行情条设置失败'; }
+}
+async function toggleTickerMarket(event: Event) {
+  if (tickerPending.value) return;
+  tickerPending.value = true;
+  try {
+    await invoke('set_ticker_market_visible', { visible: !tickerMarket.value });
+    tickerMarket.value = !tickerMarket.value;
+    tickerError.value = '';
+  } catch (e) { tickerError.value = `切换失败：${e}`; }
+  finally {
+    (event.target as HTMLInputElement).checked = tickerMarket.value;
+    tickerPending.value = false;
+  }
+}
 
 const turnoverText = computed(() => formatAmount(market.overview?.turnover));
 const up = computed(() => market.overview?.up ?? 0);
@@ -48,6 +73,7 @@ function toggleExpand() {
 }
 
 onMounted(() => {
+  void loadTickerMarket();
   // 无论展开与否都要轮询:折叠时标题栏的成交额/涨跌家数依赖它。
   // startRefresh 内部会先立即拉一次,再按后端 market_clock 的时段间隔排期。
   void market.startRefresh();
@@ -60,6 +86,10 @@ onUnmounted(() => {
 
 <template>
   <section class="market-overview" aria-label="市场概览">
+    <div class="ticker-market-control">
+      <label><input type="checkbox" :checked="tickerMarket" :disabled="!tickerReady || tickerPending" @change="toggleTickerMarket" /> 行情条显示大盘</label>
+      <span v-if="tickerError" role="alert">{{ tickerError }} <button v-if="!tickerReady" type="button" @click="loadTickerMarket">重试</button></span>
+    </div>
     <!-- 收起态/标题栏 —— 始终显示 -->
     <button
       class="overview-header"
@@ -187,6 +217,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.ticker-market-control { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 3px 10px; font-size: 11px; color: var(--color-text-secondary); }
+.ticker-market-control label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.ticker-market-control [role="alert"] { color: var(--color-down); }
 .market-overview {
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border-0);

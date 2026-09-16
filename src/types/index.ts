@@ -62,6 +62,7 @@ export interface WatchItem {
   added_at: string;
   /** 是否参与行情条滚动播报。新增自选默认 true。 */
   ticker_enabled: boolean;
+  ticker_pinned: boolean;
 }
 
 export interface Level {

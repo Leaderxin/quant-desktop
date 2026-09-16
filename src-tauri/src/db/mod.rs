@@ -18,6 +18,7 @@ impl Database {
         db.migrate()?;
         db.migrate_watchlist_codes()?;
         db.migrate_ticker_enabled()?;
+        db.migrate_ticker_pinned()?;
         db.init_defaults()?;
         Ok(db)
     }
@@ -127,6 +128,24 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_ticker_pinned(&self) -> SqliteResult<()> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let columns = conn.prepare("PRAGMA table_info(watchlist)")?
+            .query_map([], |row| row.get::<_, String>(1))?.collect::<SqliteResult<Vec<_>>>()?;
+        if !columns.iter().any(|name| name == "ticker_pinned") {
+            conn.execute("ALTER TABLE watchlist ADD COLUMN ticker_pinned INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+        Ok(())
+    }
+
+    pub fn set_watch_ticker_pinned(&self, id: i64, pinned: bool) -> Result<(), String> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = conn.execute("UPDATE watchlist SET ticker_pinned = ?1 WHERE id = ?2", params![pinned, id])
+            .map_err(|e| e.to_string())?;
+        if changed == 0 { return Err("自选已不存在".into()); }
+        Ok(())
+    }
+
     /// Insert default settings values (default data source is Tencent)
     pub fn init_defaults(&self) -> SqliteResult<()> {
         let defaults = [
@@ -149,7 +168,7 @@ impl Database {
     pub fn get_watchlist(&self) -> SqliteResult<Vec<WatchItem>> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = conn.prepare(
-            "SELECT id, code, market, name, sort_order, added_at, ticker_enabled
+            "SELECT id, code, market, name, sort_order, added_at, ticker_enabled, ticker_pinned
              FROM watchlist ORDER BY sort_order ASC, id ASC"
         )?;
         let rows = stmt.query_map([], |row| {
@@ -161,6 +180,7 @@ impl Database {
                 sort_order: row.get(4)?,
                 added_at: row.get(5)?,
                 ticker_enabled: row.get(6)?,
+                ticker_pinned: row.get(7)?,
             })
         })?;
         rows.collect()
@@ -409,6 +429,7 @@ pub struct WatchItem {
     pub added_at: String,
     /// 是否参与行情条（ticker 窗口）滚动播报。新行默认 true。
     pub ticker_enabled: bool,
+    pub ticker_pinned: bool,
 }
 
 #[cfg(test)]
@@ -456,6 +477,29 @@ mod tests {
             VALUES ('sh600519', 'CN', '贵州茅台', 0, '2026-01-01T00:00:00');",
         )
         .unwrap();
+    }
+
+    #[test]
+    fn ticker_pin_migrates_and_survives_disable_reopen() {
+        let dir = temp_app_dir("pin");
+        seed_legacy_db(&dir);
+        let db = Database::open(dir.clone()).unwrap();
+        let item = db.get_watchlist().unwrap().remove(0);
+        assert!(!item.ticker_pinned);
+        db.set_watch_ticker_pinned(item.id, true).unwrap();
+        db.set_watch_ticker_enabled(item.id, false).unwrap();
+        drop(db);
+        let db = Database::open(dir.clone()).unwrap();
+        let item = db.get_watchlist().unwrap().remove(0);
+        assert!(item.ticker_pinned);
+        assert!(!item.ticker_enabled);
+        db.set_watch_ticker_enabled(item.id, true).unwrap();
+        assert!(db.get_watchlist().unwrap()[0].ticker_pinned);
+        db.set_watch_ticker_pinned(item.id, false).unwrap();
+        assert!(!db.get_watchlist().unwrap()[0].ticker_pinned);
+        assert!(db.set_watch_ticker_pinned(-1, true).is_err());
+        drop(db);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

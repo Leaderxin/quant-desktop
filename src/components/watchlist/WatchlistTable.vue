@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, h, inject, onMounted } from 'vue';
-import { NButton, NDataTable, NDropdown, NSwitch } from 'naive-ui';
+import { ref, h, inject, onMounted, computed } from 'vue';
+import { NButton, NDataTable, NDropdown, NSwitch, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import { invoke } from '@tauri-apps/api/core';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -17,6 +17,18 @@ const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const market = useMarketStore();
 const showAddDialog = ref(false);
+
+const message = useMessage();
+const pinPending = ref(new Set<number>());
+
+async function togglePinned(row: WatchItem) {
+  if (pinPending.value.has(row.id)) return;
+  pinPending.value.add(row.id);
+  try {
+    await watchlist.setTickerPinned(row.id, !row.ticker_pinned);
+  } catch (e) { message.error(`固定关注设置失败：${e}`); }
+  finally { pinPending.value.delete(row.id); }
+}
 
 const indexDetailCoord = inject<{
   clearIndexDetail: () => void;
@@ -119,8 +131,17 @@ const ctxOptions = [
   { label: '删除', key: 'delete', icon: iconDelete },
 ];
 
+function optionsFor(row: WatchItem | null) {
+  return [
+    { label: row?.ticker_pinned ? '取消行情条固定' : '固定在行情条顶部', key: 'ticker-pin', disabled: !row || pinPending.value.has(row.id) },
+    ...ctxOptions,
+  ];
+}
+const contextOptions = computed(() => optionsFor(ctxMenuItem.value));
+
 function handleCtxSelect(key: string) {
   switch (key) {
+    case 'ticker-pin': if (ctxMenuItem.value) void togglePinned(ctxMenuItem.value); showCtxMenu.value = false; break;
     case 'top': handleMoveTop(); break;
     case 'up': handleMoveUp(); break;
     case 'down': handleMoveDown(); break;
@@ -250,7 +271,7 @@ const columns: DataTableColumns<WatchItem> = [
             'aria-label': `${row.name} 行情条播报`,
             'onUpdate:value': (v: boolean) => {
               // store 内部已 try/catch 并回滚，不会 reject，这里无需再兜错。
-              void watchlist.setTickerEnabled(row.id, v);
+              void watchlist.setTickerEnabled(row.id, v).catch((e) => message.error(`播报设置失败：${e}`));
             },
           }),
         ],
@@ -326,7 +347,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
       :show="showCtxMenu"
       :x="ctxMenuX"
       :y="ctxMenuY"
-      :options="ctxOptions"
+      :options="contextOptions"
       placement="bottom-start"
       trigger="manual"
       @select="handleCtxSelect"

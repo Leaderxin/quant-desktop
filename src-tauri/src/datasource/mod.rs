@@ -38,7 +38,7 @@ pub const INDEX_CODES: &str =
     "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
 
 /// Ticker window default dimensions
-pub const TICKER_WIDTH: u32 = 230;
+pub const TICKER_WIDTH: u32 = 186;
 pub const TICKER_HEIGHT: u32 = 38;
 
 // ── Data Normalization ──

@@ -72,8 +72,15 @@ export const useWatchlistStore = defineStore('watchlist', () => {
       // 复位以免升级为全局错误态。失败详情已由 fetchWatchlist 内部记日志。
       error.value = null;
       console.error('[watchlist] setTickerEnabled failed:', e);
+      throw e;
     }
   }
 
-  return { items, loading, error, fetchWatchlist, addStock, removeStock, setTickerEnabled };
+  async function setTickerPinned(id: number, pinned: boolean) {
+    await invoke('set_watch_ticker_pinned', { id, pinned });
+    const item = items.value.find((i) => i.id === id);
+    if (item) item.ticker_pinned = pinned;
+  }
+
+  return { items, loading, error, fetchWatchlist, addStock, removeStock, setTickerEnabled, setTickerPinned };
 });

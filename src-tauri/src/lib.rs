@@ -42,6 +42,7 @@ mod windows_util {
     const SWP_FRAMECHANGED: u32 = 0x0020;
 
     extern "system" {
+        fn GetAsyncKeyState(vKey: i32) -> i16;
         fn GetWindowLongPtrW(hwnd: HWND, nIndex: i32) -> isize;
         fn SetWindowLongPtrW(hwnd: HWND, nIndex: i32, dwNewLong: isize) -> isize;
         fn SetWindowPos(
@@ -53,6 +54,19 @@ mod windows_util {
             cy: i32,
             uFlags: u32,
         ) -> i32;
+    }
+
+    pub fn primary_button_down() -> bool {
+        unsafe { GetAsyncKeyState(0x01) < 0 }
+    }
+
+    pub unsafe fn set_bounds(hwnd: isize, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
+        // Move and resize atomically. cx/cy include the invisible Windows frame.
+        if SetWindowPos(hwnd as HWND, std::ptr::null_mut(), x, y, width as i32, height as i32,
+            SWP_NOACTIVATE | SWP_NOZORDER) == 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(())
     }
 
     /// Set WS_EX_TOOLWINDOW on a window identified by its raw HWND.
@@ -223,6 +237,7 @@ pub fn run() {
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
+            let reset_ticker = MenuItemBuilder::with_id("reset_ticker", "重置行情条位置").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
             // Portable mode and Store builds both skip the "check update" tray
@@ -231,6 +246,7 @@ pub fn run() {
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .item(&toggle_ticker)
+                .item(&reset_ticker)
                 .separator();
 
             #[cfg(not(feature = "store"))]
@@ -273,38 +289,8 @@ pub fn run() {
                                     // Re-hide from taskbar after show
                                     let _ = window.set_skip_taskbar(true);
                                     apply_tool_window_style(&window);
-                                    // Try saved position first, fall back to bottom-right
-                                    let mon = window.primary_monitor().ok().flatten();
-                                    let (mon_w, mon_h) = mon
-                                        .as_ref()
-                                        .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
-                                        .unwrap_or((1920, 1080));
-                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                                        crate::datasource::TICKER_WIDTH,
-                                        crate::datasource::TICKER_HEIGHT,
-                                    ));
-                                    let tw = win_size.width as i32;
-                                    let th = win_size.height as i32;
-
-                                    let mut restored = false;
-                                    if let Ok(Some(x)) = db.get_setting("ticker_x") {
-                                        if let Ok(Some(y)) = db.get_setting("ticker_y") {
-                                            if let (Ok(sx), Ok(sy)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                                                if sx + tw > 0 && sy + th > 0 && sx < mon_w && sy < mon_h {
-                                                    let _ = window.set_position(
-                                                        tauri::PhysicalPosition::new(sx, sy),
-                                                    );
-                                                    restored = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if !restored {
-                                        let x = (mon_w).saturating_sub(tw + 10);
-                                        let y = (mon_h).saturating_sub(th + 60);
-                                        let _ = window.set_position(
-                                            tauri::PhysicalPosition::new(x, y),
-                                        );
+                                    if let Err(e) = commands::window::restore_ticker_position(&window, &db, false) {
+                                        log::warn!("[ticker] restore position failed: {e}");
                                     }
                                 }
                                 // Persist the ticker's visibility so it restores the same
@@ -313,6 +299,15 @@ pub fn run() {
                                     "ticker_visible",
                                     if was_visible { "0" } else { "1" },
                                 );
+                            }
+                        }
+                        "reset_ticker" => {
+                            if let Some(window) = app.get_webview_window("ticker") {
+                                let _ = window.show();
+                                let _ = commands::window::restore_ticker_position(&window, &db, true);
+                                let _ = window.set_skip_taskbar(true);
+                                apply_tool_window_style(&window);
+                                let _ = db.set_setting("ticker_visible", "1");
                             }
                         }
                         #[cfg(not(feature = "store"))]
@@ -528,85 +523,44 @@ pub fn run() {
                 let _ = main.set_focus();
             }
 
-            // Ticker window: save position on move (clamped), restore on startup
+            // Keep all ticker geometry in outer physical pixels and usable monitor bounds.
             if let Some(ticker) = app.get_webview_window("ticker") {
-                let _ = ticker.set_always_on_top(true);
+                apply_tool_window_style(&ticker);
+                let _ = ticker.set_skip_taskbar(true);
+                let rows = db.get_setting("ticker_rows").ok().flatten()
+                    .and_then(|v| v.parse::<u32>().ok()).unwrap_or(2);
+                let _ = ticker.set_size(tauri::LogicalSize::new(186, commands::window::ticker_height(rows) + if commands::window::market_visible(&db) { 15 } else { 0 }));
+                let _ = commands::window::resize_ticker(&ticker, rows, commands::window::ResizeEdge::Bottom);
+                let _ = commands::window::restore_ticker_position(&ticker, &db, false);
+                let pinned_count = db.get_watchlist()?.iter().filter(|i| i.ticker_enabled && i.ticker_pinned).count();
+                if let Err(e) = commands::window::reserve_ticker_rows(app.handle(), &db, pinned_count) {
+                    log::warn!("[ticker] restore pinned rows: {e}");
+                }
 
-                // Capture monitor bounds and ticker size for clamping on move
-                let mon = ticker.primary_monitor().ok().flatten();
-                let (mon_w, mon_h) = mon
-                    .as_ref()
-                    .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
-                    .unwrap_or((1920, 1080));
-                let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                    crate::datasource::TICKER_WIDTH,
-                    crate::datasource::TICKER_HEIGHT,
-                ));
-                let tw = ticker_size.width as i32;
-                let th = ticker_size.height as i32;
-
-                // Save ticker position on move.  Only persist if enough of the
-                // ticker is actually visible — if the user drags it way off
-                // screen, we skip saving so the next launch falls back to the
-                // default bottom-right position.
                 let db_clone = db.clone();
-                let _ = ticker.on_window_event(move |event| {
+                ticker.on_window_event(move |event| {
                     if let tauri::WindowEvent::Moved(pos) = event {
-                        // How much of the ticker is inside the monitor bounds?
-                        let visible_left = pos.x.max(0);
-                        let visible_right = (pos.x + tw).min(mon_w);
-                        let visible_w = (visible_right - visible_left).max(0);
-                        let visible_top = pos.y.max(0);
-                        let visible_bottom = (pos.y + th).min(mon_h);
-                        let visible_h = (visible_bottom - visible_top).max(0);
-
-                        // Require at least 50×20 px visible — otherwise it's
-                        // too far off-screen to be easily found.
-                        if visible_w < 50 || visible_h < 20 {
-                            return;
-                        }
-
-                        let clamped_x = pos.x.max(0).min(mon_w - tw);
-                        let clamped_y = pos.y.max(0).min(mon_h - th);
-                        if let Err(e) = db_clone.set_setting("ticker_x", &clamped_x.to_string()) {
-                            log::warn!("Failed to save ticker_x: {}", e);
-                        }
-                        if let Err(e) = db_clone.set_setting("ticker_y", &clamped_y.to_string()) {
-                            log::warn!("Failed to save ticker_y: {}", e);
-                        }
+                        // Preserve secondary monitors and negative monitor coordinates.
+                        let _ = db_clone.set_setting("ticker_x", &pos.x.to_string());
+                        let _ = db_clone.set_setting("ticker_y", &pos.y.to_string());
                     }
                 });
 
-                // Restore saved position, fall back to bottom-right
-                let (mut saved_x, mut saved_y) = (0i32, 0i32);
-                let mut has_pos = false;
-                if let Ok(Some(x)) = db.get_setting("ticker_x") {
-                    if let Ok(Some(y)) = db.get_setting("ticker_y") {
-                        if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                            saved_x = x_val;
-                            saved_y = y_val;
-                            has_pos = true;
+                // Taskbar/work-area changes do not always produce a window-moved event.
+                // Repair after mouse release, never fight an active drag or resize.
+                let recovery_window = ticker.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+                    loop {
+                        interval.tick().await;
+                        #[cfg(target_os = "windows")]
+                        if windows_util::primary_button_down() { continue; }
+                        if !recovery_window.is_visible().unwrap_or(false) { continue; }
+                        if let Err(e) = commands::window::ensure_ticker_visible(&recovery_window) {
+                            log::warn!("[ticker] visibility recovery failed: {e}");
                         }
                     }
-                }
-                if has_pos
-                    && saved_x + tw > 0
-                    && saved_y + th > 0
-                    && saved_x < mon_w
-                    && saved_y < mon_h
-                {
-                    let _ = ticker.set_position(tauri::PhysicalPosition::new(saved_x, saved_y));
-                } else {
-                    let x = (mon_w).saturating_sub(tw + 10);
-                    let y = (mon_h).saturating_sub(th + 60);
-                    let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
-                }
-
-                // Remove ticker from taskbar at both levels:
-                //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)
-                //   apply_tool_window → WS_EX_TOOLWINDOW (survives Explorer restart)
-                let _ = ticker.set_skip_taskbar(true);
-                apply_tool_window_style(&ticker);
+                });
 
                 // Restore visibility from last session (config starts hidden).
                 // Default to visible unless the user explicitly hid the ticker.
@@ -635,6 +589,7 @@ pub fn run() {
             commands::watchlist::add_watch,
             commands::watchlist::remove_watch,
             commands::watchlist::set_watch_ticker_enabled,
+            commands::watchlist::set_watch_ticker_pinned,
             commands::watchlist::reorder_watch,
             commands::watchlist::move_watch_top,
             commands::watchlist::move_watch_up,
@@ -651,6 +606,10 @@ pub fn run() {
             commands::market::get_market_overview,
             commands::market::get_overview_interval,
             commands::window::show_main_window,
+            commands::window::set_ticker_rows,
+            commands::window::get_ticker_market_visible,
+            commands::window::set_ticker_market_visible,
+            commands::market::get_ticker_breadth,
             commands::updater::check_update,
             commands::updater::install_update,
             commands::updater::is_trading_session,

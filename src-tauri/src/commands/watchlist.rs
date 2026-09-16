@@ -42,10 +42,28 @@ pub fn set_watch_ticker_enabled(
     id: i64,
     enabled: bool,
 ) -> Result<(), String> {
+    if enabled {
+        let items = db.get_watchlist().map_err(|e| e.to_string())?;
+        let count = items.iter().filter(|i| i.ticker_pinned && (i.ticker_enabled || i.id == id)).count();
+        crate::commands::window::reserve_ticker_rows(&app_handle, &db, count)?;
+    }
     db.set_watch_ticker_enabled(id, enabled)
         .map_err(|e| e.to_string())?;
     // 复用已有的 watchlist-changed 事件：行情条窗口正是靠它刷新列表，
     // 因此开关一拨即在行情条生效，无需新增事件。
+    let _ = app_handle.emit("watchlist-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_watch_ticker_pinned(app_handle: tauri::AppHandle, db: State<'_, Arc<Database>>, id: i64, pinned: bool) -> Result<(), String> {
+    let items = db.get_watchlist().map_err(|e| e.to_string())?;
+    let item = items.iter().find(|i| i.id == id).ok_or("自选已不存在")?;
+    if pinned && item.ticker_enabled {
+        let count = items.iter().filter(|i| i.ticker_enabled && (i.ticker_pinned || i.id == id)).count();
+        crate::commands::window::reserve_ticker_rows(&app_handle, &db, count)?;
+    }
+    db.set_watch_ticker_pinned(id, pinned)?;
     let _ = app_handle.emit("watchlist-changed", ());
     Ok(())
 }
