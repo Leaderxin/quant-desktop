@@ -100,6 +100,34 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
 #[derive(Debug, Clone, Copy)]
 pub struct PortableMode(pub bool);
 
+/// Build the logger set for `app_dir`: terminal output plus a log file in the
+/// data directory.
+///
+/// Neither the log file nor the data directory is essential to the app running,
+/// so both failures degrade to a terminal-only logger instead of panicking. A
+/// Store build writes through MSIX file-system virtualization, and a panic
+/// during `setup` is a silent crash — no window, and no log explaining why.
+fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogger>> {
+    let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![TermLogger::new(
+        LevelFilter::Info,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )];
+
+    match std::fs::create_dir_all(app_dir)
+        .and_then(|()| File::create(app_dir.join("quant-desktop.log")))
+    {
+        Ok(log_file) => {
+            loggers.push(WriteLogger::new(LevelFilter::Info, Config::default(), log_file));
+        }
+        // Not `log::warn!` — the logger is what we are still building.
+        Err(e) => eprintln!("QuantDesktop: file logging disabled, {app_dir:?} unusable: {e}"),
+    }
+
+    loggers
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -146,20 +174,11 @@ pub fn run() {
             #[cfg(not(feature = "store"))]
             detect_and_set_proxy();
 
-            // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file)
-            std::fs::create_dir_all(&app_dir).expect("Failed to create app data directory");
-            let log_file = File::create(app_dir.join("quant-desktop.log"))
-                .expect("Failed to create log file");
-            CombinedLogger::init(vec![
-                TermLogger::new(
-                    LevelFilter::Info,
-                    Config::default(),
-                    TerminalMode::Mixed,
-                    ColorChoice::Auto,
-                ),
-                WriteLogger::new(LevelFilter::Info, Config::default(), log_file),
-            ])
-            .expect("Failed to initialize logger");
+            // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file).
+            // Every step degrades instead of panicking; see build_loggers.
+            if let Err(e) = CombinedLogger::init(build_loggers(&app_dir)) {
+                eprintln!("QuantDesktop: logger already initialized: {e}");
+            }
             log::info!("QuantDesktop v{} starting", env!("CARGO_PKG_VERSION"));
             log::info!(
                 "Data directory: {:?} (portable: {})",
@@ -699,4 +718,52 @@ fn detect_and_set_proxy() {
         }
     }
     log::info!("[proxy] No local proxy detected");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+
+    /// Unique temp path; no `tempfile` dependency, matching db/mod.rs.
+    fn temp_path(tag: &str) -> PathBuf {
+        let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "qd-logger-{}-{}-{}-{}",
+            tag,
+            std::process::id(),
+            nanos,
+            seq
+        ))
+    }
+
+    #[test]
+    fn writes_to_log_file_when_app_dir_is_writable() {
+        let dir = temp_path("ok");
+        let loggers = build_loggers(&dir);
+        assert_eq!(loggers.len(), 2, "a writable app dir gets file + terminal loggers");
+        assert!(
+            dir.join("quant-desktop.log").exists(),
+            "the log file should have been created"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// 建目录或建日志文件失败时必须降级为仅 stderr，而不是 panic：store 构建
+    /// 经 MSIX 文件系统虚拟化写盘，启动期 panic 是没有窗口、也没有日志可查的静默崩溃。
+    #[test]
+    fn falls_back_to_terminal_logger_when_app_dir_is_unwritable() {
+        // A path whose parent is a regular file can never be created as a directory.
+        let blocker = temp_path("blocked");
+        std::fs::write(&blocker, b"not a directory").unwrap();
+        let loggers = build_loggers(&blocker.join("data"));
+        assert_eq!(loggers.len(), 1, "an unusable app dir must degrade, not panic");
+        std::fs::remove_file(&blocker).ok();
+    }
 }
