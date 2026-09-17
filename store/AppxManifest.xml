@@ -9,9 +9,8 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
-  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap uap5 desktop6 rescap">
+  IgnorableNamespaces="uap uap5 rescap">
 
   <Identity
     Name="__IDENTITY_NAME__"
@@ -22,12 +21,18 @@
     <DisplayName>QuantDesktop</DisplayName>
     <PublisherDisplayName>Leaderxin</PublisherDisplayName>
     <Logo>StoreLogo.png</Logo>
-    <!-- 关闭 MSIX 写时复制虚拟化（需 runFullTrust，Win10 2004 / 19041+ 支持，与
-         MinVersion 一致）：数据库/日志直接写真实 %APPDATA%\quant-desktop，与
-         NSIS/便携版共享同一份数据，且卸载商店包不会删除用户数据。
-         注意取值是枚举 enabled/disabled，不是布尔值。 -->
-    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
-    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+    <!-- 有意不声明 desktop6:FileSystemWriteVirtualization / RegistryWriteVirtualization。
+         它们能让数据库/日志写进真实的 %APPDATA%\quant-desktop，与 NSIS/便携版共享
+         同一份数据、且卸载商店包不删用户数据；但 schema 强制要求配套声明
+         unvirtualizedResources 受限能力，而该能力在 2026-09 的提交中被商店驳回
+         （政策 10.6.3），理由是低权限替代方案（默认虚拟化）已经足够。微软文档本身
+         也不推荐该属性：它整体关闭虚拟化，并非细粒度手段，通常超出应用实际需求
+         （Windows 11 的细粒度写法同样需要该能力，绕不开审批）。
+         维持默认虚拟化后，OS 在文件系统层拦截写入并重定向到包私有目录
+         （%LOCALAPPDATA%\Packages\「包族名」\LocalCache\Roaming\...），app 视角仍是
+         %APPDATA%\quant-desktop，Rust 侧无需任何改动。代价：商店版与 NSIS 版数据
+         独立、卸载商店包会删数据 —— 属商店应用的正常预期行为；跨版本搬运自选走
+         JSON/CSV 导入导出。 -->
   </Properties>
 
   <Dependencies>
@@ -75,8 +80,5 @@
   <Capabilities>
     <Capability Name="internetClient" />
     <rescap:Capability Name="runFullTrust" />
-    <!-- desktop6:FileSystemWriteVirtualization / RegistryWriteVirtualization
-         的配套能力（schema 强制要求），两者需同时声明。 -->
-    <rescap:Capability Name="unvirtualizedResources" />
   </Capabilities>
 </Package>
