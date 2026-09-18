@@ -26,6 +26,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 构建机的 glibc 决定产物的 glibc 下限：在 24.04（glibc 2.39）上构建出的二进制
+      # 无法在 22.04（glibc 2.35）上启动。这里把构建机版本钉死并在构建前校验，防止
+      # runner 标签再次漂移（ubuntu-latest 曾指向 22.04，后被静默迁移到 24.04）。
+      # 放在最前面是为了在 20 分钟的构建开始之前就失败。详见 issue #15。
+      - name: Assert Linux build baseline
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          . /etc/os-release
+          echo "Build host: $PRETTY_NAME / glibc $(ldd --version | head -1 | awk '{print $NF}')"
+          if [ "$VERSION_ID" != "22.04" ]; then
+            echo "::error::Linux 构建机应为 Ubuntu 22.04，实际为 $VERSION_ID。产物的 glibc 下限跟随构建机，在更新的发行版上构建会让 Ubuntu 22.04 用户无法启动。"
+            exit 1
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
