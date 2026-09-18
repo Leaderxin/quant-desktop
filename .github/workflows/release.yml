@@ -18,7 +18,7 @@ jobs:
             args: --target x86_64-pc-windows-msvc
           - platform: macos-latest
             args: --target universal-apple-darwin
-          - platform: ubuntu-latest
+          - platform: ubuntu-22.04
             args: --target x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.platform }}
@@ -52,7 +52,7 @@ jobs:
           key: tauri-tools-${{ matrix.platform }}
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-latest'
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
