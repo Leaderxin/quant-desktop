@@ -30,3 +30,6 @@ dist-ssr
 
 # Git worktrees
 .worktrees/
+
+# Python bytecode cache (ui-ux-pro-max skill scripts)
+__pycache__/
