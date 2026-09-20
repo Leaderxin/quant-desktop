@@ -298,10 +298,15 @@ pub fn run() {
                                         .as_ref()
                                         .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
                                         .unwrap_or((1920, 1080));
-                                    let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                                        crate::datasource::TICKER_WIDTH,
-                                        crate::datasource::TICKER_HEIGHT,
-                                    ));
+                                    let win_size = window.outer_size().unwrap_or_else(|_| {
+                                        // TICKER_* 是逻辑像素，折算物理像素需乘窗口
+                                        // 缩放系数，否则 DPI ≠ 100% 时兜底几何偏小
+                                        let scale = window.scale_factor().unwrap_or(1.0);
+                                        tauri::PhysicalSize::new(
+                                            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
+                                            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
+                                        )
+                                    });
                                     let tw = win_size.width as i32;
                                     let th = win_size.height as i32;
 
@@ -557,10 +562,15 @@ pub fn run() {
                     .as_ref()
                     .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
                     .unwrap_or((1920, 1080));
-                let ticker_size = ticker.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                    crate::datasource::TICKER_WIDTH,
-                    crate::datasource::TICKER_HEIGHT,
-                ));
+                let ticker_size = ticker.outer_size().unwrap_or_else(|_| {
+                    // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
+                    // 否则 DPI ≠ 100% 时兜底几何偏小
+                    let scale = ticker.scale_factor().unwrap_or(1.0);
+                    tauri::PhysicalSize::new(
+                        (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
+                        (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
+                    )
+                });
                 let tw = ticker_size.width as i32;
                 let th = ticker_size.height as i32;
 
