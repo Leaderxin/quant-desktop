@@ -39,6 +39,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopMouseTracking?.();
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (unlistenTheme) unlistenTheme();
@@ -131,16 +132,20 @@ const retryHintVisible = ref(false);
 // Uses Tauri's startDragging() API (Win32 DefWindowProc) for smooth
 // OS-level window dragging on both Windows 10 and 11.
 // Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
-// Click vs drag detection via mousemove threshold:
-// - Click (mouse moves <3px): @click fires → opens main window
-// - Drag (mouse moves ≥3px): startDragging() triggers OS drag → @click does NOT fire
+// Click vs drag detection tolerates small hand movements (6 CSS pixels).
+// Native dragging may consume mouseup; clean up on blur and before each press.
+// - Drag: startDragging() triggers OS drag → @click does NOT fire
 //   because startDragging() enters a Win32 modal drag loop that consumes mouseup.
 //   Document-level mousemove listener ensures we catch fast mouse movements
 //   that leave the ticker bar element.
 
 let isDragging = false;
+let stopMouseTracking: (() => void) | null = null;
+const openError = ref('');
 
 function onMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return;
+  stopMouseTracking?.();
   isDragging = false;
   if (initFailed.value) {
     return;
@@ -149,28 +154,33 @@ function onMouseDown(e: MouseEvent) {
   const startY = e.clientY;
 
   const onMouseMove = (ev: MouseEvent) => {
+    if (!(ev.buttons & 1)) { cleanup(); return; }
     if (isDragging) return;
-    if (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3) {
+    if (Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6) {
       isDragging = true;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+      cleanup();
       getCurrentWindow().startDragging().catch((err) => {
+        isDragging = false;
         console.error('[TickerBar] startDragging failed:', err);
       });
     }
   };
 
-  const onMouseUp = () => {
+  const cleanup = () => {
     document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mouseup', cleanup);
+    window.removeEventListener('blur', cleanup);
+    stopMouseTracking = null;
   };
 
+  stopMouseTracking = cleanup;
   document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('mouseup', cleanup);
+  window.addEventListener('blur', cleanup);
 }
 
-async function handleClick() {
-  if (isDragging) return;
+async function handleClick(event: MouseEvent | KeyboardEvent) {
+  if (event instanceof MouseEvent && (event.button !== 0 || isDragging)) return;
   if (initFailed.value) {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
@@ -197,7 +207,13 @@ async function handleClick() {
     }
     return;
   }
-  await invoke('show_main_window').catch((e) => { console.error('[TickerBar] show_main_window failed:', e); });
+  try {
+    await invoke('show_main_window');
+    openError.value = '';
+  } catch (e) {
+    openError.value = `打开主窗口失败，请重试：${e}`;
+    console.error('[TickerBar] show_main_window failed:', e);
+  }
 }
 </script>
 
@@ -207,6 +223,7 @@ async function handleClick() {
     role="button"
     tabindex="0"
     aria-label="显示主界面"
+    :title="openError || undefined"
     @keydown.enter="handleClick"
     @keydown.space.prevent="handleClick"
     @mousedown="onMouseDown"
