@@ -37,9 +37,19 @@ pub fn shared_client() -> &'static Client {
 pub const INDEX_CODES: &str =
     "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
 
-/// Ticker window default dimensions
+/// Ticker window default dimensions (logical pixels — keep in sync with
+/// `tauri.conf.json` → `app.windows[ticker]` and `WIDTH` in
+/// `useTickerWindowHeight.ts`).
+///
+/// The ticker's height is only a first-paint fallback: the frontend measures the
+/// real content height and calls `setSize`, so DPI scaling changes never leave
+/// the content clipped (see `useTickerWindowHeight.ts`).
+///
+/// Consumers needing *physical* pixels (the `outer_size()` fallbacks in
+/// `lib.rs`) must multiply by the window's `scale_factor()` — the raw value
+/// undersizes the window at DPI ≠ 100%.
 pub const TICKER_WIDTH: u32 = 230;
-pub const TICKER_HEIGHT: u32 = 38;
+pub const TICKER_HEIGHT: u32 = 40;
 
 // ── Data Normalization ──
 

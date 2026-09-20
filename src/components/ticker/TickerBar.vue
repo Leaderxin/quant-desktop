@@ -7,11 +7,20 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useQuoteStore } from '@/stores/quote';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
+import { useTickerWindowHeight } from '@/composables/useTickerWindowHeight';
 import { formatPrice } from '@/utils/format';
 
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
 const settings = useSettingsStore();
+
+// 行情条窗口高度跟着内容走（见 composable 注释），避免系统缩放切换后高度不匹配。
+// 初始加载完成（或失败）前内容是「暂无自选」占位行，量它会把窗口先压扁再
+// 弹回（启动时 40→24→39 的跳变）；ready 之前 composable 不动窗口。
+const tickerContent = ref<HTMLElement | null>(null);
+const heightReady = ref(false);
+useTickerWindowHeight(tickerContent, { ready: heightReady });
+
 const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
@@ -32,8 +41,11 @@ onMounted(async () => {
     startThemeListen();
     startDatasourceListen();
     startWatchlistListener();
+    heightReady.value = true;
   } catch (e) {
     initFailed.value = true;
+    // 失败态（错误行）也是终态，按它设窗口高度没问题
+    heightReady.value = true;
     console.error('[TickerBar] init failed:', e);
   }
 });
@@ -180,6 +192,8 @@ async function handleClick() {
 
     initFailed.value = false;
     retryHintVisible.value = true;
+    // 「重连中...」是过渡态，重连期间别按它改窗口高度
+    heightReady.value = false;
     try {
       await settings.fetchSettings();
       settings.applyTheme(settings.theme);
@@ -190,9 +204,11 @@ async function handleClick() {
       startDatasourceListen();
       startWatchlistListener();
       retryHintVisible.value = false;
+      heightReady.value = true;
     } catch (e) {
       initFailed.value = true;
       retryHintVisible.value = false;
+      heightReady.value = true;
       console.error('[TickerBar] retry failed:', e);
     }
     return;
@@ -214,36 +230,38 @@ async function handleClick() {
     @mouseleave="paused = false"
     @click="handleClick"
   >
-    <template v-if="initFailed">
-      <div class="ticker-row ticker-error-row">
-        <span class="ticker-error-text" :title="'点击重试'">QuantDesktop</span>
-        <span class="ticker-retry-hint">· 点击重试</span>
+    <div ref="tickerContent" class="ticker-content">
+      <template v-if="initFailed">
+        <div class="ticker-row ticker-error-row">
+          <span class="ticker-error-text" :title="'点击重试'">QuantDesktop</span>
+          <span class="ticker-retry-hint">· 点击重试</span>
+        </div>
+      </template>
+      <template v-else-if="retryHintVisible">
+        <div class="ticker-row ticker-error-row">
+          <span class="ticker-error-text">重连中...</span>
+        </div>
+      </template>
+      <template v-else-if="visibleItems.length > 0">
+        <div v-for="item in visibleItems" :key="item.code" class="ticker-row">
+          <span class="ticker-name">{{ item.name }}</span>
+          <span
+            v-if="item.price !== null"
+            class="ticker-price tabular-nums"
+            :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
+          >{{ formatPrice(item.price) }}</span>
+          <span v-else class="ticker-na">--</span>
+          <span
+            v-if="item.changePct !== null"
+            class="ticker-change tabular-nums"
+            :class="item.changePct >= 0 ? 'up' : 'down'"
+          >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
+        </div>
+      </template>
+      <!-- 区分两种为空：诚然没有自选，与有自选但全部关闭了播报 -->
+      <div v-else class="ticker-empty">
+        {{ watchlist.items.length === 0 ? '暂无自选' : '暂未设置播报标的' }}
       </div>
-    </template>
-    <template v-else-if="retryHintVisible">
-      <div class="ticker-row ticker-error-row">
-        <span class="ticker-error-text">重连中...</span>
-      </div>
-    </template>
-    <template v-else-if="visibleItems.length > 0">
-      <div v-for="item in visibleItems" :key="item.code" class="ticker-row">
-        <span class="ticker-name">{{ item.name }}</span>
-        <span
-          v-if="item.price !== null"
-          class="ticker-price tabular-nums"
-          :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
-        >{{ formatPrice(item.price) }}</span>
-        <span v-else class="ticker-na">--</span>
-        <span
-          v-if="item.changePct !== null"
-          class="ticker-change tabular-nums"
-          :class="item.changePct >= 0 ? 'up' : 'down'"
-        >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
-      </div>
-    </template>
-    <!-- 区分两种为空：诚然没有自选，与有自选但全部关闭了播报 -->
-    <div v-else class="ticker-empty">
-      {{ watchlist.items.length === 0 ? '暂无自选' : '暂未设置播报标的' }}
     </div>
   </div>
 </template>
@@ -253,17 +271,21 @@ async function handleClick() {
   width: 100%;
   height: 100%;
   background: transparent;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   user-select: none;
   cursor: grab;
   overflow: hidden;
-  padding: var(--space-1) var(--space-2);
   transition: background var(--transition-fast);
 }
 .ticker-bar:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+/* 内容层：高度由内容撑开（不要写 height:100%，否则量高度会自我循环）。
+   useTickerWindowHeight 量的就是这个元素，再据此设窗口高度。 */
+.ticker-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-1) var(--space-2);
 }
 .ticker-row {
   display: flex;
