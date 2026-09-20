@@ -15,6 +15,15 @@ const appVersion = ref('');
 // 图片对应仓库路径为 public/qrcode.jpg，如你改存到其它路径，请同步修改下面的 URL。
 const QRCODE_URL = 'https://raw.githubusercontent.com/Leaderxin/quant-desktop/master/public/qrcode.png';
 
+// 项目主页：状态栏的 GitHub 图标指向这里
+const GITHUB_URL = 'https://github.com/Leaderxin/quant-desktop';
+
+// 用系统默认浏览器打开外链，避免 webview 内部跳转丢失原生外壳
+async function openExternal(url: string) {
+  const { openUrl } = await import('@tauri-apps/plugin-opener');
+  await openUrl(url);
+}
+
 const props = withDefaults(defineProps<{
   copyright?: string;
   contactEmail?: string;
@@ -68,21 +77,43 @@ onMounted(async () => {
         {{ updater.updateStatus === 'checking' ? '检查中...' : updater.isUpToDate ? '已是最新版本' : '检查更新' }}
       </button>
       <span class="sb-sep">·</span>
-      <span class="sb-copyright">{{ copyright }}</span>
+      <a
+        class="sb-copyright"
+        :href="GITHUB_URL"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="访问 GitHub 项目主页"
+        @click.prevent="openExternal(GITHUB_URL)"
+      >{{ copyright }}</a>
+      <a
+        class="sb-github"
+        :href="GITHUB_URL"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="访问 GitHub 项目主页"
+        aria-label="访问 GitHub 项目主页"
+        @click.prevent="openExternal(GITHUB_URL)"
+      >
+        <!-- GitHub 官方 mark（Octicons mark-github-24） -->
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+          <path d="M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943"/>
+        </svg>
+      </a>
     </div>
 
     <!-- Zone 2: Settings -->
     <div class="sb-zone sb-settings">
       <button
-        class="sb-icon-btn"
+        class="sb-theme"
         :aria-label="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
-        :title="settings.theme === 'dark' ? '浅色主题' : '暗色主题'"
+        :title="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
         @click="settings.toggleTheme()"
       >
-        <svg v-if="settings.theme === 'dark'" viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+        <span class="sb-theme-label">主题</span>
+        <svg v-if="settings.theme === 'dark'" class="sb-icon" viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
           <path d="M10 2a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 0110 2zM10 16a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 0110 16zM4.46 4.46a.75.75 0 011.06 0l.354.354a.75.75 0 01-1.06 1.06l-.354-.353a.75.75 0 010-1.06zM14.126 14.126a.75.75 0 011.06 0l.354.354a.75.75 0 01-1.06 1.06l-.354-.353a.75.75 0 010-1.06zM2 10a.75.75 0 01.75-.75h.5a.75.75 0 010 1.5h-.5A.75.75 0 012 10zM16 9.25a.75.75 0 000 1.5h.5a.75.75 0 000-1.5H16zM4.813 14.126a.75.75 0 010 1.06l-.353.354a.75.75 0 01-1.06-1.06l.353-.354a.75.75 0 011.06 0zM14.126 4.46a.75.75 0 010 1.06l-.353.354a.75.75 0 11-1.06-1.06l.353-.354a.75.75 0 011.06 0zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/>
         </svg>
-        <svg v-else viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+        <svg v-else class="sb-icon" viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
           <path fill-rule="evenodd" d="M7.455 2.004a.75.75 0 01.26.77 7 7 0 009.958 7.967.75.75 0 011.067.853A8.5 8.5 0 116.647 1.921a.75.75 0 01.808.083z" clip-rule="evenodd"/>
         </svg>
       </button>
@@ -232,25 +263,54 @@ onMounted(async () => {
 .sb-copyright {
   color: var(--color-text-tertiary);
   line-height: 1;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+  cursor: pointer;
+}
+.sb-copyright:hover {
+  color: var(--color-text-primary);
 }
 
-/* ── Zone 2: Settings (icon buttons + toggles) ── */
-.sb-icon-btn {
+.sb-github {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  color: var(--color-text-tertiary);
+  line-height: 1;
+  transition: color var(--transition-fast);
+}
+.sb-github:hover {
+  color: var(--color-text-primary);
+}
+
+/* ── Zone 2: Settings (icon buttons + toggles) ── */
+/* 主题切换：图标 + 文字标签，让用户看得出这个图标是干嘛的 */
+.sb-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-tertiary);
+  font: inherit;
+  line-height: 1;
   cursor: pointer;
+  user-select: none;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-.sb-icon-btn:hover {
+.sb-theme:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-elevated);
+}
+.sb-theme-label {
+  color: inherit;
+  line-height: 1;
+}
+.sb-icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 /* Auto-launch toggle with label */
