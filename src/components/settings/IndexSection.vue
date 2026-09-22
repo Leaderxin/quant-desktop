@@ -66,7 +66,7 @@ function onMove(index: number, direction: -1 | 1) {
   <section class="panel">
     <header class="panel-head">
       <h2>指数区</h2>
-      <p>勾选要显示在顶栏的指数，拖拽调整左右顺序。候选池共 {{ settings.indexPool.length }} 个主流宽基指数。</p>
+      <p>挑选显示在顶栏的指数，拖动决定先后顺序。可选 {{ settings.indexPool.length }} 个主流指数。</p>
     </header>
 
     <div class="card">
@@ -96,7 +96,7 @@ function onMove(index: number, direction: -1 | 1) {
         </DragSortList>
       </div>
       <p class="card-foot">
-        顺序即顶栏从左到右的顺序。键盘可用 Alt + ↑ / ↓ 调整。
+        列表顺序就是顶栏从左到右的顺序，也可用键盘 Alt + ↑ / ↓ 调整。
         <span v-if="displayed.length <= 1" class="warn">至少保留一个指数。</span>
       </p>
     </div>
@@ -115,7 +115,7 @@ function onMove(index: number, direction: -1 | 1) {
           @click="add(e.code)"
         >＋ {{ e.name }}</button>
       </div>
-      <p v-else class="empty-note">候选池里的指数都已在顶栏显示。</p>
+      <p v-else class="empty-note">所有指数都已显示在顶栏。</p>
     </div>
   </section>
 </template>

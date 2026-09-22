@@ -94,12 +94,12 @@ const itemOptions = Array.from(
   <section class="panel">
     <header class="panel-head">
       <h2>行情条</h2>
-      <p>桌面悬浮窗的显示、外观与轮播范围。</p>
+      <p>桌面右下角悬浮的行情小窗：显示开关、外观与轮播范围。</p>
     </header>
 
     <div class="card">
       <div class="card-body">
-        <SettingsRow title="显示行情条" description="等同于托盘菜单里的「显示/隐藏行情条」">
+        <SettingsRow title="显示行情条" description="与系统托盘菜单里的「显示/隐藏行情条」是同一个开关">
           <ToggleSwitch
             :model-value="settings.tickerVisible"
             label="显示行情条"
@@ -195,8 +195,8 @@ const itemOptions = Array.from(
       </div>
 
       <p class="card-foot">
-        取消勾选的股票退出轮播；列表顺序即轮播顺序。
-        <span v-if="!canDrag" class="warn">按分组筛选时不能拖拽排序 —— 筛选结果是全局顺序的子集，拖拽映射不回全局位置。切回「全部」再排序。</span>
+        不勾选的股票不会被播报；列表顺序就是播报顺序。
+        <span v-if="!canDrag" class="warn">正在按分组筛选，此时不能拖动排序；切回「全部」即可调整播报顺序。</span>
       </p>
     </div>
   </section>
@@ -211,7 +211,11 @@ const itemOptions = Array.from(
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 62px;
+  /* 高度跟条数走：固定 62px 只装得下 2 行，选 4 条时药丸会被
+     overflow: hidden 裁掉；min-height + 上下内边距让棋盘格画布
+     在药丸四周始终留一圈，条数多时按内容撑开 */
+  min-height: 62px;
+  padding: var(--space-2) 0;
   border: 1px solid var(--color-border-0);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -267,7 +271,7 @@ const itemOptions = Array.from(
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 .toolbar-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
 .toolbar-actions {

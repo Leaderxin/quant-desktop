@@ -28,12 +28,12 @@ const dsOptions = computed(() =>
   <section class="panel">
     <header class="panel-head">
       <h2>通用</h2>
-      <p>主题、启动方式与数据源。</p>
+      <p>界面主题、开机自启与行情数据来源。</p>
     </header>
 
     <div class="card">
       <div class="card-body">
-        <SettingsRow title="主题" description="与状态栏的主题按钮双向同步">
+        <SettingsRow title="主题" description="和底部状态栏里的主题按钮是同一个设置">
           <SegmentedControl
             :model-value="settings.theme"
             :options="themeOptions"
@@ -44,7 +44,7 @@ const dsOptions = computed(() =>
 
         <SettingsRow
           title="开机自启"
-          description="Windows 商店版走 StartupTask，其余安装方式走注册表 Run 键"
+          description="开机进入 Windows 后自动打开本应用"
         >
           <ToggleSwitch
             :model-value="settings.autoLaunch"
@@ -53,7 +53,7 @@ const dsOptions = computed(() =>
           />
         </SettingsRow>
 
-        <SettingsRow title="数据源" description="与顶栏的数据源下拉双向同步">
+        <SettingsRow title="数据源" description="行情数据来自哪家服务商，和顶部栏的下拉是同一个设置；行情异常时可换一家试试">
           <select
             class="select"
             style="min-width: 110px"

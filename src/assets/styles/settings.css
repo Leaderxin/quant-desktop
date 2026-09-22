@@ -6,6 +6,20 @@
    由 SettingsPage.vue 提供祖先元素。
    ================================================================ */
 
+/* ── 字号整体上调一档（2026-09） ──
+   设置页文字原先跟随全局令牌（说明/元信息多为 11/12px），用户反馈偏小。
+   在 .settings-page 作用域内把文字令牌整体上移一档，页内所有
+   var(--text-*) 消费方自动跟随。注意：本作用域内不许再写字面 px 字号 ——
+   字面值不跟这组映射走，下次调档会漏掉它们（历史上的 11px 已统一改为
+   var(--text-xs)）。 */
+.settings-page {
+  --text-xs: 0.75rem;     /* 说明/元信息 11 → 12px */
+  --text-sm: 0.8125rem;   /* 标签/卡片标题 12 → 13px */
+  --text-base: 0.875rem;  /* 未显式设字号的正文 13 → 14px */
+  --text-md: 1rem;        /* 导航卡片标题 14 → 16px */
+  --text-lg: 1.125rem;    /* 分区标题 16 → 18px（上一档 xl=20px 对分区标题过大） */
+}
+
 .settings-page .panel {
   max-width: 720px;
 }
@@ -64,7 +78,7 @@
 .settings-page .card-foot {
   margin: 0;
   padding: var(--space-2) var(--space-4) var(--space-3);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-tertiary);
 }
@@ -94,7 +108,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
 }
 
@@ -195,7 +209,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-warning-bg);
   color: var(--color-warning);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
 }
 .settings-page .note svg {

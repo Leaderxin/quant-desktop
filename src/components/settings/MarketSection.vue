@@ -57,14 +57,14 @@ function commitCustom() {
   <section class="panel">
     <header class="panel-head">
       <h2>市场概览</h2>
-      <p>控制看盘主界面里市场概览面板的显示与板块榜单条数。</p>
+      <p>设置主界面是否显示市场概览，以及板块榜单显示多少条。</p>
     </header>
 
     <div class="card">
       <div class="card-body">
         <SettingsRow
           title="在顶部显示市场概览面板"
-          description="关闭后不再请求成交额 / 涨跌家数 / 板块数据，省流量也省 CPU"
+          description="关闭后主界面更简洁，成交额、涨跌家数与板块行情也不再刷新"
         >
           <ToggleSwitch
             :model-value="settings.marketOverviewVisible"
@@ -75,7 +75,7 @@ function commitCustom() {
 
         <SettingsRow
           title="板块涨跌排名条数"
-          :description="`行业板块与概念板块各显示前 N 条，范围 ${SECTOR_TOP_N_MIN}–${SECTOR_TOP_N_MAX}`"
+          :description="`行业与概念板块的涨跌榜各显示前 N 条，可选 ${SECTOR_TOP_N_MIN}–${SECTOR_TOP_N_MAX} 条`"
           :disabled="!settings.marketOverviewVisible"
         >
           <SegmentedControl
@@ -105,7 +105,7 @@ function commitCustom() {
         <circle cx="8" cy="8" r="6.5"/>
         <path d="M8 7.5v4M8 5h.007" stroke-linecap="round"/>
       </svg>
-      <span>面板已隐藏，上面的条数设置暂时不生效，重新打开后按当前值拉取。</span>
+      <span>面板当前隐藏中，条数设置会在重新显示面板后生效。</span>
     </div>
   </section>
 </template>

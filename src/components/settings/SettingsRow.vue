@@ -45,7 +45,7 @@ defineProps<{
 }
 .row-desc {
   margin-top: 1px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-tertiary);
 }

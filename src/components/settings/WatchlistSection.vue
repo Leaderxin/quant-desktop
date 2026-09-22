@@ -85,7 +85,7 @@ const orderOptions = [
   <section class="panel">
     <header class="panel-head">
       <h2>自选列表</h2>
-      <p>表格列、默认排序与涨跌配色。分组的增删改在自选表表头的标签栏里维护。</p>
+      <p>自选表显示哪些列、打开时的默认排序与涨跌配色。分组的管理在自选表上方的分组标签栏。</p>
     </header>
 
     <div class="card">
@@ -115,7 +115,7 @@ const orderOptions = [
         </DragSortList>
       </div>
       <p class="card-foot">
-        顺序即表格从左到右的列顺序。代码与名称为可读性下限，不可隐藏，但可以拖动改变位置。
+        列表顺序就是列的显示顺序。代码和名称两列不能隐藏，但可以拖动换位。
       </p>
 
       <!-- 未显示的列以芯片列出：它们是「可加回来」的候选，混在排序列表里
@@ -139,7 +139,7 @@ const orderOptions = [
 
     <div class="card">
       <div class="card-body">
-        <SettingsRow title="默认排序字段" description="每次启动自选表的初始排序">
+        <SettingsRow title="默认排序字段" description="打开应用时自选表默认的排列方式">
           <select
             class="select"
             :value="sortKey"
@@ -164,7 +164,7 @@ const orderOptions = [
     <div class="card">
       <div class="card-head"><h3>涨跌配色</h3></div>
       <div class="card-body">
-        <p class="row-hint">A 股惯例为红涨绿跌，欧美市场相反。切换后表格、图表、指数卡同步生效。</p>
+        <p class="row-hint">A 股是红涨绿跌，欧美市场相反，按自己的看盘习惯选。切换后表格、图表、指数卡会一起更换。</p>
         <div class="color-cards">
           <button
             v-for="opt in [
@@ -229,7 +229,7 @@ const orderOptions = [
 }
 .row-hint {
   margin: 0 0 var(--space-3);
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-tertiary);
 }
