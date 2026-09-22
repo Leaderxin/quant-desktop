@@ -48,8 +48,15 @@ watch(() => keyword.value, (val) => {
 
 async function handleAdd(stock: StockBrief) {
   try {
+    // 加入**当前分组**。多归属下这只股票本来就在别的分组也没关系，两边都在，
+    // 所以提示里带上组名，让用户知道它落到哪儿了。
+    const groupName = watchlist.groupName(watchlist.activeGroupId);
     await watchlist.addStock(stock.code, stock.market, stock.name);
-    message.success(`已添加 ${stock.name}`);
+    if (watchlist.error) {
+      message.error(watchlist.error);
+      return;
+    }
+    message.success(groupName ? `已添加到「${groupName}」` : `已添加 ${stock.name}`);
     keyword.value = '';
     results.value = [];
   } catch (e) {

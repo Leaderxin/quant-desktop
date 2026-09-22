@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, h, inject, onMounted } from 'vue';
-import { NButton, NDataTable, NDropdown, NSwitch } from 'naive-ui';
-import type { DataTableColumns } from 'naive-ui';
-import { invoke } from '@tauri-apps/api/core';
+import { computed, h, inject, onMounted, ref } from 'vue';
+import { NButton, NDataTable, NDropdown, useMessage } from 'naive-ui';
+import type { DataTableColumns, DropdownOption } from 'naive-ui';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
 import { useMarketStore } from '@/stores/market';
+import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
 import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
+import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
+import GroupTabs from './GroupTabs.vue';
 import MarketTag from './MarketTag.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
@@ -16,6 +18,8 @@ import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
 const market = useMarketStore();
+const settings = useSettingsStore();
+const message = useMessage();
 const showAddDialog = ref(false);
 
 const indexDetailCoord = inject<{
@@ -29,68 +33,169 @@ onMounted(() => {
   });
 });
 
-// Context menu state
-const ctxMenuX = ref(0);
-const ctxMenuY = ref(0);
-const ctxMenuItem = ref<WatchItem | null>(null);
-const showCtxMenu = ref(false);
-
-// Detail panel state
 const selectedRow = ref<WatchItem | null>(null);
+
+// ── 列定义 ──
+// 表格列按设置里的 key 顺序动态拼装。宽度写死而不是自适应：金融数据列需要
+// 数字成列对齐（tabular-nums），自适应宽度会让每次行情跳动都重排列宽。
+
+const COLUMN_WIDTHS: Record<ColumnKey, number> = {
+  code: 76,
+  name: 190,
+  price: 100,
+  change_pct: 100,
+  change: 90,
+  volume: 90,
+  turnover: 100,
+  turnover_rate: 80,
+};
+
+/** 涨跌色列。统一走 .pct-col 的 up/down 类，配色方案切换时无需改这里。 */
+function coloredPct(row: WatchItem, text: string) {
+  const q = quoteStore.getQuote(row.code, row.market);
+  if (!q) return '--';
+  return h('span', { class: `pct-col ${q.change_pct >= 0 ? 'up' : 'down'}` }, text);
+}
+
+/** 可排序的数值列。排除 code/name —— 它们是字符串，做减法没有意义。 */
+type NumericColumnKey = 'price' | 'change_pct' | 'change' | 'volume' | 'turnover' | 'turnover_rate';
+
+function sorterOf(key: NumericColumnKey) {
+  return (a: WatchItem, b: WatchItem) => {
+    const qa = quoteStore.getQuote(a.code, a.market);
+    const qb = quoteStore.getQuote(b.code, b.market);
+    return (qa?.[key] ?? 0) - (qb?.[key] ?? 0);
+  };
+}
+
+function buildColumn(key: ColumnKey): DataTableColumns<WatchItem>[number] {
+  const width = COLUMN_WIDTHS[key];
+  const title = columnLabel(key);
+
+  switch (key) {
+    case 'code':
+      return {
+        title, key, width,
+        render: (row) => h('span', { class: 'code-text' }, formatCode(row.code)),
+      };
+    case 'name':
+      return {
+        title, key, width,
+        render: (row) => h('div', { class: 'name-cell' }, [
+          h(MarketTag, { code: row.code, category: cnCategory(row.code) }),
+          h('span', { class: 'name-text' }, row.name),
+        ]),
+      };
+    case 'price':
+      return {
+        title, key, width, sorter: sorterOf('price'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q) return '--';
+          return coloredPct(row, formatPrice(q.price));
+        },
+      };
+    case 'change_pct':
+      return {
+        title, key, width, sorter: sorterOf('change_pct'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q) return '--';
+          return coloredPct(row, `${q.change_pct >= 0 ? '+' : ''}${q.change_pct.toFixed(2)}%`);
+        },
+      };
+    case 'change':
+      return {
+        title, key, width, sorter: sorterOf('change'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q) return '--';
+          return coloredPct(row, `${q.change >= 0 ? '+' : ''}${formatPrice(q.change)}`);
+        },
+      };
+    case 'volume':
+      return {
+        title, key, width, sorter: sorterOf('volume'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q || q.volume == null) return '--';
+          return h('span', formatVolume(q.volume));
+        },
+      };
+    case 'turnover':
+      return {
+        title, key, width, sorter: sorterOf('turnover'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q || q.turnover == null) return '--';
+          const wan = q.turnover / 10000;
+          if (wan >= 10000) return h('span', `${(wan / 10000).toFixed(2)}亿`);
+          if (wan > 0) return h('span', `${wan.toFixed(2)}万`);
+          return h('span', '0');
+        },
+      };
+    case 'turnover_rate':
+      return {
+        title, key, width, sorter: sorterOf('turnover_rate'),
+        render: (row) => {
+          const q = quoteStore.getQuote(row.code, row.market);
+          if (!q || q.turnover_rate == null) return '--';
+          return h('span', `${q.turnover_rate.toFixed(2)}%`);
+        },
+      };
+  }
+}
+
+/**
+ * 列配置 + 默认排序一起决定表格形态。
+ *
+ * `defaultSortOrder` 是 naive-ui 的**非受控**初值：只在表格挂载时生效一次。
+ * 这正好符合「默认排序」的语义（点列头临时改排，不该被设置覆盖），但代价是
+ * 改完设置必须重新挂载表格才生效 —— AppLayout 用 v-if 切换设置页与看盘界面，
+ * 返回时表格本来就会重建，所以这点自动成立。
+ */
+const columns = computed<DataTableColumns<WatchItem>>(() => {
+  const def = settings.watchlistDefaultSort;
+  return settings.watchlistColumns.map((key) => {
+    const col = buildColumn(key);
+    if (def && def.key === key) {
+      return { ...col, defaultSortOrder: def.order };
+    }
+    return col;
+  });
+});
+
+// ── 右键菜单 ──
+
+const ctxX = ref(0);
+const ctxY = ref(0);
+const ctxItem = ref<WatchItem | null>(null);
+const showCtxMenu = ref(false);
 
 function handleContextMenu(e: MouseEvent, row: WatchItem) {
   e.preventDefault();
-  // Clamp menu position to viewport so it never renders off-screen
-  const menuW = 140; // approximate menu width
-  const menuH = 200; // approximate menu height
-  ctxMenuX.value = Math.min(e.clientX, window.innerWidth - menuW);
-  ctxMenuY.value = Math.min(e.clientY, window.innerHeight - menuH);
-  ctxMenuItem.value = row;
+  // 菜单大致尺寸，用来把位置夹进视口
+  const menuW = 176;
+  const menuH = 230;
+  ctxX.value = Math.min(e.clientX, window.innerWidth - menuW);
+  ctxY.value = Math.min(e.clientY, window.innerHeight - menuH);
+  ctxItem.value = row;
   showCtxMenu.value = true;
 }
 
-async function handleDelete() {
-  if (!ctxMenuItem.value) return;
-  try {
-    await watchlist.removeStock(ctxMenuItem.value.code, ctxMenuItem.value.market);
-  } catch (e) {
-    console.error('removeStock failed:', e);
-  }
-  showCtxMenu.value = false;
-}
+/** 当前分组里的位置，用于禁用首/末行的上移/下移。 */
+const ctxIndex = computed(() =>
+  ctxItem.value ? watchlist.visibleItems.findIndex((i) => i.id === ctxItem.value!.id) : -1,
+);
 
-async function handleMoveTop() {
-  if (!ctxMenuItem.value) return;
-  try {
-    await invoke('move_watch_top', { id: ctxMenuItem.value.id });
-    await watchlist.fetchWatchlist();
-  } catch (e) {
-    console.error('move_watch_top failed:', e);
-  }
-  showCtxMenu.value = false;
-}
-
-async function handleMoveUp() {
-  if (!ctxMenuItem.value) return;
-  try {
-    await invoke('move_watch_up', { id: ctxMenuItem.value.id });
-    await watchlist.fetchWatchlist();
-  } catch (e) {
-    console.error('move_watch_up failed:', e);
-  }
-  showCtxMenu.value = false;
-}
-
-async function handleMoveDown() {
-  if (!ctxMenuItem.value) return;
-  try {
-    await invoke('move_watch_down', { id: ctxMenuItem.value.id });
-    await watchlist.fetchWatchlist();
-  } catch (e) {
-    console.error('move_watch_down failed:', e);
-  }
-  showCtxMenu.value = false;
-}
+/**
+ * 「从本组移除」在只剩这一个分组时，后端会连股票一起删掉。菜单文案随之切换成
+ * 「删除自选」—— 不让用户在毫无提示的情况下丢数据。
+ */
+const isOnlyGroup = computed(() => {
+  if (!ctxItem.value) return false;
+  return watchlist.groupsOf(ctxItem.value.id).length <= 1;
+});
 
 const iconTop = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
   h('path', { d: 'M8 2V14' }),
@@ -103,6 +208,14 @@ const iconUp = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fil
 const iconDown = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
   h('polyline', { points: '4 5 8 9 12 5' }),
 ]);
+const iconFolder = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('rect', { x: 2, y: 3.5, width: 9, height: 9, rx: 1.5 }),
+  h('path', { d: 'M13.5 5.5v6a2 2 0 0 1-2 2h-6' }),
+]);
+const iconRemove = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('path', { d: 'M3 8h10' }),
+  h('path', { d: 'M8 3l5 5-5 5' }),
+]);
 const iconDelete = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: '#f85149', strokeWidth: 1.5, style: 'vertical-align:middle;margin-right:6px' }, [
   h('path', { d: 'M3 4h10' }),
   h('path', { d: 'M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1' }),
@@ -111,153 +224,86 @@ const iconDelete = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14,
   h('path', { d: 'M4 4l1 9h6l1-9' }),
 ]);
 
-const ctxOptions = [
-  { label: '置顶', key: 'top', icon: iconTop },
-  { label: '上移', key: 'up', icon: iconUp },
-  { label: '下移', key: 'down', icon: iconDown },
-  { type: 'divider' as const, key: 'd1' },
-  { label: '删除', key: 'delete', icon: iconDelete },
-];
+const checkMark = () => h('svg', { viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, style: 'vertical-align:middle;margin-right:6px' }, [
+  h('polyline', { points: '3 8.5 6.5 12 13 4' }),
+]);
 
-function handleCtxSelect(key: string) {
+/**
+ * 「添加到分组」子菜单：多归属，所以是**勾选**而不是单选移动。
+ * 勾选状态来自每只股票当前的分组集合。
+ */
+const groupOptions = computed<DropdownOption[]>(() => {
+  const item = ctxItem.value;
+  if (!item) return [];
+  const memberOf = new Set(watchlist.groupsOf(item.id).map((g) => g.id));
+  return watchlist.groups.map((g) => ({
+    key: `grp:${g.id}`,
+    label: g.name,
+    // naive-ui 的 dropdown 没有 checkbox 类型，用 icon 位置画勾
+    icon: memberOf.has(g.id) ? checkMark : undefined,
+  }));
+});
+
+const ctxOptions = computed<DropdownOption[]>(() => [
+  { label: '置顶', key: 'top', icon: iconTop, disabled: ctxIndex.value <= 0 },
+  { label: '上移', key: 'up', icon: iconUp, disabled: ctxIndex.value <= 0 },
+  { label: '下移', key: 'down', icon: iconDown, disabled: ctxIndex.value >= watchlist.visibleItems.length - 1 },
+  { type: 'divider', key: 'd1' },
+  { label: '添加到分组', key: 'groups', icon: iconFolder, children: groupOptions.value },
+  { type: 'divider', key: 'd2' },
+  {
+    label: isOnlyGroup.value ? '删除自选' : '从本组移除',
+    key: 'remove',
+    icon: iconRemove,
+  },
+  { label: '删除自选', key: 'delete', icon: iconDelete },
+]);
+
+function toggleMembership(groupId: number, checked: boolean) {
+  const item = ctxItem.value;
+  if (!item) return;
+  const current = watchlist.groupsOf(item.id).map((g) => g.id);
+  const next = checked
+    ? [...current, groupId]
+    : current.filter((id) => id !== groupId);
+  if (next.length === 0) {
+    // 后端也会拒绝空集合，但这里先给出可执行的解释，而不是把原始报错甩给用户
+    message.warning('至少要属于一个分组。如果确实不需要了，请用「删除自选」。');
+    return;
+  }
+  void watchlist.setWatchGroups(item.id, next);
+}
+
+async function handleCtxSelect(key: string) {
+  const item = ctxItem.value;
+  showCtxMenu.value = false;
+  if (!item) return;
+
+  if (key.startsWith('grp:')) {
+    const gid = Number(key.slice(4));
+    const wasMember = watchlist.groupsOf(item.id).some((g) => g.id === gid);
+    toggleMembership(gid, !wasMember);
+    return;
+  }
+
   switch (key) {
-    case 'top': handleMoveTop(); break;
-    case 'up': handleMoveUp(); break;
-    case 'down': handleMoveDown(); break;
-    case 'delete': handleDelete(); break;
+    case 'top': await watchlist.moveTop(item.id); break;
+    case 'up': await watchlist.moveUp(item.id); break;
+    case 'down': await watchlist.moveDown(item.id); break;
+    case 'remove': {
+      const wasOnly = watchlist.groupsOf(item.id).length <= 1;
+      await watchlist.removeFromActiveGroup(item.id);
+      // 后端在「移出最后一个分组」时会连股票一起删掉，如实告知而不是静默消失
+      if (wasOnly) message.info(`已删除 ${item.name}`);
+      break;
+    }
+    case 'delete':
+      await watchlist.removeStock(item.code, item.market);
+      break;
   }
 }
 
-const columns: DataTableColumns<WatchItem> = [
-  {
-    title: '代码', key: 'code', width: 72,
-    render(row) {
-      return h('span', { class: 'code-text' }, formatCode(row.code));
-    }
-  },
-  {
-    title: '名称', key: 'name', width: 168,
-    render(row) {
-      return h('div', { class: 'name-cell' }, [
-        h(MarketTag, { code: row.code, category: cnCategory(row.code) }),
-        h('span', { class: 'name-text' }, row.name),
-      ]);
-    }
-  },
-  {
-    title: '最新价', key: 'price', width: 100,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.price ?? 0) - (qb?.price ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q) return '--';
-      const v = q.change_pct;
-      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
-        formatPrice(q.price));
-    }
-  },
-  {
-    title: '涨跌幅', key: 'change_pct', width: 100,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.change_pct ?? 0) - (qb?.change_pct ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q) return '--';
-      const v = q.change_pct;
-      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
-        `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
-    }
-  },
-  {
-    title: '涨跌额', key: 'change', width: 90,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.change ?? 0) - (qb?.change ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q) return '--';
-      const v = q.change;
-      return h('span', { class: `pct-col ${v >= 0 ? 'up' : 'down'}` },
-        `${v >= 0 ? '+' : ''}${formatPrice(v)}`);
-    }
-  },
-  {
-    title: '成交量', key: 'volume', width: 90,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.volume ?? 0) - (qb?.volume ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q || q.volume == null) return '--';
-      return h('span', formatVolume(q.volume));
-    }
-  },
-  {
-    title: '成交额', key: 'turnover', width: 90,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.turnover ?? 0) - (qb?.turnover ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q || q.turnover == null) return '--';
-      // turnover is in 元; display in 万元 or 亿元
-      const wan = q.turnover / 10000;
-      if (wan >= 10000) return h('span', `${(wan / 10000).toFixed(2)}亿`);
-      if (wan > 0) return h('span', `${wan.toFixed(2)}万`);
-      return h('span', '0');
-    }
-  },
-  {
-    title: '换手率', key: 'turnover_rate', width: 80,
-    sorter: (a: WatchItem, b: WatchItem) => {
-      const qa = quoteStore.getQuote(a.code, a.market);
-      const qb = quoteStore.getQuote(b.code, b.market);
-      return (qa?.turnover_rate ?? 0) - (qb?.turnover_rate ?? 0);
-    },
-    render(row) {
-      const q = quoteStore.getQuote(row.code, row.market);
-      if (!q || q.turnover_rate == null) return '--';
-      return h('span', `${q.turnover_rate.toFixed(2)}%`);
-    }
-  },
-  {
-    title: '行情条播报', key: 'ticker_enabled', width: 96,
-    render(row) {
-      // 包一层 div 并阻止冒泡：表格行的 onClick 会展开/收起详情面板，
-      // 不拦截的话拨开关会连带触发。
-      return h(
-        'div',
-        {
-          class: 'ticker-toggle-cell',
-          onClick: (e: MouseEvent) => e.stopPropagation(),
-        },
-        [
-          h(NSwitch, {
-            value: row.ticker_enabled,
-            size: 'small',
-            'aria-label': `${row.name} 行情条播报`,
-            'onUpdate:value': (v: boolean) => {
-              // store 内部已 try/catch 并回滚，不会 reject，这里无需再兜错。
-              void watchlist.setTickerEnabled(row.id, v);
-            },
-          }),
-        ],
-      );
-    }
-  },
-];
+const emptyGroupName = computed(() => watchlist.groupName(watchlist.activeGroupId));
 
 defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 </script>
@@ -265,7 +311,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 <template>
   <div class="watchlist-container">
     <div class="watchlist-header">
-      <h2 class="section-title">自选股</h2>
+      <GroupTabs />
       <button class="add-btn" @click="showAddDialog = true" aria-label="添加自选股票">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
           <path d="M8.75 3.25a.75.75 0 00-1.5 0V7.5H3.25a.75.75 0 000 1.5h4v4.25a.75.75 0 001.5 0V9h4.25a.75.75 0 000-1.5h-4.25V3.25z"/>
@@ -278,21 +324,28 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
       <p class="error-text">{{ watchlist.error }}</p>
       <NButton size="tiny" @click="watchlist.fetchWatchlist()">重试</NButton>
     </div>
-    <div v-else-if="watchlist.items.length === 0" class="empty-state">
+    <div v-else-if="watchlist.visibleItems.length === 0" class="empty-state">
       <svg class="empty-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
         <rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/>
         <line x1="4" y1="12" x2="28" y2="12" stroke="currentColor" stroke-width="1.5"/>
         <line x1="10" y1="16" x2="14" y2="16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
         <line x1="10" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      <p class="empty-text">暂无自选股票</p>
-      <p class="empty-hint">点击「添加自选」搜索并添加股票</p>
+      <!-- 区分「整个自选是空的」与「只是这个分组空」：后者用户会以为数据丢了 -->
+      <template v-if="watchlist.items.length === 0">
+        <p class="empty-text">暂无自选股票</p>
+        <p class="empty-hint">点击「添加自选」搜索并添加股票</p>
+      </template>
+      <template v-else>
+        <p class="empty-text">「{{ emptyGroupName }}」分组下暂无自选</p>
+        <p class="empty-hint">切换到其它分组，或点上方「添加自选」加入本组</p>
+      </template>
     </div>
 
     <NDataTable
       v-else
       :columns="columns"
-      :data="watchlist.items"
+      :data="watchlist.visibleItems"
       :bordered="false"
       :single-line="true"
       size="small"
@@ -324,8 +377,8 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 
     <NDropdown
       :show="showCtxMenu"
-      :x="ctxMenuX"
-      :y="ctxMenuY"
+      :x="ctxX"
+      :y="ctxY"
       :options="ctxOptions"
       placement="bottom-start"
       trigger="manual"
@@ -345,17 +398,15 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 }
 .watchlist-header {
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: center;
+  gap: var(--space-3);
+  /* 下留 8px：分组标签原本直接压在分隔线上，标签文字与线之间只剩标签自身
+     的内边距，视觉上"触底"。8px 也符合 4/8 间距节奏。标签的选中下划线跟着
+     标签一起上移 —— 它是标签自身的状态指示，不必贴在分隔线上。 */
   padding: var(--space-2) 0;
   flex-shrink: 0;
-}
-.section-title {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  letter-spacing: -0.01em;
+  border-bottom: 1px solid var(--color-border-0);
 }
 .add-btn {
   display: inline-flex;
@@ -363,6 +414,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   gap: 3px;
   padding: 0 12px;
   height: 28px;
+  margin-bottom: 2px;
   border: none;
   border-radius: var(--radius-sm);
   background: var(--color-accent);
@@ -371,6 +423,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   font-family: var(--font-sans);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
+  flex-shrink: 0;
   transition: filter var(--transition-fast);
 }
 .add-btn:hover {
@@ -409,6 +462,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 
 :deep(.watchlist-table) {
   flex: 1;
+  margin-top: var(--space-1);
 }
 /* P&L color classes (used via render functions) */
 :deep(.pct-col) { font-weight: 500; }
@@ -430,10 +484,5 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-:deep(.ticker-toggle-cell) {
-  display: flex;
-  align-items: center;
-  height: 100%;
 }
 </style>
