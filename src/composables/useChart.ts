@@ -369,8 +369,14 @@ export function useChart(options: {
 
   // ---- 主题/副图监听 ----
 
-  watch(() => settings.theme, () => {
+  // 主题或涨跌配色变化：全局样式之外，VOL 的量柱配色是创建指标时的实例级
+  // styles（见 volIndicatorConfig 注释），setStyles 压不到已存在的 VOL，
+  // 须用 overrideIndicator 重新传入，否则量柱停留在旧配色
+  watch(() => [settings.theme, settings.colorScheme], () => {
     reapplyStyles();
+    if (chart.value && unref(options.subIndicator) === 'VOL') {
+      chart.value.overrideIndicator(volIndicatorConfig() as any);
+    }
   });
 
   if (options.subIndicator) {
