@@ -28,11 +28,16 @@ const props = withDefaults(defineProps<{
   copyright?: string;
   contactEmail?: string;
   qrcodeSrc?: string;
+  /** 设置页当前是否打开。仅用于按钮的选中态。 */
+  settingsOpen?: boolean;
 }>(), {
   copyright: '© 2026 Leaderxin',
   contactEmail: 'shazhoulen@outlook.com',
   qrcodeSrc: QRCODE_URL,
+  settingsOpen: false,
 });
+
+const emit = defineEmits<{ (e: 'open-settings'): void }>();
 
 // 打包进安装包的本地兜底二维码（远程加载失败时回退用）
 const QRCODE_FALLBACK_URL = '/qrcode.png';
@@ -103,6 +108,29 @@ onMounted(async () => {
 
     <!-- Zone 2: Settings -->
     <div class="sb-zone sb-settings">
+      <!-- 设置入口。看盘相关的可配置项已全部收进设置页，这里是唯一入口，
+           因此图标旁边保留文字标签，不做成纯图标按钮（发现性优先）。 -->
+      <button
+        class="sb-settings-btn"
+        :class="{ active: settingsOpen }"
+        :aria-pressed="settingsOpen"
+        title="设置"
+        @click.stop="emit('open-settings')"
+      >
+        <!-- 齿轮，不是「中心圆 + 放射线」：后者与主题按钮的太阳图标轮廓几乎一样，
+             两个图标挨着放会分不清哪个是设置、哪个是切主题。齿轮的特征是
+             「粗环 + 外齿 + 中心孔」，剪影上一眼可辨。
+             viewBox 24 渲染到 14px，故 stroke-width 2.25 才与相邻图标的
+             1.5/16 视觉粗细一致（2.25 × 14/24 ≈ 1.31）。 -->
+        <svg class="sb-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span class="sb-settings-label">设置</span>
+      </button>
+
+      <span class="sb-sep">·</span>
+
       <button
         class="sb-theme"
         :aria-label="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
@@ -284,6 +312,35 @@ onMounted(async () => {
 }
 
 /* ── Zone 2: Settings (icon buttons + toggles) ── */
+.sb-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.sb-settings-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+/* 设置页打开时入口保持高亮，让用户知道当前在哪、从哪儿回去 */
+.sb-settings-btn.active {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+.sb-settings-label {
+  color: inherit;
+  line-height: 1;
+}
+
 /* 主题切换：图标 + 文字标签，让用户看得出这个图标是干嘛的 */
 .sb-theme {
   display: inline-flex;

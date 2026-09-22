@@ -4,8 +4,23 @@ import IndexBar from '@/components/index/IndexBar.vue';
 import MarketOverviewPanel from '@/components/market/MarketOverviewPanel.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
 import StatusBar from './StatusBar.vue';
+import SettingsPage from '@/components/settings/SettingsPage.vue';
 import { provide, ref } from 'vue';
+import { useSettingsStore } from '@/stores/settings';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
+
+const settings = useSettingsStore();
+
+/**
+ * 设置页用 v-if 而不是 v-show 覆盖看盘界面。
+ *
+ * 两个后果都是想要的：
+ * - 设置期间看盘界面的轮询全部停掉（MarketOverviewPanel 卸载即 stopRefresh），
+ *   改配置时不会有行情刷新在背后抢 IPC；
+ * - 返回看盘时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新
+ *   设置重新应用 —— 否则改完默认排序得重启应用才看得到效果。
+ */
+const showSettings = ref(false);
 
 const clearIndexDetailFn = ref<(() => void) | null>(null);
 const clearStockDetailFn = ref<(() => void) | null>(null);
@@ -72,13 +87,17 @@ defineEmits<{
       </div>
     </div>
 
-    <TopBar />
-    <IndexBar />
-    <MarketOverviewPanel />
-    <main class="main-content">
-      <WatchlistTable />
-    </main>
-    <StatusBar />
+    <SettingsPage v-if="showSettings" @close="showSettings = false" />
+
+    <template v-else>
+      <TopBar />
+      <IndexBar />
+      <MarketOverviewPanel v-if="settings.marketOverviewVisible" />
+      <main class="main-content">
+        <WatchlistTable />
+      </main>
+    </template>
+    <StatusBar :settings-open="showSettings" @open-settings="showSettings = true" />
   </div>
 </template>
 
