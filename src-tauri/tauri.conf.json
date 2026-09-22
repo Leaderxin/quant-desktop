@@ -19,7 +19,8 @@
         "visible": false,
         "center": true,
         "decorations": true,
-        "resizable": true
+        "resizable": true,
+        "dragDropEnabled": false
       },
       {
         "label": "ticker",
@@ -30,7 +31,7 @@
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "dragDropEnabled": true,
+        "dragDropEnabled": false,
         "resizable": false,
         "focus": false,
         "visible": false,
