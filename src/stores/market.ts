@@ -1,9 +1,10 @@
 // src/stores/market.ts
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { MarketOverview } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useSettingsStore } from '@/stores/settings';
 
 export type MarketDirection = 'up' | 'down';
 
@@ -12,6 +13,7 @@ export type MarketDirection = 'up' | 'down';
 const DEFAULT_INTERVAL_MS = 60_000;
 
 export const useMarketStore = defineStore('market', () => {
+  const settings = useSettingsStore();
   const overview = ref<MarketOverview | null>(null);
   const direction = ref<MarketDirection>('up');
   /** 板块榜单默认折叠 —— 展开态约占 280px 且 flex-shrink: 0,会一直挤压自选表。
@@ -51,6 +53,8 @@ export const useMarketStore = defineStore('market', () => {
     try {
       const data = await invoke<MarketOverview>('get_market_overview', {
         direction: requested,
+        // 榜单条数由设置页配置。后端会再夹一次区间 —— IPC 参数不能假设已被校验。
+        topN: settings.sectorTopN,
       });
       // 只有请求方向仍是当前方向时才落地,否则丢弃
       if (requested === direction.value) {
@@ -144,6 +148,20 @@ export const useMarketStore = defineStore('market', () => {
       unlistenSession = null;
     }
   }
+
+  /**
+   * 榜单条数改了要立刻按新条数拉一次，而不是干等到下一个轮询周期 ——
+   * 休市时段那可能是 5 分钟，用户会以为设置没生效。
+   *
+   * 只在轮询运行中触发：面板被隐藏时 startRefresh 不会被调用，
+   * 这里也就不会发出任何请求（隐藏即静默，是「关闭市场概览」的承诺）。
+   */
+  watch(
+    () => settings.sectorTopN,
+    () => {
+      if (running) void fetchOverview();
+    },
+  );
 
   return {
     overview,
