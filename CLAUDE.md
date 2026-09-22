@@ -50,6 +50,10 @@ Coverage by area:
 
 Deliberately **not** covered, so nobody mistakes absence for an oversight: Vue component rendering (would need `@vue/test-utils`, not currently a dependency), drag-and-drop DOM events (only the index math is tested), and anything visual — the token palette, the tab-bar spacing, icon silhouettes. Those are eyeball-only. `cargo test` covers the Rust side (blacklist classification, response parsing, session intervals, and group ownership/migration semantics in `db::tests`); `vue-tsc` with the strict tsconfig enforces type correctness on both app and test code. There is no lint command configured yet.
 
+## Git 提交信息
+
+提交信息中**不要出现 "Claude" 字眼** —— 包括 `Co-Authored-By: Claude`、"Generated with Claude Code" 之类的工具署名尾注。提交历史面向仓库读者，工具来源只是噪音；把改了什么、为什么改写清楚即可。
+
 ## Architecture
 
 QuantDesktop is a **Tauri 2 desktop app** for monitoring Chinese A-share stock markets. It has two separate webview windows driven by two Vite/Vue entry points, a SQLite-backed Rust backend, and a pluggable data source layer for fetching market data.
