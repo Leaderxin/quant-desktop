@@ -17,18 +17,24 @@ pub fn get_overview_interval() -> u64 {
 ///
 /// 四块数据来源独立(新浪成交额 + 东财涨跌家数 + 东财行业/概念板块),
 /// 任一失败只降级对应字段,面板整体不因单一数据源失败而消失。
+///
+/// `top_n` 由设置页配置(默认 5)。这里再夹一次区间而不是直接透传:
+/// IPC 参数来自前端,不能假设它已经被界面校验过。
 #[tauri::command]
 pub async fn get_market_overview(
     direction: String,
+    top_n: Option<usize>,
     client: State<'_, Arc<MarketOverviewClient>>,
 ) -> Result<MarketOverview, String> {
+    let top_n = crate::datasource::market::clamp_top_n(top_n.unwrap_or(5));
+
     // 并行发起:四个请求共用一个 10s 超时的 client,串行时一个慢端点会把整份
     // 概览拖到最坏 ~40s;join! 并发等待后总耗时约等于最慢的那一个请求。
     let (turnover, breadth, industry, concept) = tokio::join!(
         client.fetch_total_turnover(),
         client.fetch_market_breadth(),
-        client.fetch_sector_ranking("m:90+t:2", &direction),
-        client.fetch_concept_ranking(&direction),
+        client.fetch_sector_ranking("m:90+t:2", &direction, top_n),
+        client.fetch_concept_ranking(&direction, top_n),
     );
 
     let turnover = turnover.unwrap_or_else(|e| {

@@ -19,7 +19,7 @@ use tauri::{
 // registered in store builds, guarded at runtime — see commands/updater.rs.
 #[cfg(not(feature = "store"))]
 use tauri::Emitter;
-use db::Database;
+use db::{keys, Database};
 use datasource::DataSourceManager;
 use cache::QuoteCache;
 
@@ -99,6 +99,74 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
 /// (triggered by the presence of `portable.dat` next to the executable).
 #[derive(Debug, Clone, Copy)]
 pub struct PortableMode(pub bool);
+
+/// 显示/隐藏行情条窗口，并把可见性落盘到 `ticker_visible`。
+///
+/// 托盘菜单的「显示/隐藏行情条」与设置页的 `set_ticker_visible` 命令共用这一份
+/// 实现。显示时要补的几步(always_on_top / skip_taskbar / WS_EX_TOOLWINDOW /
+/// 位置还原)一旦各写一份，迟早会漏掉一处 —— 而漏掉的症状(窗口跑进任务栏、
+/// 或出现在屏幕外)在改动另一处时根本看不出来。
+///
+/// 顺序有依赖:Windows 上 `set_skip_taskbar` 走 ITaskbarList::DeleteTab，
+/// 要求窗口已经真正显示过才生效，所以必须先 show 再设这个属性。
+pub fn set_ticker_visible(
+    app: &tauri::AppHandle,
+    db: &Database,
+    visible: bool,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("ticker")
+        .ok_or_else(|| "Ticker window not found".to_string())?;
+
+    if !visible {
+        window.hide().map_err(|e| e.to_string())?;
+        let _ = db.set_setting(keys::TICKER_VISIBLE, "0");
+        return Ok(());
+    }
+
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_skip_taskbar(true);
+    apply_tool_window_style(&window);
+
+    // 位置:优先恢复上次保存的坐标，越界或首次则回到右下角默认位。
+    let mon = window.primary_monitor().ok().flatten();
+    let (mon_w, mon_h) = mon
+        .as_ref()
+        .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
+        .unwrap_or((1920, 1080));
+    let win_size = window.outer_size().unwrap_or_else(|_| {
+        // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
+        // 否则 DPI ≠ 100% 时兜底几何偏小
+        let scale = window.scale_factor().unwrap_or(1.0);
+        tauri::PhysicalSize::new(
+            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
+            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
+        )
+    });
+    let tw = win_size.width as i32;
+    let th = win_size.height as i32;
+
+    let mut restored = false;
+    if let Ok(Some(x)) = db.get_setting(keys::TICKER_X) {
+        if let Ok(Some(y)) = db.get_setting(keys::TICKER_Y) {
+            if let (Ok(sx), Ok(sy)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                if sx + tw > 0 && sy + th > 0 && sx < mon_w && sy < mon_h {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(sx, sy));
+                    restored = true;
+                }
+            }
+        }
+    }
+    if !restored {
+        let x = mon_w.saturating_sub(tw + 10);
+        let y = mon_h.saturating_sub(th + 60);
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+
+    let _ = db.set_setting(keys::TICKER_VISIBLE, "1");
+    Ok(())
+}
 
 /// Build the logger set for `app_dir`: terminal output plus a log file in the
 /// data directory.
@@ -200,7 +268,7 @@ pub fn run() {
             // Restore last used data source from settings.
             // Use set_active_initial to avoid triggering a duplicate wakeup fetch
             // on startup (the scheduler's main loop handles the first fetch).
-            if let Ok(Some(active)) = db.get_setting("active_datasource") {
+            if let Ok(Some(active)) = db.get_setting(keys::ACTIVE_DATASOURCE) {
                 match ds_manager.set_active_initial(&active) {
                     Ok(()) => log::info!("Restored data source: {}", active),
                     Err(e) => log::warn!("Failed to restore data source '{}': {}", active, e),
@@ -223,20 +291,18 @@ pub fn run() {
             ));
             app.manage(PortableMode(is_portable));
 
-            // Start background polling
-            let interval: u64 = db
-                .get_setting("refresh_interval")
-                .ok()
-                .flatten()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(3);
-
+            // Start background polling.
+            //
+            // 没有「基准轮询间隔」这个参数：节奏完全由 market_clock(交易时段) 与
+            // 自适应状态机(probe → normal → idle) 决定。历史上曾传过一个
+            // refresh_interval 设置值，但 Scheduler 从未引用它 —— 一个在设置表里、
+            // 在启动流程里读写、却对行为毫无影响的死键，已连同 `init_defaults` 里的
+            // 默认值一起删除。老库里残留的那行无害，不需要清理。
             crate::cache::Scheduler::spawn(
                 ds_manager,
                 cache,
                 db.clone(),
                 app.handle().clone(),
-                interval,
             );
 
             // ── System Tray ──
@@ -282,61 +348,15 @@ pub fn run() {
                             }
                         }
                         "toggle_ticker" => {
-                            if let Some(window) = app.get_webview_window("ticker") {
-                                let was_visible = window.is_visible().unwrap_or(false);
-                                if was_visible {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.show();
-                                    let _ = window.set_always_on_top(true);
-                                    // Re-hide from taskbar after show
-                                    let _ = window.set_skip_taskbar(true);
-                                    apply_tool_window_style(&window);
-                                    // Try saved position first, fall back to bottom-right
-                                    let mon = window.primary_monitor().ok().flatten();
-                                    let (mon_w, mon_h) = mon
-                                        .as_ref()
-                                        .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
-                                        .unwrap_or((1920, 1080));
-                                    let win_size = window.outer_size().unwrap_or_else(|_| {
-                                        // TICKER_* 是逻辑像素，折算物理像素需乘窗口
-                                        // 缩放系数，否则 DPI ≠ 100% 时兜底几何偏小
-                                        let scale = window.scale_factor().unwrap_or(1.0);
-                                        tauri::PhysicalSize::new(
-                                            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
-                                            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
-                                        )
-                                    });
-                                    let tw = win_size.width as i32;
-                                    let th = win_size.height as i32;
-
-                                    let mut restored = false;
-                                    if let Ok(Some(x)) = db.get_setting("ticker_x") {
-                                        if let Ok(Some(y)) = db.get_setting("ticker_y") {
-                                            if let (Ok(sx), Ok(sy)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                                                if sx + tw > 0 && sy + th > 0 && sx < mon_w && sy < mon_h {
-                                                    let _ = window.set_position(
-                                                        tauri::PhysicalPosition::new(sx, sy),
-                                                    );
-                                                    restored = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if !restored {
-                                        let x = (mon_w).saturating_sub(tw + 10);
-                                        let y = (mon_h).saturating_sub(th + 60);
-                                        let _ = window.set_position(
-                                            tauri::PhysicalPosition::new(x, y),
-                                        );
-                                    }
-                                }
-                                // Persist the ticker's visibility so it restores the same
-                                // state on next launch (default = visible).
-                                let _ = db.set_setting(
-                                    "ticker_visible",
-                                    if was_visible { "0" } else { "1" },
-                                );
+                            let was_visible = app
+                                .get_webview_window("ticker")
+                                .and_then(|w| w.is_visible().ok())
+                                .unwrap_or(false);
+                            // 显示/隐藏的全部细节(置顶、隐藏任务栏、位置还原、
+                            // 可见性落盘)都在 set_ticker_visible 里，与设置页
+                            // 的开关共用同一份实现。
+                            if let Err(e) = set_ticker_visible(app, &db, !was_visible) {
+                                log::warn!("Failed to toggle ticker window: {}", e);
                             }
                         }
                         #[cfg(not(feature = "store"))]
@@ -414,22 +434,22 @@ pub fn run() {
                             let is_vis = main_clone.is_visible().unwrap_or(false);
                             if is_vis && !is_min {
                                 let is_max = main_clone.is_maximized().unwrap_or(false);
-                                let _ = db_clone.set_setting("window_maximized", if is_max { "1" } else { "0" });
+                                let _ = db_clone.set_setting(keys::WINDOW_MAXIMIZED, if is_max { "1" } else { "0" });
                                 if !is_max {
                                     if let Ok(pos) = main_clone.outer_position() {
-                                        if let Err(e) = db_clone.set_setting("window_x", &pos.x.to_string()) {
+                                        if let Err(e) = db_clone.set_setting(keys::WINDOW_X, &pos.x.to_string()) {
                                             log::warn!("Failed to save window_x on close: {}", e);
                                         }
-                                        if let Err(e) = db_clone.set_setting("window_y", &pos.y.to_string()) {
+                                        if let Err(e) = db_clone.set_setting(keys::WINDOW_Y, &pos.y.to_string()) {
                                             log::warn!("Failed to save window_y on close: {}", e);
                                         }
                                     }
                                 }
                                 if let Ok(size) = main_clone.outer_size() {
-                                    if let Err(e) = db_clone.set_setting("window_width", &size.width.to_string()) {
+                                    if let Err(e) = db_clone.set_setting(keys::WINDOW_WIDTH, &size.width.to_string()) {
                                         log::warn!("Failed to save window_width on close: {}", e);
                                     }
-                                    if let Err(e) = db_clone.set_setting("window_height", &size.height.to_string()) {
+                                    if let Err(e) = db_clone.set_setting(keys::WINDOW_HEIGHT, &size.height.to_string()) {
                                         log::warn!("Failed to save window_height on close: {}", e);
                                     }
                                 }
@@ -456,13 +476,13 @@ pub fn run() {
                                     return;
                                 }
                                 if let Ok(pos) = main.outer_position() {
-                                    let _ = db.set_setting("window_x", &pos.x.to_string());
-                                    let _ = db.set_setting("window_y", &pos.y.to_string());
+                                    let _ = db.set_setting(keys::WINDOW_X, &pos.x.to_string());
+                                    let _ = db.set_setting(keys::WINDOW_Y, &pos.y.to_string());
                                 }
                                 if let Ok(size) = main.outer_size() {
                                     if size.width > 0 && size.height > 0 {
-                                        let _ = db.set_setting("window_width", &size.width.to_string());
-                                        let _ = db.set_setting("window_height", &size.height.to_string());
+                                        let _ = db.set_setting(keys::WINDOW_WIDTH, &size.width.to_string());
+                                        let _ = db.set_setting(keys::WINDOW_HEIGHT, &size.height.to_string());
                                     }
                                 }
                             });
@@ -498,8 +518,8 @@ pub fn run() {
                 let mut has_size = false;
                 let mut has_pos = false;
 
-                if let Ok(Some(w)) = db.get_setting("window_width") {
-                    if let Ok(Some(h)) = db.get_setting("window_height") {
+                if let Ok(Some(w)) = db.get_setting(keys::WINDOW_WIDTH) {
+                    if let Ok(Some(h)) = db.get_setting(keys::WINDOW_HEIGHT) {
                         if let (Ok(w_val), Ok(h_val)) = (w.parse::<u32>(), h.parse::<u32>()) {
                             if w_val >= 400 && w_val <= mon_w as u32
                                 && h_val >= 300 && h_val <= mon_h as u32
@@ -511,8 +531,8 @@ pub fn run() {
                         }
                     }
                 }
-                if let Ok(Some(x)) = db.get_setting("window_x") {
-                    if let Ok(Some(y)) = db.get_setting("window_y") {
+                if let Ok(Some(x)) = db.get_setting(keys::WINDOW_X) {
+                    if let Ok(Some(y)) = db.get_setting(keys::WINDOW_Y) {
                         if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
                             if x_val + 200 < mon_w && x_val > -50
                                 && y_val + 100 < mon_h && y_val > -50
@@ -525,7 +545,7 @@ pub fn run() {
                     }
                 }
 
-                let was_max = db.get_setting("window_maximized")
+                let was_max = db.get_setting(keys::WINDOW_MAXIMIZED)
                     .ok()
                     .flatten()
                     .map(|v| v == "1")
@@ -597,10 +617,10 @@ pub fn run() {
 
                         let clamped_x = pos.x.max(0).min(mon_w - tw);
                         let clamped_y = pos.y.max(0).min(mon_h - th);
-                        if let Err(e) = db_clone.set_setting("ticker_x", &clamped_x.to_string()) {
+                        if let Err(e) = db_clone.set_setting(keys::TICKER_X, &clamped_x.to_string()) {
                             log::warn!("Failed to save ticker_x: {}", e);
                         }
-                        if let Err(e) = db_clone.set_setting("ticker_y", &clamped_y.to_string()) {
+                        if let Err(e) = db_clone.set_setting(keys::TICKER_Y, &clamped_y.to_string()) {
                             log::warn!("Failed to save ticker_y: {}", e);
                         }
                     }
@@ -609,8 +629,8 @@ pub fn run() {
                 // Restore saved position, fall back to bottom-right
                 let (mut saved_x, mut saved_y) = (0i32, 0i32);
                 let mut has_pos = false;
-                if let Ok(Some(x)) = db.get_setting("ticker_x") {
-                    if let Ok(Some(y)) = db.get_setting("ticker_y") {
+                if let Ok(Some(x)) = db.get_setting(keys::TICKER_X) {
+                    if let Ok(Some(y)) = db.get_setting(keys::TICKER_Y) {
                         if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
                             saved_x = x_val;
                             saved_y = y_val;
@@ -640,7 +660,7 @@ pub fn run() {
                 // Restore visibility from last session (config starts hidden).
                 // Default to visible unless the user explicitly hid the ticker.
                 let ticker_hidden = db
-                    .get_setting("ticker_visible")
+                    .get_setting(keys::TICKER_VISIBLE)
                     .ok()
                     .flatten()
                     .map(|v| v == "0")
@@ -663,16 +683,25 @@ pub fn run() {
             commands::watchlist::get_watchlist,
             commands::watchlist::add_watch,
             commands::watchlist::remove_watch,
+            commands::watchlist::remove_watch_from_group,
+            commands::watchlist::set_watch_groups,
+            commands::watchlist::move_group_member_top,
+            commands::watchlist::move_group_member_up,
+            commands::watchlist::move_group_member_down,
+            commands::watchlist::reorder_group_members,
+            commands::watchlist::add_watch_group,
+            commands::watchlist::rename_watch_group,
+            commands::watchlist::delete_watch_group,
+            commands::watchlist::reorder_watch_groups,
             commands::watchlist::set_watch_ticker_enabled,
-            commands::watchlist::reorder_watch,
-            commands::watchlist::move_watch_top,
-            commands::watchlist::move_watch_up,
-            commands::watchlist::move_watch_down,
+            commands::watchlist::set_ticker_enabled_bulk,
+            commands::watchlist::reorder_ticker,
             commands::watchlist::search_stocks,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
+            commands::settings::list_index_pool,
             commands::settings::get_portable_mode,
             commands::settings::is_store_build,
             commands::autostart::get_autostart,
@@ -680,6 +709,7 @@ pub fn run() {
             commands::market::get_market_overview,
             commands::market::get_overview_interval,
             commands::window::show_main_window,
+            commands::window::set_ticker_visible,
             commands::updater::check_update,
             commands::updater::install_update,
             commands::updater::is_trading_session,

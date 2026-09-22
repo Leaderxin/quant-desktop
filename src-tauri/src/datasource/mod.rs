@@ -33,9 +33,59 @@ pub fn shared_client() -> &'static Client {
 
 // ── Shared constants across data source adapters ──
 
-/// Major A-share index codes (Shanghai + Shenzhen)
-pub const INDEX_CODES: &str =
-    "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680";
+/// 指数候选池 —— 顶部指数区里用户可以勾选的**全集**(顺序即设置页「可添加」区的展示顺序)。
+///
+/// 两个适配器都按这个串批量请求(单次 HTTP),前端再按 `index_codes` 设置过滤排序。
+/// 为什么不做成「后端只拉用户选中的那几个」:
+/// - 请求本来就是一次批量调用,多带 7 个代码只是响应里多几行文本,开销可忽略;
+/// - 全量数据常驻缓存后,用户在设置页勾一个指数**当场**就能看到它出现在顶栏,
+///   不必等下一轮轮询(盘中 2 秒、休市可达 30 秒)。
+///
+/// 新增代码必须在**腾讯与新浪两套接口上都实测有数据**再往里加 —— 两边的指数格式
+/// 不同(腾讯 `s_` 简版 11 字段 / 新浪剥掉 `s_` 走股票格式 30+ 字段),一个能取到
+/// 不代表另一个也能。已实测(2026-09):下列 14 个双源均可用。
+pub const INDEX_CODES: &str = concat!(
+    "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680,",
+    "s_sh000016,s_sh000300,s_sh000852,s_sh000906,s_bj899050,s_sz399106,s_sz399005"
+);
+
+/// 指数候选池的代码与中文名，供设置页的候选列表展示。
+///
+/// 为什么名字要在后端写死一份:指数名来自行情响应而不是代码本身，设置页在用户
+/// 尚未选中该指数时拿不到它的名字。若前端再抄一份字面量，就会出现「改了候选池
+/// 但设置页还显示旧列表」的漂移 —— 放在这里由 `index_pool_names_match_codes`
+/// 测试与 `INDEX_CODES` 对齐差异。
+///
+/// 顺序即设置页「可添加」区的展示顺序。
+pub const INDEX_POOL_NAMES: &[(&str, &str)] = &[
+    ("s_sh000001", "上证指数"),
+    ("s_sz399001", "深证成指"),
+    ("s_sz399006", "创业板指"),
+    ("s_sh000688", "科创50"),
+    ("s_sh000698", "科创100"),
+    ("s_sh000905", "中证500"),
+    ("s_sh000680", "科创综指"),
+    ("s_sh000016", "上证50"),
+    ("s_sh000300", "沪深300"),
+    ("s_sh000852", "中证1000"),
+    ("s_sh000906", "中证800"),
+    ("s_bj899050", "北证50"),
+    ("s_sz399106", "深证综指"),
+    ("s_sz399005", "中小100"),
+];
+
+/// 指数区默认勾选的指数,即 1.5.x 版本硬编码的那 7 个。
+/// 与 `db::DEFAULT_INDEX_CODES_JSON` 是同一份数据的两种写法,由
+/// `default_index_codes_match_datasource` 测试保证不会漂移。
+pub const DEFAULT_INDEX_CODES: &[&str] = &[
+    "s_sh000001", // 上证指数
+    "s_sz399001", // 深证成指
+    "s_sz399006", // 创业板指
+    "s_sh000688", // 科创50
+    "s_sh000698", // 科创100
+    "s_sh000905", // 中证500
+    "s_sh000680", // 科创综指
+];
 
 /// Ticker window default dimensions (logical pixels — keep in sync with
 /// `tauri.conf.json` → `app.windows[ticker]` and `WIDTH` in
@@ -297,9 +347,23 @@ mod tests {
         assert_eq!(minute_span("weekly"), None);
     }
 
+    /// 候选池的代码表与名字表必须一一对应、且顺序一致 —— 设置页直接按下标
+    /// 对应展示，错位会让「上证50」显示成别的指数。
     #[test]
-    fn cn_category_classifies_cn_symbols() {
-        assert_eq!(cn_category("sh600519"), "GP-A");
+    fn index_pool_names_match_codes() {
+        let codes: Vec<&str> = INDEX_CODES.split(',').collect();
+        let names: Vec<&str> = INDEX_POOL_NAMES.iter().map(|(c, _)| *c).collect();
+        assert_eq!(codes, names, "INDEX_POOL_NAMES 的顺序与内容必须与 INDEX_CODES 一致");
+        assert_eq!(codes.len(), 14);
+
+        // 默认勾选的 7 个必须是候选池的子集，且保持原有先后
+        for code in DEFAULT_INDEX_CODES {
+            assert!(codes.contains(code), "默认指数 {} 不在候选池中", code);
+        }
+    }
+
+    #[test]
+    fn cn_category_classifies_cn_symbols() {        assert_eq!(cn_category("sh600519"), "GP-A");
         assert_eq!(cn_category("sz000001"), "GP-A");
         assert_eq!(cn_category("sz300750"), "GP-A");
         assert_eq!(cn_category("sh000852"), "ZS");

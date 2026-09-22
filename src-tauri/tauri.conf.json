@@ -33,7 +33,8 @@
         "dragDropEnabled": true,
         "resizable": false,
         "focus": false,
-        "visible": false
+        "visible": false,
+        "transparent": true
       }
     ],
     "security": {
