@@ -47,6 +47,8 @@ pub struct Level {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinuteData {
+    /// 分钟时间戳 `YYYY-MM-DD HH:mm`。日期不可省：分时接口返回的是「最近 N 根」
+    /// 滚动窗口，盘中必然跨交易日，前端据此切出当日分时（见 src/utils/minuteBars.ts）。
     pub time: String,
     pub price: f64,
     pub open: f64,

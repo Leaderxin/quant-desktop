@@ -7,6 +7,8 @@ const props = defineProps<{
   code: string;
   market: string;
   name?: string;
+  /** 兜底昨收（`price - change`）：正常从分时数据里算，只在窗口里没有上一交易日时用到 */
+  prevClose?: number;
 }>();
 
 const chartRef = ref<HTMLElement | null>(null);
@@ -16,6 +18,7 @@ const { loading, error, initChart, loadData } = useMinuteChart({
   code: computed(() => props.code),
   market: computed(() => props.market),
   name: computed(() => props.name ?? ''),
+  prevClose: computed(() => props.prevClose),
 });
 
 onMounted(async () => {

@@ -65,6 +65,7 @@ useMinuteKUnavailable(activePeriod);
           :code="item.code"
           :market="item.market"
           :name="item.name"
+          :prev-close="quote ? quote.price - quote.change : undefined"
         />
         <KLineChart
           v-else
