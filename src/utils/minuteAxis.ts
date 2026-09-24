@@ -145,14 +145,3 @@ export function percentText(price: number, prevClose: number, digits = 2): strin
   const rounded = (((price - prevClose) / prevClose) * 100).toFixed(digits);
   return `${Number(rounded) > 0 ? '+' : ''}${rounded}%`;
 }
-
-/**
- * 把一组价格刻度改写成涨跌幅文本 —— 坐标一律不动。
- * 涨跌幅轴和价格轴共用同一个区间，刻度也就逐行对应。
- */
-export function percentTicks<T extends { value: number | string; text: string }>(
-  ticks: readonly T[],
-  prevClose: number,
-): T[] {
-  return ticks.map((tick) => ({ ...tick, text: percentText(Number(tick.value), prevClose) }));
-}

@@ -1,9 +1,9 @@
 import { ref, watch, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { AxisCreateTicksParams, AxisRange, AxisTick, KLineData as KCLineData, DataLoader } from 'klinecharts';
+import type { AxisCreateTicksParams, AxisRange, AxisTick, KLineData as KCLineData, DataLoader, YAxisOverride } from 'klinecharts';
 import type { MinuteData } from '@/types';
 import { mapMinuteBars } from '@/utils/minuteBars';
-import { minuteAxisLayout, percentTicks, sessionTicks, symmetricRange } from '@/utils/minuteAxis';
+import { minuteAxisLayout, percentText, sessionTicks, symmetricRange } from '@/utils/minuteAxis';
 import { useChartCore } from './useChartCore';
 
 /**
@@ -117,14 +117,20 @@ export function useMinuteChart(options: {
     const prev = prevCloseValue();
     if (!c || prev <= 0) return;
 
-    // 左侧涨跌幅轴：区间交给下面的 overrideYAxis（两条轴要完全相同），这里只换刻度文字
-    c.createYAxis({
+    // 左侧涨跌幅轴。文字统一交给 displayValueToText：刻度用它不算，
+    // 鼠标悬浮时每个 y 轴 widget 还会在轴的位置画一个读数（CrosshairHorizontalLabelView），
+    // 那个读数走的是同一条钩子 —— 只用 createTicks 换刻度的话，悬浮读数仍是价格。
+    // 区间由下面的 overrideYAxis 给（两条轴要完全相同），这里不碰几何。
+    const percentAxis: YAxisOverride & {
+      displayValueToText: (value: number, precision: number) => string;
+    } = {
       id: PERCENT_AXIS_ID,
       paneId: CANDLE_PANE,
       position: 'left',
       inside: true,
-      createTicks: (params) => percentTicks(params.defaultTicks, prevCloseValue()),
-    });
+      displayValueToText: (value: number) => percentText(value, prevCloseValue()),
+    };
+    c.createYAxis(percentAxis);
 
     // 两条轴共用的区间。gap 也得一起设：默认是「上 20% / 下 10%」的非对称留白，
     // 会把对称区间推歪。

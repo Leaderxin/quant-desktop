@@ -5,7 +5,6 @@ import {
   inferBarMinutes,
   minuteAxisLayout,
   percentText,
-  percentTicks,
   sessionTicks,
   symmetricRange,
   tradingMinutesOfDay,
@@ -157,7 +156,7 @@ describe('symmetricRange', () => {
   });
 });
 
-describe('percentText / percentTicks', () => {
+describe('percentText', () => {
   it('按昨收换算，正数带 + 号', () => {
     expect(percentText(110, 100)).toBe('+10.00%');
     expect(percentText(90, 100)).toBe('-10.00%');
@@ -167,10 +166,5 @@ describe('percentText / percentTicks', () => {
   it('昨收无效时给空串，不写出 Infinity%', () => {
     expect(percentText(110, 0)).toBe('');
     expect(percentText(110, NaN)).toBe('');
-  });
-
-  it('percentTicks 只换文字，坐标与 value 原样保留', () => {
-    const ticks = [{ coord: 12, value: '110', text: '110' }];
-    expect(percentTicks(ticks, 100)).toEqual([{ coord: 12, value: '110', text: '+10.00%' }]);
   });
 });
