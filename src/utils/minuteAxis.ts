@@ -89,6 +89,22 @@ export interface MinuteTick {
   text: string;
 }
 
+/**
+ * klinecharts 的 `barSpaceLimit.min`（v10 默认 1）：柱宽小于它时 `setBarSpace` 会被**静默丢掉**，
+ * 图表沿用原柱宽 —— 自算的留白和刻度就全对不上真实柱宽了。
+ */
+export const MIN_BAR_SPACE = 1;
+
+/**
+ * 一整天能不能按这个柱宽铺进图宽。铺不下时（图区窄于 240 × MIN_BAR_SPACE，窗口被拖得很窄）
+ * 整条横轴都得让给 klinecharts 自己排：先把柱宽缩到 MIN_BAR_SPACE 以下是不可能的，
+ * 硬按 `图宽 / 格子数` 算刻度只会得到一串被钳在右缘、叠在一起的时间。
+ */
+export function sessionFits(plotWidth: number, barMinutes: number): boolean {
+  if (!(plotWidth > 0) || !(barMinutes > 0)) return false;
+  return plotWidth / (SESSION_MINUTES / barMinutes) >= MIN_BAR_SPACE;
+}
+
 /** 分时图横轴的固定刻度，与常见行情软件一致 */
 export const SESSION_TICKS: readonly { minute: number; text: string }[] = [
   { minute: 0, text: '09:30' },

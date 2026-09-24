@@ -5,6 +5,7 @@ import {
   inferBarMinutes,
   minuteAxisLayout,
   percentText,
+  sessionFits,
   sessionTicks,
   symmetricRange,
   tradingMinutesOfDay,
@@ -108,6 +109,24 @@ describe('minuteAxisLayout', () => {
     const layout = minuteAxisLayout(0, minuteBars(10));
     expect(layout.barSpace).toBe(0);
     expect(layout.offsetRightDistance).toBe(0);
+  });
+});
+
+describe('sessionFits', () => {
+  it('图宽够铺一整天时为真', () => {
+    expect(sessionFits(720, 1)).toBe(true); // 240 格 × 3px
+    expect(sessionFits(240, 1)).toBe(true); // 刚好 1px 一格
+    expect(sessionFits(48, 5)).toBe(true); // 5 分钟线：48 格 × 1px
+  });
+
+  it('柱宽会被 barSpaceLimit.min（1px）卡住时为假 —— 固定刻度得让给 klinecharts', () => {
+    expect(sessionFits(239, 1)).toBe(false);
+    expect(sessionFits(47, 5)).toBe(false);
+  });
+
+  it('宽度或跨度无效时为假', () => {
+    expect(sessionFits(0, 1)).toBe(false);
+    expect(sessionFits(720, 0)).toBe(false);
   });
 });
 

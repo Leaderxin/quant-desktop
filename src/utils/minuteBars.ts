@@ -70,6 +70,17 @@ function stamp(d: MinuteData, base: Date): Stamped | null {
   };
 }
 
+/** 数据里最后一个交易日 —— 分时图要画的那一天 */
+function lastSessionDay(stamped: Stamped[]): string {
+  return stamped[stamped.length - 1].day;
+}
+
+/** 时间戳所属的交易日 `YYYY-MM-DD`（与 stamp 同口径：按本机时区还原出的那一天） */
+export function sessionKeyOf(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /**
  * 分时图 bar：只保留数据里最后一个交易日，按时间升序、时间戳去重。
  * @param base 时间戳缺日期时的基准日（默认当前时间），仅为兼容旧后端存在。
@@ -83,7 +94,7 @@ export function mapMinuteBars(data: MinuteData[], base: Date = new Date()): KCLi
   if (stamped.length === 0) return [];
 
   // 接口按时间升序返回，最后一根所属的交易日即当前交易日
-  const session = stamped[stamped.length - 1].day;
+  const session = lastSessionDay(stamped);
 
   // 同一分钟在两日窗口重叠时可能出现重复，按时间戳去重（保后者）
   const byTimestamp = new Map<number, KCLineData>();
@@ -92,4 +103,68 @@ export function mapMinuteBars(data: MinuteData[], base: Date = new Date()): KCLi
   }
 
   return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * 所画交易日的昨收 —— 窗口里紧邻它前面那根 bar 的收盘价，也就是上一个交易日的收盘。
+ *
+ * 纵轴以昨收为中心对称，而「昨收」是相对**画出来那一天**说的：盘前窗口里画的是昨日行情，
+ * 这时实时行情的 `price - change` 说的是今日昨收，两者差着昨日一整个涨跌幅，曲线会被推到
+ * 中心线一侧。所以基准优先从数据里取。
+ *
+ * 窗口里没有上一交易日时（新股上市首日）返回 null，调用方再退回实时行情。
+ */
+export function sessionPrevClose(data: MinuteData[], base: Date = new Date()): number | null {
+  const stamped: Stamped[] = [];
+  for (const d of data) {
+    const s = stamp(d, base);
+    if (s) stamped.push(s);
+  }
+  if (stamped.length === 0) return null;
+
+  const session = lastSessionDay(stamped);
+  let prevClose: number | null = null;
+  for (const s of stamped) {
+    if (s.day === session) break;
+    prevClose = s.bar.close;
+  }
+  return prevClose;
+}
+
+/** 增量刷新要怎么落到图表上 */
+export type SessionUpdate = 'reset' | 'append';
+
+/**
+ * 判断本次刷新该整份重挂（reset）还是增量推送（append）。
+ *
+ * 交易日变了必须重挂：图表的增量回调（subscribeBar → `_addData(data, 'update')`）只会
+ * 「时间戳比最后一根大就追加」，上一个交易日的 240 根会留在图里 —— 画出来正是「昨天的下午」
+ * 接着今天的早盘，也就是分时图最初那个日期错乱。图里装的是哪一天记不住时也重挂。
+ */
+export function sessionUpdate(
+  renderedSession: string | null,
+  bars: readonly { timestamp: number }[],
+): SessionUpdate {
+  if (bars.length === 0) return 'append';
+  if (renderedSession === null) return 'reset';
+  return sessionKeyOf(bars[bars.length - 1].timestamp) === renderedSession ? 'append' : 'reset';
+}
+
+/** 数据源时区（北京时间 UTC+8，见 src-tauri/src/datasource/market_clock.rs）相对 UTC 的偏移 */
+const SOURCE_OFFSET_MINUTES = 8 * 60;
+
+/**
+ * 与 bar 时间戳同一口径的「现在」。
+ *
+ * bar 的时间戳是「数据源给的钟点按**本机**时区拼出来的」（见 stamp），拿它直接和 Date.now()
+ * 比就掺进了时差：本机在 UTC+8 以西时，标着 09:35 的那根会被当成还没到的一点，整段会话都
+ * 被判成未来、被过期过滤整批丢掉。这里把当下换算到数据源钟点上再按同一口径拼时间戳。
+ */
+export function beijingNow(now: number = Date.now()): number {
+  const local = new Date(now);
+  const shifted = new Date(now + (SOURCE_OFFSET_MINUTES + local.getTimezoneOffset()) * 60_000);
+  return new Date(
+    shifted.getFullYear(), shifted.getMonth(), shifted.getDate(),
+    shifted.getHours(), shifted.getMinutes(),
+  ).getTime();
 }
