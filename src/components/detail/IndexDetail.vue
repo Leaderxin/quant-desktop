@@ -111,6 +111,7 @@ const statCards = computed(() => [
           :code="index.code"
           market="CN"
           :name="index.name"
+          :prev-close="index.price - index.change"
         />
         <KLineChart
           v-else

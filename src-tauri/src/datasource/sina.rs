@@ -448,8 +448,11 @@ impl DataSource for SinaAdapter {
             .iter()
             .filter_map(|pt| {
                 let time_raw = pt.get("day")?.as_str()?;
+                // "2026-09-23 09:35:00" → "2026-09-23 09:35"
+                // 日期必须保留：datalen=240&scale=5 是「最近 240 根 5 分钟线」，约 5 个
+                // 交易日，前端靠这个日期切出当日分时（见 src/utils/minuteBars.ts）。
                 let time = if time_raw.len() >= 16 {
-                    time_raw[11..16].to_string()
+                    time_raw[..16].to_string()
                 } else {
                     time_raw.to_string()
                 };

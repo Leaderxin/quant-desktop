@@ -76,6 +76,7 @@ export interface Depth {
 }
 
 export interface MinuteData {
+  /** 分钟时间戳 `YYYY-MM-DD HH:mm`（后端保证带日期，分时图据此切出当前交易日） */
   time: string;
   price: number;
   open: number;

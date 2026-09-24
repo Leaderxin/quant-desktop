@@ -32,10 +32,21 @@ cargo build --manifest-path src-tauri/Cargo.toml
 
 Frontend tests run with `vitest` (`npm test`, or `npm run test:watch`). They cover store-level
 logic that is hard to eyeball — currently the market-overview refresh scheduler's concurrency in
-[src/stores/market.spec.ts](src/stores/market.spec.ts). Tauri IPC is mocked at the `invoke`/`listen`
-boundary; Pinia and the stores themselves are real. There is no lint command configured yet.
-`vue-tsc` with the strict tsconfig enforces type correctness on both app and test code; `cargo test`
-runs the Rust side (blacklist classification, response parsing, session intervals).
+[src/stores/market.spec.ts](src/stores/market.spec.ts) — plus the pure logic that no component test
+can reach, which is why it lives in `src/utils/`: [src/utils/minuteBars.spec.ts](src/utils/minuteBars.spec.ts)
+pins the 分时图 session split (the adapter's rolling window spans two trading days intraday; only the
+last one may be drawn, dated from the data rather than the clock), the 昨收 the chart draws against
+(the previous session's last close, taken from that same window) and the refresh decision that keeps
+a session rollover from appending onto yesterday's bars, plus the UTC+8 wall-clock bound the
+"future bar" filter compares against; and
+[src/utils/minuteAxis.spec.ts](src/utils/minuteAxis.spec.ts) the session-grid arithmetic (slot count
+per bar interval, the right offset that left-aligns the curve, tick coordinates, the pane width below
+which the whole grid has to be handed back to klinecharts) and the
+symmetric-about-昨收 range with its percent labels. Tauri IPC is mocked
+at the `invoke`/`listen` boundary; Pinia and the stores themselves are real. There is no lint command
+configured yet. `vue-tsc` with the strict tsconfig enforces type correctness on both app and test
+code; `cargo test` runs the Rust side (blacklist classification, response parsing, session
+intervals).
 
 ## Architecture
 
@@ -147,7 +158,9 @@ DataSource API (Sina/Tencent)
 
 On-demand requests:
 - **Depth**: `invoke("get_depth")` → active DataSource adapter → returned to `DepthPanel`. Auto-refreshes every **3s** while detail panel is open.
-- **Minute chart**: `invoke("get_intraday")` → adapter → `useChart` composable. Loads once on open, then auto-refreshes every **5s**.
+- **Minute chart**: `invoke("get_intraday")` → adapter → `useMinuteChart` composable. Loads once on open, then auto-refreshes every **5s**. Both adapters return a *rolling window* of the last N minute bars (Tencent `,,242`, Sina `datalen=240&scale=5`), which intraday spans the previous trading day too — so `MinuteData.time` carries `YYYY-MM-DD HH:mm` and [src/utils/minuteBars.ts](src/utils/minuteBars.ts) keeps only the last session present. Dropping the date there (or stamping bars with the client's `today`) makes the chart draw yesterday's afternoon as if it were today's. The refresh publishes it via `subscribeBar`, which klinecharts only ever *appends* to — so when the mapped session differs from the one already loaded (the panel left open across 09:30, or overnight) the refresh re-installs the whole loader instead; and each bar is compared against a UTC+8 "now" (`beijingNow`) rather than `Date.now()`, since the timestamps carry the *source's* wall clock and a client west of UTC+8 would otherwise judge the entire session to be in the future and freeze the chart. The composable registers its own `onUnmounted` for the 5s poll and the resize observer — `useChartCore`'s only disposes the chart instance, so they would otherwise leak one per mount.
+- **Minute chart y-axis** carries both scales — prices on the right (where they already were) and 涨跌幅 on the left — over one range symmetric about 昨收, so the two columns read row by row and 0.00% sits dead centre (`convertToPixel(prevClose) === paneHeight / 2`, verified). The percent column is a second `createYAxis` on `candle_pane` that relabels itself through `displayValueToText`; the range comes from a single `overrideYAxis({ paneId })` so both axes get it, and it sets `gap` too — klinecharts' default is asymmetric (20% top / 10% bottom) and would tilt a symmetric range. The half-span is the day's largest `close` deviation from 昨收 (a 分时图 draws a close line, not candles) floored at 1% so the opening minute isn't magnified. The label hook is the only way to reach the hover readout: each `YAxisWidget` draws its own `CrosshairHorizontalLabelView`, and that text goes through the axis's `displayValueToText` — a `createTicks` override relabels the axis but leaves hover showing the price. 昨收 is read from the window itself — the close of the bar right before the drawn session (`sessionPrevClose`), i.e. the previous session's close — so the baseline always describes the day that is actually drawn; the `price - change` prop is only the fallback for a window with no prior session (a first-day listing). With no 昨收 the axis *and* the baseline are removed, not merely left uninstalled: the range callback and the label hook read 昨收 live, so keeping them would draw a range centred on 0 with blank labels.
+- **Minute chart x-axis** is pinned to one trading session (09:30–15:00) — the curve grows left-to-right from the open and the rest of the day stays blank. klinecharts lays out by bar count and right-aligns short series (29 bars landed at x=335–615 of a 700px plot, i.e. a blank left half), so [src/utils/minuteAxis.ts](src/utils/minuteAxis.ts) computes the bar space and right offset itself, slot = one bar (240 slots for Tencent's 1-min feed, 48 for Sina's 5-min), and [useMinuteChart.ts](src/composables/useMinuteChart.ts) re-applies it whenever the data or the container size changes (a resize otherwise drifts back to a left blank). Pan and zoom are off (`setScrollEnabled(false)` / `setZoomEnabled(false)`) — a pannable 分时图 would only fight the re-layout. The axis labels are a fixed `createTicks` list (09:30 / 10:30 / 11:30-13:00 / 14:00 / 15:00) because klinecharts extrapolates tick timestamps linearly across the blank region, which reads "12:10" during the morning — the lunch break isn't linear in wall-clock. Only the axis is corrected; the crosshair still extrapolates in the blank region. Both the labels and the computed offset give way to klinecharts when a full session no longer fits the pane (`sessionFits`): below that width the bar space is under `barSpaceLimit.min`, `setBarSpace` is silently dropped, and the five labels would be clamped onto the right edge on top of each other.
 - **K-line (daily)**: `invoke("get_kline", {period: "daily"})` → adapter → `useChart`. Loads once, auto-refreshes every **30s** (last candle updates intraday).
 - **K-line (weekly/monthly)**: Same path, auto-refreshes every **60s**.
 
