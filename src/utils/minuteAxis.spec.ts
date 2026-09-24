@@ -4,7 +4,10 @@ import {
   SESSION_TICKS,
   inferBarMinutes,
   minuteAxisLayout,
+  percentText,
+  percentTicks,
   sessionTicks,
+  symmetricRange,
   tradingMinutesOfDay,
 } from './minuteAxis';
 
@@ -134,5 +137,40 @@ describe('sessionTicks', () => {
     expect(sessionTicks(0, 3, 1)).toEqual([]);
     expect(sessionTicks(720, 0, 1)).toEqual([]);
     expect(sessionTicks(720, 3, 0)).toEqual([]);
+  });
+});
+
+describe('symmetricRange', () => {
+  it('半幅取收盘价相对昨收的最大偏离，两侧对称', () => {
+    const range = symmetricRange([{ close: 103 }, { close: 97 }, { close: 100 }], 100);
+    expect(range).toEqual({ from: 97, to: 103 });
+  });
+
+  it('涨跌不到 1% 时兜底到昨收的 1%，免得开盘头一分钟被放大到满屏', () => {
+    const range = symmetricRange([{ close: 100.1 }, { close: 100.05 }], 100);
+    expect(range.from).toBeCloseTo(99, 6);
+    expect(range.to).toBeCloseTo(101, 6);
+  });
+
+  it('已超过 1% 时按实际幅度走，不额外留白', () => {
+    expect(symmetricRange([{ close: 106 }], 100)).toEqual({ from: 94, to: 106 });
+  });
+});
+
+describe('percentText / percentTicks', () => {
+  it('按昨收换算，正数带 + 号', () => {
+    expect(percentText(110, 100)).toBe('+10.00%');
+    expect(percentText(90, 100)).toBe('-10.00%');
+    expect(percentText(100, 100)).toBe('0.00%');
+  });
+
+  it('昨收无效时给空串，不写出 Infinity%', () => {
+    expect(percentText(110, 0)).toBe('');
+    expect(percentText(110, NaN)).toBe('');
+  });
+
+  it('percentTicks 只换文字，坐标与 value 原样保留', () => {
+    const ticks = [{ coord: 12, value: '110', text: '110' }];
+    expect(percentTicks(ticks, 100)).toEqual([{ coord: 12, value: '110', text: '+10.00%' }]);
   });
 });

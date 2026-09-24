@@ -1,22 +1,24 @@
-import { ref, type Ref, type MaybeRef, unref } from 'vue';
+import { ref, watch, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { AxisCreateTicksParams, AxisTick, KLineData as KCLineData, DataLoader } from 'klinecharts';
+import type { AxisCreateTicksParams, AxisRange, AxisTick, KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData } from '@/types';
 import { mapMinuteBars } from '@/utils/minuteBars';
-import { minuteAxisLayout, sessionTicks } from '@/utils/minuteAxis';
+import { minuteAxisLayout, percentTicks, sessionTicks, symmetricRange } from '@/utils/minuteAxis';
 import { useChartCore } from './useChartCore';
 
 /**
  * 分时图 composable — 仅用于 MinuteChart 组件。
  * 不含副图指标、K 线懒加载等逻辑，与 K 线图表完全隔离。
  * 数据映射（bar 构造 + 只取当前交易日）见 @/utils/minuteBars；
- * 横轴排版（固定一个交易日）见 @/utils/minuteAxis。
+ * 坐标轴（横轴固定一个交易日、纵轴以昨收对称）见 @/utils/minuteAxis。
  */
 export function useMinuteChart(options: {
   chartRef: Ref<HTMLElement | null>;
   code: MaybeRef<string>;
   market: MaybeRef<string>;
   name?: MaybeRef<string>;
+  /** 昨收：纵轴以它为中心对称、左侧涨跌幅刻度也由它换算；缺失时退回默认纵轴 */
+  prevClose?: MaybeRef<number | undefined>;
 }) {
   const { chart, loading, error, periodToKlinecharts, syncPrecision, initChartCore, disposeChart: coreDispose, reapplyStyles } = useChartCore(options);
 
@@ -93,6 +95,72 @@ export function useMinuteChart(options: {
       requestAnimationFrame(() => applySessionAxis());
     });
     resizeObserver.observe(el);
+  }
+
+  // ---- 纵轴：价格 + 涨跌幅双刻度 ----
+  // 分时图的纵轴以昨收为中心对称（0.00% 在正中）：右侧价格刻度、左侧涨跌幅刻度，
+  // 两条轴共用同一个区间，所以刻度逐行对应。昨收拿不到时两条轴都不装，
+  // 退回 klinecharts 的默认纵轴（按当日高低自适应）。
+
+  const CANDLE_PANE = 'candle_pane';
+  const PERCENT_AXIS_ID = 'minute_percent';
+  const BASELINE_OVERLAY_ID = 'minute_prev_close';
+
+  /** 昨收：> 0 才算数 */
+  function prevCloseValue(): number {
+    const value = Number(unref(options.prevClose ?? 0));
+    return value > 0 ? value : 0;
+  }
+
+  function applyPriceScale() {
+    const c = chart.value;
+    const prev = prevCloseValue();
+    if (!c || prev <= 0) return;
+
+    // 左侧涨跌幅轴：区间交给下面的 overrideYAxis（两条轴要完全相同），这里只换刻度文字
+    c.createYAxis({
+      id: PERCENT_AXIS_ID,
+      paneId: CANDLE_PANE,
+      position: 'left',
+      inside: true,
+      createTicks: (params) => percentTicks(params.defaultTicks, prevCloseValue()),
+    });
+
+    // 两条轴共用的区间。gap 也得一起设：默认是「上 20% / 下 10%」的非对称留白，
+    // 会把对称区间推歪。
+    c.overrideYAxis({
+      paneId: CANDLE_PANE,
+      gap: { top: 0.05, bottom: 0.05 },
+      createRange: (): AxisRange => {
+        const { from, to } = symmetricRange(klineData.value, prevCloseValue());
+        return {
+          from, to, range: to - from,
+          realFrom: from, realTo: to, realRange: to - from,
+          displayFrom: from, displayTo: to, displayRange: to - from,
+        };
+      },
+    });
+
+    // 昨收基准线（区间正中）。锁住不给拖，默认的点/坐标轴小标签也不画。
+    // 颜色跟蜡烛的 noChange 一样写死一个中性灰：深浅主题都读得出来，
+    // 也就不必在切主题时重建这条线。
+    c.removeOverlay({ id: BASELINE_OVERLAY_ID });
+    c.createOverlay({
+      id: BASELINE_OVERLAY_ID,
+      name: 'horizontalStraightLine',
+      paneId: CANDLE_PANE,
+      points: [{ timestamp: klineData.value[klineData.value.length - 1]?.timestamp ?? Date.now(), value: prev }],
+      lock: true,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      styles: { line: { style: 'dashed', color: 'rgba(139,148,158,0.55)', size: 1 } },
+    });
+  }
+
+  // 昨收是异步到的（行情比分钟内数据晚一拍），到了再装刻度
+  if (options.prevClose) {
+    watch(() => unref(options.prevClose), () => applyPriceScale());
   }
 
   // ---- 自动刷新 ----
@@ -187,6 +255,7 @@ export function useMinuteChart(options: {
     // 缩完柱宽就不再等于「图宽 / 格子数」。分时图本来也不给拖，索性关掉这两个手势。
     chart.value.setScrollEnabled(false);
     chart.value.setZoomEnabled(false);
+    applyPriceScale();
     observeResize();
   }
 

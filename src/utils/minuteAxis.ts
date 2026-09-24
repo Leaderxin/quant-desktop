@@ -111,3 +111,48 @@ export function sessionTicks(plotWidth: number, barSpace: number, barMinutes: nu
     text,
   }));
 }
+
+// ---- 纵轴：以昨收为中心的对称区间 ----
+
+/**
+ * 涨跌幅很小时的半幅下限（昨收的 1%）。开盘头一分钟涨跌往往不到 0.05%，
+ * 不兜底的话纵轴会被放大到看不出任何幅度。
+ */
+const MIN_RANGE_RATE = 0.01;
+
+/**
+ * 以昨收为中心的对称价格区间 —— 分时图的标准画法：0.00% 落在正中，涨跌一眼看出对称。
+ * 半幅取收盘价相对昨收的最大偏离（分时图画的是一条收盘价连线，所以只看 close），
+ * 再兜一个最小半幅。
+ */
+export function symmetricRange(
+  bars: readonly { close: number }[],
+  prevClose: number,
+  minRate = MIN_RANGE_RATE,
+): { from: number; to: number } {
+  let half = 0;
+  for (const bar of bars) {
+    const deviation = Math.abs(bar.close - prevClose);
+    if (deviation > half) half = deviation;
+  }
+  half = Math.max(half, Math.abs(prevClose) * minRate);
+  return { from: prevClose - half, to: prevClose + half };
+}
+
+/** 价格相对昨收的涨跌幅文本，如 `+1.23%` / `-0.45%` */
+export function percentText(price: number, prevClose: number, digits = 2): string {
+  if (!(prevClose > 0)) return '';
+  const rounded = (((price - prevClose) / prevClose) * 100).toFixed(digits);
+  return `${Number(rounded) > 0 ? '+' : ''}${rounded}%`;
+}
+
+/**
+ * 把一组价格刻度改写成涨跌幅文本 —— 坐标一律不动。
+ * 涨跌幅轴和价格轴共用同一个区间，刻度也就逐行对应。
+ */
+export function percentTicks<T extends { value: number | string; text: string }>(
+  ticks: readonly T[],
+  prevClose: number,
+): T[] {
+  return ticks.map((tick) => ({ ...tick, text: percentText(Number(tick.value), prevClose) }));
+}

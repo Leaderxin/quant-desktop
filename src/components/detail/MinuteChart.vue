@@ -6,6 +6,8 @@ const props = defineProps<{
   code: string;
   market: string;
   name?: string;
+  /** 昨收：纵轴以它为中心对称，左侧刻度换算成涨跌幅 */
+  prevClose?: number;
 }>();
 
 const chartRef = ref<HTMLElement | null>(null);
@@ -15,6 +17,7 @@ const { loading, error, initChart, loadData } = useMinuteChart({
   code: computed(() => props.code),
   market: computed(() => props.market),
   name: computed(() => props.name ?? ''),
+  prevClose: computed(() => props.prevClose),
 });
 
 onMounted(async () => {
