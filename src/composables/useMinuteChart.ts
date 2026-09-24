@@ -183,6 +183,10 @@ export function useMinuteChart(options: {
     initChartCore('minute');
     if (!chart.value) return;
     chart.value.overrideXAxis({ createTicks: minuteAxisTicks });
+    // 横轴固定为一个交易日，拖拽与缩放都会把它带偏：拖完会被上面的重排拉回来，
+    // 缩完柱宽就不再等于「图宽 / 格子数」。分时图本来也不给拖，索性关掉这两个手势。
+    chart.value.setScrollEnabled(false);
+    chart.value.setZoomEnabled(false);
     observeResize();
   }
 
