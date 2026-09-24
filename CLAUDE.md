@@ -35,8 +35,10 @@ logic that is hard to eyeball — currently the market-overview refresh schedule
 [src/stores/market.spec.ts](src/stores/market.spec.ts) — plus the pure logic that no component test
 can reach, which is why it lives in `src/utils/`: [src/utils/minuteBars.spec.ts](src/utils/minuteBars.spec.ts)
 pins the 分时图 session split (the adapter's rolling window spans two trading days intraday; only the
-last one may be drawn, dated from the data rather than the clock). Tauri IPC is mocked at the
-`invoke`/`listen` boundary; Pinia and the stores themselves are real. There is no lint command
+last one may be drawn, dated from the data rather than the clock) and
+[src/utils/minuteAxis.spec.ts](src/utils/minuteAxis.spec.ts) the session-grid arithmetic (slot count
+per bar interval, the right offset that left-aligns the curve, tick coordinates). Tauri IPC is mocked
+at the `invoke`/`listen` boundary; Pinia and the stores themselves are real. There is no lint command
 configured yet. `vue-tsc` with the strict tsconfig enforces type correctness on both app and test
 code; `cargo test` runs the Rust side (blacklist classification, response parsing, session
 intervals).
@@ -152,6 +154,7 @@ DataSource API (Sina/Tencent)
 On-demand requests:
 - **Depth**: `invoke("get_depth")` → active DataSource adapter → returned to `DepthPanel`. Auto-refreshes every **3s** while detail panel is open.
 - **Minute chart**: `invoke("get_intraday")` → adapter → `useMinuteChart` composable. Loads once on open, then auto-refreshes every **5s**. Both adapters return a *rolling window* of the last N minute bars (Tencent `,,242`, Sina `datalen=240&scale=5`), which intraday spans the previous trading day too — so `MinuteData.time` carries `YYYY-MM-DD HH:mm` and [src/utils/minuteBars.ts](src/utils/minuteBars.ts) keeps only the last session present. Dropping the date there (or stamping bars with the client's `today`) makes the chart draw yesterday's afternoon as if it were today's.
+- **Minute chart x-axis** is pinned to one trading session (09:30–15:00) — the curve grows left-to-right from the open and the rest of the day stays blank. klinecharts lays out by bar count and right-aligns short series (29 bars landed at x=335–615 of a 700px plot, i.e. a blank left half), so [src/utils/minuteAxis.ts](src/utils/minuteAxis.ts) computes the bar space and right offset itself, slot = one bar (240 slots for Tencent's 1-min feed, 48 for Sina's 5-min), and [useMinuteChart.ts](src/composables/useMinuteChart.ts) re-applies it whenever the data or the container size changes (a resize otherwise drifts back to a left blank). The axis labels are a fixed `createTicks` list (09:30 / 10:30 / 11:30-13:00 / 14:00 / 15:00) because klinecharts extrapolates tick timestamps linearly across the blank region, which reads "12:10" during the morning — the lunch break isn't linear in wall-clock. Only the axis is corrected; the crosshair still extrapolates in the blank region.
 - **K-line (daily)**: `invoke("get_kline", {period: "daily"})` → adapter → `useChart`. Loads once, auto-refreshes every **30s** (last candle updates intraday).
 - **K-line (weekly/monthly)**: Same path, auto-refreshes every **60s**.
 

@@ -1,14 +1,16 @@
 import { ref, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
+import type { AxisCreateTicksParams, AxisTick, KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData } from '@/types';
 import { mapMinuteBars } from '@/utils/minuteBars';
+import { minuteAxisLayout, sessionTicks } from '@/utils/minuteAxis';
 import { useChartCore } from './useChartCore';
 
 /**
  * 分时图 composable — 仅用于 MinuteChart 组件。
  * 不含副图指标、K 线懒加载等逻辑，与 K 线图表完全隔离。
- * 数据映射（bar 构造 + 只取当前交易日）见 @/utils/minuteBars。
+ * 数据映射（bar 构造 + 只取当前交易日）见 @/utils/minuteBars；
+ * 横轴排版（固定一个交易日）见 @/utils/minuteAxis。
  */
 export function useMinuteChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -46,6 +48,53 @@ export function useMinuteChart(options: {
     },
   };
 
+  // ---- 横轴：固定一个交易日 ----
+  // 分时图横轴永远是 09:30–15:00，曲线自左端向右生长。klinecharts 默认按「最近若干根」
+  // 排版、数据不够就贴右边，所以每次数据或尺寸变化后都要把格子重排一次（见 @/utils/minuteAxis）。
+
+  /** bar 的分钟跨度，刻度换算要用；跟随数据更新 */
+  let axisBarMinutes = 1;
+  let resizeObserver: ResizeObserver | null = null;
+
+  function applySessionAxis() {
+    const c = chart.value;
+    const bars = klineData.value;
+    if (!c || bars.length === 0) return;
+    // 图区宽度取主图 bounding：yAxis 是 inside 的，等于整幅宽度
+    const width = c.getSize('candle_pane', 'main')?.width ?? 0;
+    if (!(width > 0)) return;
+
+    const layout = minuteAxisLayout(width, bars);
+    axisBarMinutes = layout.barMinutes;
+    c.setBarSpace(layout.barSpace);
+    // setBarSpace 超出 barSpaceLimit 会被忽略，留白按实际柱宽算，两者才不打架。
+    // 第二个参数 d.ts 里没声明，但实现接受 isUpdate：不传的话留白只被记下、不当场重排。
+    const offset = Math.max(0, width - bars.length * c.getBarSpace().bar);
+    (c.setOffsetRightDistance as (distance: number, isUpdate?: boolean) => void)(offset, true);
+  }
+
+  /** 固定刻度 09:30 / 10:30 / 11:30-13:00 / 14:00 / 15:00，位置跟随实际柱宽 */
+  function minuteAxisTicks(params: AxisCreateTicksParams): AxisTick[] {
+    const c = chart.value;
+    if (!c) return params.defaultTicks;
+    const ticks = sessionTicks(params.bounding.width, c.getBarSpace().bar, axisBarMinutes);
+    // 图还没量到宽度时退回 klinecharts 自己的刻度，别把横轴清空
+    return ticks.length > 0 ? ticks : params.defaultTicks;
+  }
+
+  /** 尺寸变化后重排：柱宽不再等于「图宽 / 240」时，左侧又会冒出留白 */
+  function observeResize() {
+    const el = options.chartRef.value;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    resizeObserver?.disconnect();
+    resizeObserver = new ResizeObserver(() => {
+      // 先让 klinecharts 自己的 ResizeObserver 更新内部尺寸，下一帧再按新宽度重排，
+      // 否则这里读到的还是旧宽度
+      requestAnimationFrame(() => applySessionAxis());
+    });
+    resizeObserver.observe(el);
+  }
+
   // ---- 自动刷新 ----
 
   function startAutoRefresh() {
@@ -70,6 +119,7 @@ export function useMinuteChart(options: {
           } else if (chart.value) {
             chart.value.setDataLoader(dataLoader);
           }
+          applySessionAxis();
         }
       } catch (e) {
         console.error('[useMinuteChart] incremental update failed:', e);
@@ -113,6 +163,7 @@ export function useMinuteChart(options: {
         chart.value.setPeriod(periodToKlinecharts('minute'));
         chart.value.setDataLoader(dataLoader);
         syncPrecision(klineData.value);
+        applySessionAxis();
       }
       startAutoRefresh();
     } catch (e) {
@@ -130,11 +181,16 @@ export function useMinuteChart(options: {
 
   function initChart() {
     initChartCore('minute');
+    if (!chart.value) return;
+    chart.value.overrideXAxis({ createTicks: minuteAxisTicks });
+    observeResize();
   }
 
   function disposeChart() {
     stopAutoRefresh();
     barSubscriber = null;
+    resizeObserver?.disconnect();
+    resizeObserver = null;
     if (abortController) {
       abortController.abort();
       abortController = null;
