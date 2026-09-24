@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useMarketStore, type MarketDirection } from '@/stores/market';
 import type { SectorItem } from '@/types';
 import { formatAmount } from '@/utils/format';
+import { ChevronDown } from 'lucide-vue-next';
 
 const market = useMarketStore();
 
@@ -68,17 +69,12 @@ onUnmounted(() => {
       @click="toggleExpand"
     >
       <span class="header-title">
-        <svg
+        <ChevronDown
           class="chevron"
           :class="{ 'chevron-expanded': market.expanded }"
-          viewBox="0 0 12 12"
-          width="10"
-          height="10"
-          fill="none"
+          :size="10"
           aria-hidden="true"
-        >
-          <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        />
         市场概览
       </span>
 

@@ -7,6 +7,7 @@ import StatusBar from './StatusBar.vue';
 import SettingsPage from '@/components/settings/SettingsPage.vue';
 import { provide, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { CircleAlert, RefreshCw, TriangleAlert } from 'lucide-vue-next';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
 const settings = useSettingsStore();
@@ -50,15 +51,10 @@ defineEmits<{
     <!-- Global init error banner -->
     <div v-if="initError" class="error-banner" role="alert">
       <div class="error-banner-content">
-        <svg class="error-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-          <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
+        <CircleAlert class="error-icon" :size="14" aria-hidden="true" />
         <span class="error-text">{{ initError }}</span>
         <button class="error-retry-btn" @click="$emit('retry')" aria-label="重新加载应用">
-          <svg viewBox="0 0 14 14" width="12" height="12" fill="none" aria-hidden="true">
-            <path d="M2 7a5 5 0 0 1 8.5-3.5M12 7a5 5 0 0 1-8.5 3.5M10.5 1.5v2h-2M3.5 12.5v-2h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <RefreshCw :size="12" aria-hidden="true" />
           重试
         </button>
       </div>
@@ -67,10 +63,7 @@ defineEmits<{
     <!-- Global child component error boundary (non-blocking) -->
     <div v-else-if="appError && initReady" class="warning-banner" role="alert">
       <div class="warning-banner-content">
-        <svg class="warning-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
-          <path d="M8 1.5L15.5 14.5H.5L8 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="M8 6v3M8 11h.007" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
+        <TriangleAlert class="warning-icon" :size="13" aria-hidden="true" />
         <span class="warning-text">{{ appError }}</span>
         <button class="error-dismiss-btn" @click="$emit('dismissAppError')" aria-label="关闭">✕</button>
       </div>
@@ -79,10 +72,7 @@ defineEmits<{
     <!-- Quote listener error (non-blocking warning) -->
     <div v-else-if="quoteError && initReady" class="warning-banner" role="alert">
       <div class="warning-banner-content">
-        <svg class="warning-icon" viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
-          <path d="M8 1.5L15.5 14.5H.5L8 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="M8 6v3M8 11h.007" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        </svg>
+        <TriangleAlert class="warning-icon" :size="13" aria-hidden="true" />
         <span class="warning-text">行情数据连接异常，部分数据可能不是最新</span>
       </div>
     </div>

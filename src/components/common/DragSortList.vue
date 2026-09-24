@@ -8,6 +8,7 @@
 // 键盘可达性：拖拽本身对键盘用户不可用，所以每行都带 ↑/↓ 按钮（首行禁用上移、
 // 末行禁用下移），并支持 Alt+↑/↓。拖拽是快捷方式，不是唯一路径。
 import { ref } from 'vue';
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-vue-next';
 import { computeDropTarget, moveItem } from '@/utils/dragSort';
 
 const props = withDefaults(defineProps<{
@@ -114,11 +115,7 @@ defineExpose({ onDragEnd });
         :title="draggable ? '拖动排序' : '当前视图下不支持拖动排序'"
         aria-hidden="true"
       >
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-          <circle cx="5.5" cy="4" r="1.2"/><circle cx="10.5" cy="4" r="1.2"/>
-          <circle cx="5.5" cy="8" r="1.2"/><circle cx="10.5" cy="8" r="1.2"/>
-          <circle cx="5.5" cy="12" r="1.2"/><circle cx="10.5" cy="12" r="1.2"/>
-        </svg>
+        <GripVertical :size="12" aria-hidden="true" />
       </span>
 
       <slot name="row" :item="item" :index="i" />
@@ -132,7 +129,7 @@ defineExpose({ onDragEnd });
           title="上移（Alt+↑）"
           @click="emit('move', i, -1)"
         >
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 9 8 5 12 9"/></svg>
+          <ChevronUp :size="13" aria-hidden="true" />
         </button>
         <button
           class="drag-move"
@@ -142,7 +139,7 @@ defineExpose({ onDragEnd });
           title="下移（Alt+↓）"
           @click="emit('move', i, 1)"
         >
-          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 5 8 9 12 5"/></svg>
+          <ChevronDown :size="13" aria-hidden="true" />
         </button>
       </template>
     </div>

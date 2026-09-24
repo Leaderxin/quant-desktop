@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { NPopover } from 'naive-ui';
+import { NPopover, NSwitch } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import { useUpdaterStore } from '@/stores/updater';
 import { useUpdateCheck } from '@/composables/useUpdateCheck';
+import { openExternal } from '@/utils/external';
 import { getVersion } from '@tauri-apps/api/app';
+import { Mail, MessageCircle, Moon, Settings, Sun } from 'lucide-vue-next';
 
 const settings = useSettingsStore();
 const updater = useUpdaterStore();
@@ -17,12 +19,6 @@ const QRCODE_URL = 'https://raw.githubusercontent.com/Leaderxin/quant-desktop/ma
 
 // 项目主页：状态栏的 GitHub 图标指向这里
 const GITHUB_URL = 'https://github.com/Leaderxin/quant-desktop';
-
-// 用系统默认浏览器打开外链，避免 webview 内部跳转丢失原生外壳
-async function openExternal(url: string) {
-  const { openUrl } = await import('@tauri-apps/plugin-opener');
-  await openUrl(url);
-}
 
 const props = withDefaults(defineProps<{
   copyright?: string;
@@ -99,7 +95,8 @@ onMounted(async () => {
         aria-label="访问 GitHub 项目主页"
         @click.prevent="openExternal(GITHUB_URL)"
       >
-        <!-- GitHub 官方 mark（Octicons mark-github-24） -->
+        <!-- GitHub 官方 mark（Octicons mark-github-24）—— 品牌图标用官方原版，
+             不混用 lucide 的描线版（同一形状两种笔触，放在一起会打架） -->
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
           <path d="M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943"/>
         </svg>
@@ -117,15 +114,7 @@ onMounted(async () => {
         title="设置"
         @click.stop="emit('open-settings')"
       >
-        <!-- 齿轮，不是「中心圆 + 放射线」：后者与主题按钮的太阳图标轮廓几乎一样，
-             两个图标挨着放会分不清哪个是设置、哪个是切主题。齿轮的特征是
-             「粗环 + 外齿 + 中心孔」，剪影上一眼可辨。
-             viewBox 24 渲染到 14px，故 stroke-width 2.25 才与相邻图标的
-             1.5/16 视觉粗细一致（2.25 × 14/24 ≈ 1.31）。 -->
-        <svg class="sb-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
+        <Settings class="sb-icon" :size="14" aria-hidden="true" />
         <span class="sb-settings-label">设置</span>
       </button>
 
@@ -138,49 +127,36 @@ onMounted(async () => {
         @click="settings.toggleTheme()"
       >
         <span class="sb-theme-label">主题</span>
-        <svg v-if="settings.theme === 'dark'" class="sb-icon" viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
-          <path d="M10 2a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 0110 2zM10 16a.75.75 0 01.75.75v.5a.75.75 0 01-1.5 0v-.5A.75.75 0 0110 16zM4.46 4.46a.75.75 0 011.06 0l.354.354a.75.75 0 01-1.06 1.06l-.354-.353a.75.75 0 010-1.06zM14.126 14.126a.75.75 0 011.06 0l.354.354a.75.75 0 01-1.06 1.06l-.354-.353a.75.75 0 010-1.06zM2 10a.75.75 0 01.75-.75h.5a.75.75 0 010 1.5h-.5A.75.75 0 012 10zM16 9.25a.75.75 0 000 1.5h.5a.75.75 0 000-1.5H16zM4.813 14.126a.75.75 0 010 1.06l-.353.354a.75.75 0 01-1.06-1.06l.353-.354a.75.75 0 011.06 0zM14.126 4.46a.75.75 0 010 1.06l-.353.354a.75.75 0 11-1.06-1.06l.353-.354a.75.75 0 011.06 0zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/>
-        </svg>
-        <svg v-else class="sb-icon" viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true">
-          <path fill-rule="evenodd" d="M7.455 2.004a.75.75 0 01.26.77 7 7 0 009.958 7.967.75.75 0 011.067.853A8.5 8.5 0 116.647 1.921a.75.75 0 01.808.083z" clip-rule="evenodd"/>
-        </svg>
+        <Sun v-if="settings.theme === 'dark'" class="sb-icon" :size="14" aria-hidden="true" />
+        <Moon v-else class="sb-icon" :size="14" aria-hidden="true" />
       </button>
 
       <span class="sb-sep">·</span>
 
-      <button
-        class="sb-autolaunch"
-        role="switch"
-        :aria-checked="settings.autoLaunch"
-        :aria-label="`开机自启：${settings.autoLaunch ? '已开启' : '已关闭'}`"
-        @click.stop="settings.toggleAutoLaunch()"
-      >
+      <!-- 开机自启：开关本体用 naive-ui 的 NSwitch（主题色随 NConfigProvider
+           走应用的强调色，无障碍/键盘支持内置），外层只留文字标签 -->
+      <div class="sb-autolaunch">
         <span class="sb-autolaunch-label">开机自启</span>
-        <span class="sb-toggle" :class="{ on: settings.autoLaunch }">
-          <span class="sb-toggle-knob"></span>
-        </span>
-      </button>
+        <NSwitch
+          size="small"
+          :value="settings.autoLaunch"
+          aria-label="开机自启"
+          @update:value="settings.toggleAutoLaunch()"
+        />
+      </div>
     </div>
 
     <!-- Zone 3: Contact -->
     <div class="sb-zone sb-contact">
       <a class="sb-email" :href="`mailto:${contactEmail}`" title="商务合作">
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-          <rect x="1.5" y="3.5" width="13" height="9" rx="1"/>
-          <path d="M1.5 4l7 4.5 7-4.5"/>
-        </svg>
+        <Mail :size="14" aria-hidden="true" />
         {{ contactEmail }}
       </a>
 
       <NPopover trigger="click" placement="top" :show-arrow="true">
         <template #trigger>
           <button class="sb-qr-btn" aria-label="点击入群">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-              <path d="M11.176 14.429c-2.665 0-4.826-1.8-4.826-4.018 0-2.22 2.159-4.02 4.824-4.02S16 8.191 16 10.411c0 1.21-.65 2.301-1.666 3.036a.324.324 0 00-.12.366l.218.81a.616.616 0 01.029.117.166.166 0 01-.162.162.177.177 0 01-.092-.03l-1.057-.61a.519.519 0 00-.256-.074.509.509 0 00-.142.021 5.668 5.668 0 01-1.576.22z"/>
-              <path d="M9.064 9.542a.647.647 0 10.557-1 .645.645 0 00-.646.647.615.615 0 00.09.353zM12.296 9.543a.646.646 0 10.546-1 .645.645 0 00-.644.644.627.627 0 00.098.356z"/>
-              <path d="M0 6.826c0 1.455.781 2.765 2.001 3.656a.385.385 0 01.143.439l-.161.6-.1.373a.499.499 0 00-.032.14.192.192 0 00.193.193c.039 0 .077-.01.111-.029l1.268-.733a.622.622 0 01.308-.088c.058 0 .116.009.171.025a6.83 6.83 0 001.625.26 4.45 4.45 0 01-.177-1.251c0-2.936 2.785-5.02 5.824-5.02.05 0 .1 0 .15.002C10.587 3.429 8.392 2 5.796 2 2.596 2 0 4.16 0 6.826z"/>
-              <path d="M4.632 5.271a.77.77 0 11-1.54 0 .77.77 0 011.54 0zM8.507 5.271a.77.77 0 11-1.54 0 .77.77 0 011.54 0z"/>
-            </svg>
+            <MessageCircle :size="14" aria-hidden="true" />
             点击入群
           </button>
         </template>
@@ -195,7 +171,7 @@ onMounted(async () => {
             <p v-if="qrSrc === QRCODE_FALLBACK_URL" style="font-size: 10px; color: var(--color-text-tertiary); margin-top: 6px;">在线二维码加载失败，已显示本地版本</p>
           </template>
           <div v-else class="qr-placeholder">
-            <svg viewBox="0 0 100 100" width="120" height="120" fill="none">
+            <svg viewBox="0 0 100 100" width="160" height="160" fill="none">
               <rect x="10" y="10" width="30" height="30" rx="2" stroke="currentColor" stroke-width="2"/>
               <rect x="10" y="10" width="14" height="14" fill="currentColor"/>
               <rect x="26" y="10" width="14" height="14" fill="currentColor"/>
@@ -370,18 +346,13 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-/* Auto-launch toggle with label */
+/* 开机自启：文字标签 + NSwitch（开关本体样式由 naive-ui 提供，
+   主题色经 NConfigProvider 的 themeOverrides 跟随应用强调色） */
 .sb-autolaunch {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: none;
-  padding: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
   line-height: 1;
-  cursor: pointer;
   user-select: none;
 }
 .sb-autolaunch-label {
@@ -391,34 +362,6 @@ onMounted(async () => {
 }
 .sb-autolaunch:hover .sb-autolaunch-label {
   color: var(--color-text-secondary);
-}
-
-/* Toggle switch pill */
-.sb-toggle {
-  position: relative;
-  width: 26px;
-  height: 15px;
-  border-radius: var(--radius-full);
-  background: var(--color-border-1);
-  transition: background var(--transition-fast);
-  flex-shrink: 0;
-}
-.sb-toggle.on {
-  background: var(--color-accent);
-}
-.sb-toggle-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #fff;
-  transition: transform var(--transition-fast);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-.sb-toggle.on .sb-toggle-knob {
-  transform: translateX(11px);
 }
 
 /* ── Zone 3: Contact ── */
@@ -461,10 +404,17 @@ onMounted(async () => {
 }
 .qr-image {
   display: block;
-  width: min(200px, calc(100vw - 80px));
-  height: 200px;
+  width: min(280px, calc(100vw - 80px));
+  height: 280px;
   border-radius: var(--radius-sm);
   object-fit: contain;
+  /* 悬停放大：离屏幕远扫不上码时，鼠标移上去凑近看。
+     transform 不占布局空间，弹窗本身不会跟着变大。 */
+  cursor: zoom-in;
+  transition: transform var(--transition-fast);
+}
+.qr-image:hover {
+  transform: scale(1.25);
 }
 .qr-placeholder {
   display: flex;

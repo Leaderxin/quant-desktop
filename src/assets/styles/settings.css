@@ -1,8 +1,8 @@
 /* ================================================================
    设置页共享样式
    ----------------------------------------------------------------
-   5 个分区组件各自 scoped 的话，卡片/表头/说明文字这几十行会在每个文件里
-   复制一遍，改一处必然漏掉其余四处。这里用 `.settings-page` 后裔选择器统一，
+   6 个分区组件各自 scoped 的话，卡片/表头/说明文字这几十行会在每个文件里
+   复制一遍，改一处必然漏掉其余五处。这里用 `.settings-page` 后裔选择器统一，
    由 SettingsPage.vue 提供祖先元素。
    ================================================================ */
 
@@ -20,22 +20,20 @@
   --text-lg: 1.125rem;    /* 分区标题 16 → 18px（上一档 xl=20px 对分区标题过大） */
 }
 
+/* ── 内容列宽度 ──
+   居中限宽 1000px（CC Switch 设置窗口的原生宽度）。不限宽的话，宽窗口下
+   「标签在左、控件在右」的行中间会拉出上千像素的空档；左对齐限宽又会让
+   右侧整条死白。居中 + Tab 条同一套外边距（见 SettingsPage.vue）保证
+   两者右缘在任何窗口宽度下都对齐。窄于 1000px 的窗口自然回退为铺满。 */
 .settings-page .panel {
-  max-width: 720px;
+  max-width: 1000px;
+  margin-inline: auto;
 }
 
-/* ── 分区标题 ── */
-.settings-page .panel-head {
-  margin-bottom: var(--space-5);
-}
-.settings-page .panel-head h2 {
-  margin: 0 0 4px;
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: -0.015em;
-}
-.settings-page .panel-head p {
-  margin: 0;
+/* ── 分区说明 ──
+   分区名由顶部的分区 Tab 承载，内容区不再有页面级大标题，只留一行说明。 */
+.settings-page .panel-hint {
+  margin: 0 0 var(--space-3);
   font-size: var(--text-xs);
   line-height: 1.6;
   color: var(--color-text-tertiary);
@@ -54,7 +52,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--color-border-0);
 }
 .settings-page .card-head h3 {

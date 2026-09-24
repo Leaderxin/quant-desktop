@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // 市场概览：面板显示开关 + 板块榜单条数。
 import { ref, watch } from 'vue';
+import { NSwitch } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import { clampTopN, SECTOR_TOP_N_MAX, SECTOR_TOP_N_MIN } from '@/utils/prefs';
 import SettingsRow from './SettingsRow.vue';
-import ToggleSwitch from './ToggleSwitch.vue';
 import SegmentedControl from './SegmentedControl.vue';
+import { CircleAlert } from 'lucide-vue-next';
 
 const settings = useSettingsStore();
 
@@ -55,10 +56,7 @@ function commitCustom() {
 
 <template>
   <section class="panel">
-    <header class="panel-head">
-      <h2>市场概览</h2>
-      <p>设置主界面是否显示市场概览，以及板块榜单显示多少条。</p>
-    </header>
+    <p class="panel-hint">设置主界面是否显示市场概览，以及板块榜单显示多少条。</p>
 
     <div class="card">
       <div class="card-body">
@@ -66,10 +64,11 @@ function commitCustom() {
           title="在顶部显示市场概览面板"
           description="关闭后主界面更简洁，成交额、涨跌家数与板块行情也不再刷新"
         >
-          <ToggleSwitch
-            :model-value="settings.marketOverviewVisible"
-            label="显示市场概览面板"
-            @update:model-value="settings.setMarketOverviewVisible($event)"
+          <NSwitch
+            size="small"
+            :value="settings.marketOverviewVisible"
+            aria-label="显示市场概览面板"
+            @update:value="settings.setMarketOverviewVisible($event)"
           />
         </SettingsRow>
 
@@ -101,10 +100,7 @@ function commitCustom() {
     </div>
 
     <div v-if="!settings.marketOverviewVisible" class="note">
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-        <circle cx="8" cy="8" r="6.5"/>
-        <path d="M8 7.5v4M8 5h.007" stroke-linecap="round"/>
-      </svg>
+      <CircleAlert :size="12" aria-hidden="true" />
       <span>面板当前隐藏中，条数设置会在重新显示面板后生效。</span>
     </div>
   </section>

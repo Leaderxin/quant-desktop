@@ -7,6 +7,7 @@ import { useQuoteStore } from '@/stores/quote';
 import { useMarketStore } from '@/stores/market';
 import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
+import { Inbox, Plus } from 'lucide-vue-next';
 import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
@@ -313,9 +314,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
     <div class="watchlist-header">
       <GroupTabs />
       <button class="add-btn" @click="showAddDialog = true" aria-label="添加自选股票">
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-          <path d="M8.75 3.25a.75.75 0 00-1.5 0V7.5H3.25a.75.75 0 000 1.5h4v4.25a.75.75 0 001.5 0V9h4.25a.75.75 0 000-1.5h-4.25V3.25z"/>
-        </svg>
+        <Plus :size="14" aria-hidden="true" />
         添加自选
       </button>
     </div>
@@ -325,12 +324,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
       <NButton size="tiny" @click="watchlist.fetchWatchlist()">重试</NButton>
     </div>
     <div v-else-if="watchlist.visibleItems.length === 0" class="empty-state">
-      <svg class="empty-icon" viewBox="0 0 32 32" width="32" height="32" fill="none" aria-hidden="true">
-        <rect x="4" y="6" width="24" height="20" rx="2" stroke="currentColor" stroke-width="1.5"/>
-        <line x1="4" y1="12" x2="28" y2="12" stroke="currentColor" stroke-width="1.5"/>
-        <line x1="10" y1="16" x2="14" y2="16" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-        <line x1="10" y1="20" x2="18" y2="20" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-      </svg>
+      <Inbox class="empty-icon" :size="32" aria-hidden="true" />
       <!-- 区分「整个自选是空的」与「只是这个分组空」：后者用户会以为数据丢了 -->
       <template v-if="watchlist.items.length === 0">
         <p class="empty-text">暂无自选股票</p>

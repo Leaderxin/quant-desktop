@@ -7,9 +7,9 @@ import { formatCode } from '@/utils/format';
 import { TICKER_ITEMS_MAX, TICKER_ITEMS_MIN } from '@/utils/prefs';
 import { moveByStep } from '@/utils/dragSort';
 import SettingsRow from './SettingsRow.vue';
-import ToggleSwitch from './ToggleSwitch.vue';
 import SegmentedControl from './SegmentedControl.vue';
 import DragSortList from '@/components/common/DragSortList.vue';
+import { NSwitch } from 'naive-ui';
 
 const settings = useSettingsStore();
 const watchlist = useWatchlistStore();
@@ -92,18 +92,16 @@ const itemOptions = Array.from(
 
 <template>
   <section class="panel">
-    <header class="panel-head">
-      <h2>行情条</h2>
-      <p>桌面右下角悬浮的行情小窗：显示开关、外观与轮播范围。</p>
-    </header>
+    <p class="panel-hint">桌面右下角悬浮的行情小窗：显示开关、外观与轮播范围。</p>
 
     <div class="card">
       <div class="card-body">
         <SettingsRow title="显示行情条" description="与系统托盘菜单里的「显示/隐藏行情条」是同一个开关">
-          <ToggleSwitch
-            :model-value="settings.tickerVisible"
-            label="显示行情条"
-            @update:model-value="settings.setTickerVisible($event)"
+          <NSwitch
+            size="small"
+            :value="settings.tickerVisible"
+            aria-label="显示行情条"
+            @update:value="settings.setTickerVisible($event)"
           />
         </SettingsRow>
 
@@ -111,10 +109,11 @@ const itemOptions = Array.from(
           title="透明背景"
           description="开启后去掉圆角底板与阴影，只留文字浮在桌面上"
         >
-          <ToggleSwitch
-            :model-value="settings.tickerTransparent"
-            label="行情条透明背景"
-            @update:model-value="settings.setTickerTransparent($event)"
+          <NSwitch
+            size="small"
+            :value="settings.tickerTransparent"
+            aria-label="行情条透明背景"
+            @update:value="settings.setTickerTransparent($event)"
           />
         </SettingsRow>
 

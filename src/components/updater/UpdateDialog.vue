@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NModal, NCard, NButton, NProgress, NSpace, NScrollbar, NDivider } from 'naive-ui';
+import { ArrowRight, Calendar, Clock } from 'lucide-vue-next';
 import { useUpdaterStore } from '@/stores/updater';
 
 const updater = useUpdaterStore();
@@ -137,10 +138,7 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
       <template #header>
         <div class="dialog-header">
           <span class="version-badge">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-              <circle cx="8" cy="8" r="6"/>
-              <path d="M8 4v4l2.5 2"/>
-            </svg>
+            <Clock :size="14" aria-hidden="true" />
             发现新版本
           </span>
         </div>
@@ -150,15 +148,10 @@ function renderMarkdownLines(raw: string): ChangelogSection[] {
         <!-- Version comparison -->
         <div class="version-compare">
           <span class="ver-current">{{ updater.updateInfo?.current_version }}</span>
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" class="ver-arrow">
-            <path d="M3 8h10M11 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <ArrowRight :size="16" aria-hidden="true" class="ver-arrow" />
           <span class="ver-latest">{{ updater.updateInfo?.latest_version }}</span>
           <span class="ver-date tabular-nums">
-            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" class="date-icon">
-              <rect x="2" y="3" width="12" height="11" rx="1"/>
-              <path d="M5 1v3M11 1v3M2 6h12"/>
-            </svg>
+            <Calendar :size="12" aria-hidden="true" class="date-icon" />
             {{ formattedDate }}
           </span>
         </div>

@@ -64,10 +64,7 @@ function onMove(index: number, direction: -1 | 1) {
 
 <template>
   <section class="panel">
-    <header class="panel-head">
-      <h2>指数区</h2>
-      <p>挑选显示在顶栏的指数，拖动决定先后顺序。可选 {{ settings.indexPool.length }} 个主流指数。</p>
-    </header>
+    <p class="panel-hint">挑选显示在顶栏的指数，拖动决定先后顺序。可选 {{ settings.indexPool.length }} 个主流指数。</p>
 
     <div class="card">
       <div class="card-head">

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useChart } from '@/composables/useChart';
 import type { PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
+import { CircleAlert } from 'lucide-vue-next';
 
 const props = defineProps<{
   code: string;
@@ -42,10 +43,7 @@ watch(() => [props.code, props.market, props.period], async () => {
       <span class="chart-status-text">加载K线数据...</span>
     </div>
     <div v-else-if="error" class="chart-overlay chart-error-overlay" role="alert">
-      <svg class="chart-error-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-        <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
+      <CircleAlert class="chart-error-icon" :size="14" aria-hidden="true" />
       <span class="chart-error-text">{{ error }}</span>
       <button class="chart-retry-btn" @click="loadData(period)" aria-label="重新加载K线数据">重试</button>
     </div>

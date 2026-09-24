@@ -83,10 +83,7 @@ const orderOptions = [
 
 <template>
   <section class="panel">
-    <header class="panel-head">
-      <h2>自选列表</h2>
-      <p>自选表显示哪些列、打开时的默认排序与涨跌配色。分组的管理在自选表上方的分组标签栏。</p>
-    </header>
+    <p class="panel-hint">自选表显示哪些列、打开时的默认排序与涨跌配色。分组的管理在自选表上方的分组标签栏。</p>
 
     <div class="card">
       <div class="card-head">

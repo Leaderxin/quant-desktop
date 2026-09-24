@@ -9,6 +9,7 @@ import { useWatchlistStore } from '@/stores/watchlist';
 import { GROUP_NAME_MAX_LEN } from '@/utils/prefs';
 import { computeGroupRemovalImpact } from '@/utils/watchGroups';
 import { moveByStep } from '@/utils/dragSort';
+import { Plus } from 'lucide-vue-next';
 import type { WatchGroup } from '@/types';
 
 const watchlist = useWatchlistStore();
@@ -236,9 +237,7 @@ function requestDelete(g: WatchGroup) {
         />
       </div>
       <button v-else class="group-add" type="button" @click="startCreate">
-        <svg viewBox="0 0 16 16" width="11" height="11" fill="currentColor" aria-hidden="true">
-          <path d="M8.75 3.25a.75.75 0 0 0-1.5 0V7.5H3.25a.75.75 0 0 0 0 1.5h4v4.25a.75.75 0 0 0 1.5 0V9h4.25a.75.75 0 0 0 0-1.5H8.75V3.25z"/>
-        </svg>
+        <Plus :size="11" aria-hidden="true" />
         新建分组
       </button>
     </div>

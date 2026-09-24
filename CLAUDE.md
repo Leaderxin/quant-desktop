@@ -43,6 +43,7 @@ Coverage by area:
 | [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
 | [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
+| [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
 | [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
 | [src/utils/watchGroups.spec.ts](src/utils/watchGroups.spec.ts) | The orphan/kept counts quoted in the delete-group confirmation |
@@ -157,12 +158,13 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 ```
 App.vue → NConfigProvider + NMessageProvider + NDialogProvider
   └─ AppLayout.vue
-       ├─ SettingsPage.vue   (v-if 切换：设置页打开时看盘界面整体卸载)
+       ├─ SettingsPage.vue   (v-if 切换：设置页打开时看盘界面整体卸载；顶部横向分区 Tab + 居中限宽 1000px 的内容列，参考 CC Switch；Tab 条与内容列共用 max(24px,(100%-1000px)/2) 外边距保证右缘对齐)
        │    ├─ IndexSection.vue      (候选池勾选 + 拖拽排序)
        │    ├─ MarketSection.vue     (显示开关 + 榜单条数)
        │    ├─ WatchlistSection.vue  (列显示/顺序、默认排序、涨跌配色)
        │    ├─ TickerSection.vue     (显示、透明背景、每屏条数、轮播范围)
-       │    └─ GeneralSection.vue    (主题、开机自启、数据源)
+       │    ├─ GeneralSection.vue    (主题、开机自启、数据源)
+       │    └─ AboutSection.vue      (关于：版本、检查更新、更新说明、GitHub Star / 商店好评引导)
        └─ 看盘界面
             ├─ TopBar.vue (slogan, data source dropdown)
             ├─ IndexBar.vue → IndexCard.vue × N (按设置筛选/排序)
@@ -181,7 +183,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 **设置页（`src/components/settings/`）** — 覆盖式整页，入口在状态栏的齿轮按钮。用 `KeepAlive` 切换分区，保住各分区的本地 UI 状态（正在输入的自定义条数、轮播范围的分组筛选）。`AppLayout` 用 `v-if` 而非 `v-show` 承载它，两个后果都是要的：设置期间看盘界面的轮询全部停掉；返回时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新设置重新应用（否则改完默认排序要重启应用才看得到）。
 
-共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`ToggleSwitch.vue`、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 5 个分区各自 scoped 的话那几十行会复制五份。
+共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
 
 **分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 上移 / 下移）、＋新建。删除确认框在本地算出影响面（快照里已有每组的有序成员 id）：`orphans` 是「只属于这一个分组」的股票，会并入默认分组；其余不受影响；并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
 
@@ -233,7 +235,7 @@ Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-
 ### Key dependencies
 
 - **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging)
-- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta)
+- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `lucide-vue-next` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图)
 
 ### Default settings (auto-inserted on first run)
 
@@ -273,7 +275,7 @@ Main window position/size is saved to SQLite `settings` table on move/resize/clo
 | Phase 1 (MVP) | ✅ Complete | Scaffold, Sina adapter, tray, ticker, watchlist CRUD, index bar, dark theme |
 | Phase 2 (Experience) | ✅ Complete | Detail panel (minute chart + depth + summary), Tencent adapter, column sorting, window position memory, market_clock dynamic polling |
 | Phase 3 (Quality) | ✅ Complete | Code review fixes (36 items): logging, error handling, spawn_blocking, CSS tokens, accessibility, CSP, encoding_rs migration, design system, dead code cleanup |
-| Phase 4 (Enhancement) | ✅ Partial | K-line chart (daily/weekly/monthly) ✅, chart auto-refresh ✅, adaptive polling (probe/idle) ✅, depth auto-refresh ✅, index detail panel ✅, auto-update ✅, 设置页（指数区/市场概览/自选列表/行情条/通用）✅, 自选分组（多归属）✅, 行情条轮播范围与透明背景 ✅, price alerts 📋, import/export (JSON/CSV) 📋, auto-start ✅, packaging polish 📋 |
+| Phase 4 (Enhancement) | ✅ Partial | K-line chart (daily/weekly/monthly) ✅, chart auto-refresh ✅, adaptive polling (probe/idle) ✅, depth auto-refresh ✅, index detail panel ✅, auto-update ✅, 设置页（指数区/市场概览/自选列表/行情条/通用/关于）✅, 自选分组（多归属）✅, 行情条轮播范围与透明背景 ✅, price alerts 📋, import/export (JSON/CSV) 📋, auto-start ✅, packaging polish 📋 |
 | Phase 5 (Extension) | 🔮 Future | HK/US market support, professional data sources (Wind/Tushare), macOS/Linux adaptation |
 
 ## CI/CD

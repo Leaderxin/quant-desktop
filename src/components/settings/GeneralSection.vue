@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // 通用：主题、开机自启、数据源，以及刷新策略的只读说明。
 import { computed } from 'vue';
+import { NSwitch } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import SettingsRow from './SettingsRow.vue';
-import ToggleSwitch from './ToggleSwitch.vue';
 import SegmentedControl from './SegmentedControl.vue';
 
 const settings = useSettingsStore();
@@ -26,10 +26,7 @@ const dsOptions = computed(() =>
 
 <template>
   <section class="panel">
-    <header class="panel-head">
-      <h2>通用</h2>
-      <p>界面主题、开机自启与行情数据来源。</p>
-    </header>
+    <p class="panel-hint">界面主题、开机自启与行情数据来源。</p>
 
     <div class="card">
       <div class="card-body">
@@ -46,10 +43,11 @@ const dsOptions = computed(() =>
           title="开机自启"
           description="开机进入 Windows 后自动打开本应用"
         >
-          <ToggleSwitch
-            :model-value="settings.autoLaunch"
-            label="开机自启"
-            @update:model-value="settings.toggleAutoLaunch()"
+          <NSwitch
+            size="small"
+            :value="settings.autoLaunch"
+            aria-label="开机自启"
+            @update:value="settings.toggleAutoLaunch()"
           />
         </SettingsRow>
 

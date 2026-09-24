@@ -1,23 +1,42 @@
 <script setup lang="ts">
-// 设置页外壳：顶栏（返回 + 标题 + 面包屑）+ 左侧分区导航 + 右侧内容。
+// 设置页外壳：顶栏（返回 + 标题）+ 横向分区 Tab + 单列全宽滚动内容。
 //
 // 用 KeepAlive 而不是 v-if 切换分区：各分区有本地 UI 状态（市场概览正在输入的
 // 自定义条数、行情条的分组筛选），切走再切回应当保持原样，而不是被重置。
+//
+// 布局参考 CC Switch 的设置页：Tab 条横向等宽铺满、固定在滚动区外不随内容滚动，
+// 内容为居中限宽 1000px 的单列（见 settings.css 的 .panel）。原先的「左侧竖排
+// 导航 + 720px 封顶内容」在 1100px 宽的主窗口里两侧各留一大块死白（侧栏下方
+// 全是空背景，内容右侧常年空 200px）。
 import { computed, ref } from 'vue';
 import IndexSection from './IndexSection.vue';
 import MarketSection from './MarketSection.vue';
 import WatchlistSection from './WatchlistSection.vue';
 import TickerSection from './TickerSection.vue';
 import GeneralSection from './GeneralSection.vue';
+import AboutSection from './AboutSection.vue';
+import {
+  ChartColumn,
+  ChevronLeft,
+  Info,
+  LayoutDashboard,
+  RectangleEllipsis,
+  Settings,
+  Star,
+} from 'lucide-vue-next';
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
+// 分区图标取自 lucide（全应用统一的图标库，主界面与设置页同一套视觉语言）：
+// 指数区=柱状图，市场概览=仪表盘，自选列表=星标（财经应用的「自选」通用符号），
+// 行情条=药丸+省略号（滚动播报条的轮廓），通用=齿轮，关于=信息圆。
 const sections = [
-  { key: 'index', label: '指数区', component: IndexSection },
-  { key: 'market', label: '市场概览', component: MarketSection },
-  { key: 'watchlist', label: '自选列表', component: WatchlistSection },
-  { key: 'ticker', label: '行情条', component: TickerSection },
-  { key: 'general', label: '通用', component: GeneralSection },
+  { key: 'index', label: '指数区', component: IndexSection, icon: ChartColumn },
+  { key: 'market', label: '市场概览', component: MarketSection, icon: LayoutDashboard },
+  { key: 'watchlist', label: '自选列表', component: WatchlistSection, icon: Star },
+  { key: 'ticker', label: '行情条', component: TickerSection, icon: RectangleEllipsis },
+  { key: 'general', label: '通用', component: GeneralSection, icon: Settings },
+  { key: 'about', label: '关于', component: AboutSection, icon: Info },
 ] as const;
 
 type SectionKey = (typeof sections)[number]['key'];
@@ -26,76 +45,37 @@ const active = ref<SectionKey>('index');
 const activeSection = computed(
   () => sections.find((s) => s.key === active.value) ?? sections[0],
 );
-
-// 分区图标。每项带自己的 viewBox 与 stroke-width —— 齿轮取自 24 网格的通用图标，
-// 按 14px 渲染时需要 2.25 的线宽才能和其余 16 网格 / 1.5 线宽的图标视觉等粗
-// （2.25 × 14/24 ≈ 1.31 ≈ 1.5 × 14/16）。统一在这里声明，避免每处各调一次。
-const icons: Record<SectionKey, { viewBox: string; strokeWidth: number; paths: string[] }> = {
-  index: { viewBox: '0 0 16 16', strokeWidth: 1.5, paths: ['M2 12.5V9M6 12.5V4M10 12.5V7M14 12.5V2.5'] },
-  market: { viewBox: '0 0 16 16', strokeWidth: 1.5, paths: ['M2 2.5h12v11H2zM2 6h12M6 6v7.5'] },
-  watchlist: { viewBox: '0 0 16 16', strokeWidth: 1.5, paths: ['M2.5 4.5h11M2.5 8h11M2.5 11.5h11'] },
-  ticker: { viewBox: '0 0 16 16', strokeWidth: 1.5, paths: ['M4 5h12v6H4zM6.5 8h2M10.5 8h2'] },
-  // 齿轮。原先是「中心圆 + 放射线」，与状态栏主题切换的太阳图标同轮廓 ——
-  // 两个图标在同一屏上出现时分不清谁是谁。齿轮的「粗环 + 外齿 + 中心孔」剪影可辨。
-  general: {
-    viewBox: '0 0 24 24',
-    strokeWidth: 2.25,
-    paths: [
-      'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
-      'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
-    ],
-  },
-};
 </script>
 
 <template>
   <div class="settings-page">
     <header class="settings-header">
       <button class="back-btn" type="button" @click="emit('close')">
-        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M10 3 5 8l5 5"/>
-        </svg>
+        <ChevronLeft :size="13" aria-hidden="true" />
         返回
       </button>
-      <div class="title-group">
-        <h1>设置</h1>
-        <span class="path">/ {{ activeSection.label }}</span>
-      </div>
+      <h1>设置</h1>
     </header>
 
-    <div class="settings-body">
-      <nav class="side-nav" aria-label="设置分区">
-        <button
-          v-for="s in sections"
-          :key="s.key"
-          class="nav-item"
-          type="button"
-          :class="{ active: active === s.key }"
-          :aria-current="active === s.key ? 'page' : undefined"
-          @click="active = s.key"
-        >
-          <svg
-            :viewBox="icons[s.key].viewBox"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            :stroke-width="icons[s.key].strokeWidth"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path v-for="(d, i) in icons[s.key].paths" :key="i" :d="d"/>
-          </svg>
-          {{ s.label }}
-        </button>
-      </nav>
+    <nav class="section-tabs" aria-label="设置分区">
+      <button
+        v-for="s in sections"
+        :key="s.key"
+        class="tab-item"
+        type="button"
+        :class="{ active: active === s.key }"
+        :aria-current="active === s.key ? 'page' : undefined"
+        @click="active = s.key"
+      >
+        <component :is="s.icon" :size="16" aria-hidden="true" />
+        <span class="tab-label">{{ s.label }}</span>
+      </button>
+    </nav>
 
-      <div class="settings-content">
-        <KeepAlive>
-          <component :is="activeSection.component" :key="activeSection.key" />
-        </KeepAlive>
-      </div>
+    <div class="settings-content">
+      <KeepAlive>
+        <component :is="activeSection.component" :key="activeSection.key" />
+      </KeepAlive>
     </div>
   </div>
 </template>
@@ -142,17 +122,6 @@ const icons: Record<SectionKey, { viewBox: string; strokeWidth: number; paths: s
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
-/* 标题与面包屑是一行里的一个整体，所以包一层做基线对齐。
-   层级靠**字重与颜色**拉开，不靠字号 —— 两者同字号、同基线，读起来是一句话
-   「设置 / 通用」，而不是两个尺寸不一的碎片挤在一起。
-   `align-items: baseline` 配 `line-height: 1` 才能让两个 14px 文本严格对齐；
-   居中会在中文与拉丁混排时产生 1~2px 的错位。 */
-.title-group {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
 .settings-header h1 {
   margin: 0;
   font-size: var(--text-md);
@@ -160,85 +129,75 @@ const icons: Record<SectionKey, { viewBox: string; strokeWidth: number; paths: s
   letter-spacing: -0.01em;
   line-height: 1;
 }
-.path {
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-normal);
-  color: var(--color-text-tertiary);
-  line-height: 1;
-  white-space: nowrap;
-}
 
-.settings-body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.side-nav {
-  display: flex;
-  flex-direction: column;
+/* 分区 Tab：与 SegmentedControl 同一套「多选一」视觉（surface-2 轨道 + 选中
+   accent-dim 底/accent 字），尺寸放大到页面级导航。横向等分铺满宽度；
+   窗口拉得过窄时标签截断省略而不是把轨道撑破。
+   限宽 1000px 且与内容列（settings.css 的 .panel）同一套外边距 —— 居中、
+   右缘对齐：max(24px, (100% - 1000px)/2) 与 .panel 的 auto 外边距在
+   任何窗口宽度下解出的左边距都相等（宽窗口平分、窄窗口回落 24px）。 */
+.section-tabs {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
   gap: 2px;
-  width: 176px;
+  max-width: 1000px;
+  margin: var(--space-3) max(var(--space-6), calc((100% - 1000px) / 2)) 0;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
   flex-shrink: 0;
-  padding: var(--space-3) var(--space-2);
-  overflow-y: auto;
-  background: var(--color-surface-1);
-  border-right: 1px solid var(--color-border-0);
 }
-.nav-item {
-  position: relative;
+.tab-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  width: 100%;
-  height: 32px;
-  padding: 0 10px;
+  height: 40px;
+  min-width: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  text-align: left;
+  font-size: var(--text-md);
+  /* 行高收为 1：16px 行盒与 16px 图标等高，align-items: center 才是真正的
+     视觉居中。默认 1.5 行高的额外行距上下不对称，中文看起来比图标低一截。 */
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
-/* 当前分区用「竖条 + 底色 + 文字色」三重指示，不只靠颜色 —— 色觉障碍下
-   底色差异可能不可辨，竖条提供了不依赖颜色的位置线索。 */
-.nav-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: transparent;
+.tab-item .tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.nav-item:hover {
+/* 选中态 = 底色 + 字色 + 字重三个通道。侧栏时代的竖条指示在横向轨道里没有
+   位置，也不需要 —— 轨道本身圈定了选项范围，底色差异已足以定位。 */
+.tab-item:hover {
   background: var(--color-bg-elevated);
   color: var(--color-text-primary);
 }
-.nav-item.active {
+.tab-item.active {
   background: var(--color-accent-dim);
   color: var(--color-accent);
   font-weight: var(--font-weight-medium);
 }
-.nav-item.active::before {
-  background: var(--color-accent);
-}
-.nav-item:focus-visible {
+.tab-item:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
-.nav-item svg {
+.tab-item svg {
   flex-shrink: 0;
 }
 
 .settings-content {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-6) 48px;
+  /* 顶部 20px：Tab 条与内容区之间除了高度差，还需要一段呼吸距离才能「分层」，
+     16px 时卡片几乎贴着轨道，像同一个控件的延续 */
+  padding: var(--space-5) var(--space-6) var(--space-6);
 }
 </style>
