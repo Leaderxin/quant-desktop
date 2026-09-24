@@ -14,7 +14,7 @@
 [![CI](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square)](https://github.com/Leaderxin/quant-desktop/releases)
 
-[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.5.1-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
+[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.5.2-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
 [![Microsoft Store](https://img.shields.io/badge/Microsoft_Store-%E4%B8%8B%E8%BD%BD-00A4EF?style=for-the-badge)](https://apps.microsoft.com/detail/9P46MZZDTTZ0)
 [![加入交流群](https://img.shields.io/badge/%E5%8A%A0%E5%85%A5%E4%BA%A4%E6%B5%81%E7%BE%A4-%E5%BE%AE%E4%BF%A1-07c160?style=for-the-badge)](#-贡献与交流)
 
@@ -303,6 +303,6 @@ Windows 10 / 11、macOS（Intel + Apple Silicon）、Linux（Ubuntu 22.04+ / gli
 
 **如果 QuantDesktop 对你有用，欢迎点一个 ⭐ Star —— 这是持续开发的动力！**
 
-QuantDesktop v1.5.1 · 让看盘更安静一点
+QuantDesktop v1.5.2 · 让看盘更安静一点
 
 </div>
