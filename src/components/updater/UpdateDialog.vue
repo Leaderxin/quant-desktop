@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { NModal, NCard, NButton, NProgress, NSpace, NScrollbar, NDivider } from 'naive-ui';
-import { ArrowRight, Calendar, Clock } from 'lucide-vue-next';
+import { ArrowRight, Calendar, Clock } from '@lucide/vue';
 import { useUpdaterStore } from '@/stores/updater';
 
 const updater = useUpdaterStore();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useMinuteChart } from '@/composables/useMinuteChart';
-import { CircleAlert } from 'lucide-vue-next';
+import { CircleAlert } from '@lucide/vue';
 
 const props = defineProps<{
   code: string;

@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { NDropdown } from 'naive-ui';
-import { RefreshCw } from 'lucide-vue-next';
+import { RefreshCw } from '@lucide/vue';
 
 const settings = useSettingsStore();
 

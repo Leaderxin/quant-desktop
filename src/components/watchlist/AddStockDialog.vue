@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { formatCode } from '@/utils/format';
-import { CircleAlert, Search } from 'lucide-vue-next';
+import { CircleAlert, Search } from '@lucide/vue';
 import MarketTag from './MarketTag.vue';
 
 const props = defineProps<{ show: boolean }>();

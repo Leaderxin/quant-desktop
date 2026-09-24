@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useChart } from '@/composables/useChart';
 import type { PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
-import { CircleAlert } from 'lucide-vue-next';
+import { CircleAlert } from '@lucide/vue';
 
 const props = defineProps<{
   code: string;

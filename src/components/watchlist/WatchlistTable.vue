@@ -7,7 +7,7 @@ import { useQuoteStore } from '@/stores/quote';
 import { useMarketStore } from '@/stores/market';
 import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
-import { Inbox, Plus } from 'lucide-vue-next';
+import { Inbox, Plus } from '@lucide/vue';
 import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';

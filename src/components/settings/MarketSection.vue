@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { clampTopN, SECTOR_TOP_N_MAX, SECTOR_TOP_N_MIN } from '@/utils/prefs';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
-import { CircleAlert } from 'lucide-vue-next';
+import { CircleAlert } from '@lucide/vue';
 
 const settings = useSettingsStore();
 

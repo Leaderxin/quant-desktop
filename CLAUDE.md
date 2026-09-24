@@ -239,7 +239,7 @@ Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-
 ### Key dependencies
 
 - **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging)
-- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `lucide-vue-next` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图)
+- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
 
 ### Default settings (auto-inserted on first run)
 

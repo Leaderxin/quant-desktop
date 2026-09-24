@@ -7,7 +7,7 @@ import StatusBar from './StatusBar.vue';
 import SettingsPage from '@/components/settings/SettingsPage.vue';
 import { provide, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { CircleAlert, RefreshCw, TriangleAlert } from 'lucide-vue-next';
+import { CircleAlert, RefreshCw, TriangleAlert } from '@lucide/vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
 
 const settings = useSettingsStore();

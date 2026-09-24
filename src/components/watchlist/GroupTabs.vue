@@ -9,7 +9,7 @@ import { useWatchlistStore } from '@/stores/watchlist';
 import { GROUP_NAME_MAX_LEN } from '@/utils/prefs';
 import { computeGroupRemovalImpact } from '@/utils/watchGroups';
 import { moveByStep } from '@/utils/dragSort';
-import { Plus } from 'lucide-vue-next';
+import { Plus } from '@lucide/vue';
 import type { WatchGroup } from '@/types';
 
 const watchlist = useWatchlistStore();

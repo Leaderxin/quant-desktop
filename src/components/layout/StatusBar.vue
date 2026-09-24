@@ -6,7 +6,7 @@ import { useUpdaterStore } from '@/stores/updater';
 import { useUpdateCheck } from '@/composables/useUpdateCheck';
 import { openExternal } from '@/utils/external';
 import { getVersion } from '@tauri-apps/api/app';
-import { Mail, MessageCircle, Moon, Settings, Sun } from 'lucide-vue-next';
+import { Mail, MessageCircle, Moon, Settings, Sun } from '@lucide/vue';
 
 const settings = useSettingsStore();
 const updater = useUpdaterStore();

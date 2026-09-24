@@ -8,7 +8,7 @@
 // 键盘可达性：拖拽本身对键盘用户不可用，所以每行都带 ↑/↓ 按钮（首行禁用上移、
 // 末行禁用下移），并支持 Alt+↑/↓。拖拽是快捷方式，不是唯一路径。
 import { ref } from 'vue';
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, GripVertical } from '@lucide/vue';
 import { computeDropTarget, moveItem } from '@/utils/dragSort';
 
 const props = withDefaults(defineProps<{

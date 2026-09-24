@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useMarketStore, type MarketDirection } from '@/stores/market';
 import type { SectorItem } from '@/types';
 import { formatAmount } from '@/utils/format';
-import { ChevronDown } from 'lucide-vue-next';
+import { ChevronDown } from '@lucide/vue';
 
 const market = useMarketStore();
 

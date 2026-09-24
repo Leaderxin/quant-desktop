@@ -12,7 +12,7 @@ import { useUpdateCheck } from '@/composables/useUpdateCheck';
 import { parseChangelog } from '@/utils/changelog';
 import { openExternal } from '@/utils/external';
 import SettingsRow from './SettingsRow.vue';
-import { ShoppingBag, Star } from 'lucide-vue-next';
+import { ShoppingBag, Star } from '@lucide/vue';
 // 应用图标直接取 tauri 打包用的那套（src-tauri/icons/），不再单独存一份 ——
 // 两份拷贝迟早漂移，v1 的旧 logo.svg 就是这么漏在 src/assets 里的。
 import iconUrl from '../../../src-tauri/icons/128x128.png';

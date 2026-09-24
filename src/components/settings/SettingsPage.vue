@@ -23,7 +23,7 @@ import {
   RectangleEllipsis,
   Settings,
   Star,
-} from 'lucide-vue-next';
+} from '@lucide/vue';
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
