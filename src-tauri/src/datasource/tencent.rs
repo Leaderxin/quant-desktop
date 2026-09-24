@@ -308,8 +308,10 @@ impl DataSource for TencentAdapter {
         } else {
             Self::code_to_tencent(code, market)
         };
-        // Use 1-min K-line endpoint — gives finer-grained intraday data (240 bars
-        // covers exactly one trading day: 9:30-11:30 + 13:00-15:00 = 240 min).
+        // Use 1-min K-line endpoint — gives finer-grained intraday data.
+        // 末尾的 242 是「最近 242 根」而非「当日 240 分钟」：盘中拉取时窗口会跨到上一个
+        // 交易日（例如 09:56 拉到 9-23 的 213 根 + 9-24 的 29 根），日期由响应里的
+        // 时间戳带回，由前端切出当前交易日。
         let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m1,,242", tc_code);
 
         let resp = headers::with_browser_headers(
@@ -345,12 +347,12 @@ impl DataSource for TencentAdapter {
                 let arr = pt.as_array()?;
                 if arr.len() < 6 { return None; }
                 let time_raw = arr[0].as_str()?;
-                // "202606180935" → "09:35"
-                let time = if time_raw.len() >= 12 {
-                    format!("{}:{}", &time_raw[8..10], &time_raw[10..12])
-                } else {
-                    time_raw.to_string()
-                };
+                // "202606180935" → "2026-06-18 09:35"
+                // 日期必须保留：mkline 返回的是「最近 N 根」滚动窗口，盘中必然跨交易日，
+                // 前端靠这个日期切出当日分时（见 src/utils/minuteBars.ts）。
+                let time = chrono::NaiveDateTime::parse_from_str(time_raw, "%Y%m%d%H%M")
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|_| time_raw.to_string());
                 let open: f64 = arr[1].as_str()?.parse().ok()?;
                 let close: f64 = arr[2].as_str()?.parse().ok()?;
                 let high: f64 = arr[3].as_str()?.parse().unwrap_or(close);

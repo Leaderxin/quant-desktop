@@ -2,11 +2,13 @@ import { ref, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { MinuteData } from '@/types';
+import { mapMinuteBars } from '@/utils/minuteBars';
 import { useChartCore } from './useChartCore';
 
 /**
  * 分时图 composable — 仅用于 MinuteChart 组件。
  * 不含副图指标、K 线懒加载等逻辑，与 K 线图表完全隔离。
+ * 数据映射（bar 构造 + 只取当前交易日）见 @/utils/minuteBars。
  */
 export function useMinuteChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -21,30 +23,6 @@ export function useMinuteChart(options: {
 
   /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
   let barSubscriber: ((bar: KCLineData) => void) | null = null;
-
-  // ---- 数据映射 ----
-
-  function mapMinuteToChart(data: MinuteData[]): KCLineData[] {
-    const today = new Date();
-    return data.map((d) => {
-      let h = 0, m = 0;
-      if (d.time.includes(':')) {
-        [h, m] = d.time.split(':').map(Number);
-      } else if (d.time.length >= 4) {
-        h = Number(d.time.slice(0, 2));
-        m = Number(d.time.slice(2, 4));
-      }
-      const ts = new Date(today.getFullYear(), today.getMonth(), today.getDate(), h || 0, m || 0).getTime();
-      return {
-        timestamp: ts,
-        open: d.open ?? d.price,
-        high: d.high ?? d.price,
-        low: d.low ?? d.price,
-        close: d.price,
-        volume: d.volume,
-      };
-    });
-  }
 
   // ---- 数据加载器 ----
 
@@ -81,7 +59,7 @@ export function useMinuteChart(options: {
           code: unref(options.code),
           market: unref(options.market),
         });
-        const allBars = mapMinuteToChart(data);
+        const allBars = mapMinuteBars(data);
         if (allBars.length > 0) {
           const now = Date.now();
           const validBars = allBars.filter((b) => b.timestamp <= now);
@@ -126,7 +104,7 @@ export function useMinuteChart(options: {
       if (signal.aborted) return;
 
       if (data.length) {
-        klineData.value = mapMinuteToChart(data);
+        klineData.value = mapMinuteBars(data);
       }
 
       if (signal.aborted) return;
