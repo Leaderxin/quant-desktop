@@ -6,7 +6,7 @@ const props = defineProps<{
   code: string;
   market: string;
   name?: string;
-  /** 昨收：纵轴以它为中心对称，左侧刻度换算成涨跌幅 */
+  /** 兜底昨收（`price - change`）：正常从分时数据里算，只在窗口里没有上一交易日时用到 */
   prevClose?: number;
 }>();
 
