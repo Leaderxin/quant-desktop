@@ -63,7 +63,9 @@ pub fn get_portable_mode(portable: State<'_, PortableMode>) -> bool {
 
 /// Whether this is a Microsoft Store build. Store builds disable the built-in
 /// updater (the Store distributes updates itself); the frontend uses this to
-/// hide the "check update" UI.
+/// choose *which* update UI to show, not whether to show one — the About page
+/// swaps the in-app check button for a Store link, and only the status bar
+/// hides its button outright.
 #[tauri::command]
 pub fn is_store_build() -> bool {
     cfg!(feature = "store")

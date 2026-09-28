@@ -26,3 +26,12 @@ pub fn set_ticker_visible(
 ) -> Result<(), String> {
     crate::set_ticker_visible(&app, &db, visible)
 }
+
+/// 同步窗口标题栏的主题（设置页与状态栏的主题开关）。
+///
+/// 与启动时那次调用共用 `crate::set_app_theme`：要做的判断完全一样，而各写一份的话
+/// 漏掉的那处症状是「启动时标题栏是对的、切换主题后不跟」，正好不容易被发现。
+#[tauri::command]
+pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    crate::set_app_theme(&app, &theme)
+}

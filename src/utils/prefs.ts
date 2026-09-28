@@ -36,11 +36,35 @@ export interface DefaultSort {
 export const SECTOR_TOP_N_MIN = 1;
 export const SECTOR_TOP_N_MAX = 50;
 
+/** 板块榜单条数的可选档位。设置页原有一个「自定义」输入框，去掉后取值域就收在这两档上。
+ *  区间常量留着是因为后端 `clamp_top_n` 仍按 1–50 兜底（IPC 参数不能假设已被校验）。 */
+export const SECTOR_TOP_N_PRESETS: readonly number[] = [5, 10];
+
+/**
+ * 把任意条数归到最近的预设档。
+ *
+ * 取值域收窄后，库里可能还留着老版本存的自定义值（8、20 之类）—— 分段控件拿它
+ * 一个都匹配不上，会显示成「全都不选中」。设置页打开时用它对齐，见 MarketSection。
+ * 距离相等时取较小的一档（`<` 而不是 `<=`），7 归 5。
+ */
+export function nearestTopNPreset(n: number): number {
+  return SECTOR_TOP_N_PRESETS.reduce((best, p) =>
+    Math.abs(p - n) < Math.abs(best - n) ? p : best,
+  );
+}
+
 /** 分组名长度上限，与后端 `db::GROUP_NAME_MAX_LEN` 一致。 */
 export const GROUP_NAME_MAX_LEN = 20;
 
 export const TICKER_ITEMS_MIN = 1;
-export const TICKER_ITEMS_MAX = 4;
+
+/** 分段控件里列出的预设档位上限。超过它的取值走「自定义」输入框。 */
+export const TICKER_ITEMS_PRESET_MAX = 4;
+
+/** 单次轮播条数的上限，也是「自定义」能填到的最大值。
+ *  它同时决定行情条窗口的最大高度：一行约 15.4px，10 条约 165px（宽度固定 230px，
+ *  窗口高度由 useTickerWindowHeight 按内容量出来，没有 maxHeight 约束）。 */
+export const TICKER_ITEMS_MAX = 10;
 
 export function clampTopN(n: number): number {
   if (!Number.isFinite(n)) return SECTOR_TOP_N_MIN;

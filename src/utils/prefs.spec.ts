@@ -7,8 +7,12 @@ import { describe, it, expect } from 'vitest';
 import {
   ALL_COLUMNS,
   REQUIRED_COLUMNS,
+  SECTOR_TOP_N_PRESETS,
+  TICKER_ITEMS_MAX,
+  TICKER_ITEMS_PRESET_MAX,
   clampTickerItems,
   clampTopN,
+  nearestTopNPreset,
   parseBool,
   parseColumns,
   parseCount,
@@ -88,13 +92,42 @@ describe('clampTopN / clampTickerItems', () => {
     expect(clampTopN(999)).toBe(50);
     expect(clampTickerItems(0)).toBe(1);
     expect(clampTickerItems(2)).toBe(2);
-    expect(clampTickerItems(99)).toBe(4);
+    expect(clampTickerItems(99)).toBe(10);
   });
 
   it('小数取整、NaN 退回下限', () => {
     expect(clampTopN(7.6)).toBe(8);
     expect(clampTopN(Number.NaN)).toBe(1);
     expect(clampTickerItems(Number.NaN)).toBe(1);
+  });
+});
+
+describe('nearestTopNPreset', () => {
+  it('归到最近的一档，距离相等时取较小的一档', () => {
+    expect(nearestTopNPreset(5)).toBe(5);
+    expect(nearestTopNPreset(10)).toBe(10);
+    expect(nearestTopNPreset(8)).toBe(10);
+    expect(nearestTopNPreset(7), '7 与 5/10 等距，取小').toBe(5);
+    expect(nearestTopNPreset(1)).toBe(5);
+    expect(nearestTopNPreset(50)).toBe(10);
+    expect(nearestTopNPreset(0)).toBe(5);
+  });
+
+  it('结果一定落在预设里 —— 否则归一化会写出第三个值，分段控件照样一个都不高亮', () => {
+    for (let n = 0; n <= 60; n++) {
+      expect(SECTOR_TOP_N_PRESETS).toContain(nearestTopNPreset(n));
+    }
+  });
+});
+
+/**
+ * 「自定义」档只有在预设上限**严格小于**夹取上限时才有意义 —— 两者相等的话，
+ * 输入框能填的每个值都已经在分段控件里了，这一档就是死的。改任一常数都可能
+ * 悄悄破坏这个关系，所以在测试里钉住。
+ */
+describe('自定义档的存在前提', () => {
+  it('行情条：预设上限严格小于夹取上限', () => {
+    expect(TICKER_ITEMS_PRESET_MAX).toBeLessThan(TICKER_ITEMS_MAX);
   });
 });
 

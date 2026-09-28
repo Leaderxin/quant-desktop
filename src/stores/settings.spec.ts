@@ -90,9 +90,11 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).sectorTopN).toBe(5);
   });
 
-  it('ticker_items_per_page 越界夹到 1–4，非法值退回 2', async () => {
+  it('ticker_items_per_page 越界夹到 1–10，非法值退回 2', async () => {
     expect((await load({ ticker_items_per_page: '0' })).tickerItemsPerPage).toBe(1);
-    expect((await load({ ticker_items_per_page: '9' })).tickerItemsPerPage).toBe(4);
+    expect((await load({ ticker_items_per_page: '99' })).tickerItemsPerPage).toBe(10);
+    // 预设档（1–4）之外的取值就是「自定义」，必须原样读回来 —— 夹成 4 等于把自定义吞掉
+    expect((await load({ ticker_items_per_page: '9' })).tickerItemsPerPage).toBe(9);
     expect((await load({ ticker_items_per_page: '3' })).tickerItemsPerPage).toBe(3);
     expect((await load({ ticker_items_per_page: 'x' })).tickerItemsPerPage).toBe(2);
     expect((await load({})).tickerItemsPerPage).toBe(2);
@@ -185,6 +187,35 @@ describe('写入与跨窗口同步', () => {
       key: 'ticker_visible',
       value: '0',
     });
+  });
+
+  it('toggleTheme 翻转主题、写库，并把标题栏一并同步（set_window_theme）', async () => {
+    const store = await load({ theme: 'light' });
+    invokeMock.mockClear();
+    emitMock.mockClear();
+    invokeMock.mockResolvedValue(undefined); // set_setting / set_window_theme
+
+    await store.toggleTheme();
+
+    expect(store.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    // 标题栏是**操作系统**画的，<html data-theme> 管不到它。漏掉这个 IPC 的症状是
+    // 「内容变暗了、顶上那一条还是白的」—— 光看界面看不出是这里少调了一次
+    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'dark' });
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', { key: 'theme', value: 'dark' });
+    expect(emitMock).toHaveBeenCalledWith('theme-changed', { theme: 'dark' });
+  });
+
+  it('applyTheme 也同步标题栏 —— 它是所有「应用主题」路径的唯一挂载点', async () => {
+    const store = await load({});
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+
+    // 主窗口启动恢复、以及行情条收到 theme-changed 后走的都是这一条，
+    // 所以同步挂在这里，而不是只挂在 toggleTheme 上
+    store.applyTheme('dark');
+
+    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'dark' });
   });
 
   it('applyColorScheme 落到 <html data-color-scheme> 上', async () => {

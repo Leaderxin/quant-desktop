@@ -1,57 +1,36 @@
 <script setup lang="ts">
 // 市场概览：面板显示开关 + 板块榜单条数。
-import { ref, watch } from 'vue';
+import { watch } from 'vue';
 import { NSwitch } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
-import { clampTopN, SECTOR_TOP_N_MAX, SECTOR_TOP_N_MIN } from '@/utils/prefs';
+import { nearestTopNPreset, SECTOR_TOP_N_PRESETS } from '@/utils/prefs';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
 import { CircleAlert } from '@lucide/vue';
 
 const settings = useSettingsStore();
 
-type TopNMode = '5' | '10' | 'custom';
+const modeOptions = SECTOR_TOP_N_PRESETS.map((n) => ({ value: n, label: `${n} 条` }));
 
-function deriveMode(n: number): TopNMode {
-  return n === 5 ? '5' : n === 10 ? '10' : 'custom';
-}
-
-// mode 是本地状态而不是从 sectorTopN 推导的 computed:点「自定义」时还没输入
-// 任何数字，此时推不推导都得停在自定义态等用户填，用本地值表达最直接。
-const mode = ref<TopNMode>(deriveMode(settings.sectorTopN));
-const customText = ref(String(settings.sectorTopN));
-
+/**
+ * 「自定义」档去掉后取值域收窄到预设，但库里可能还留着老版本存的自定义值（8、20
+ * 之类）—— 分段控件拿它一个都匹配不上，会显示成「全都不选中」，看着像坏了。所以
+ * 进来就归到最近的一档并写回。
+ *
+ * 对齐放在这里而不是启动时的 store：这个值只有市场概览和这个设置页在读，而设置页
+ * 是唯一能改它的地方。塞进 `fetchSettings` 会给那条路径加一个写库副作用。
+ *
+ * 必须等 `loaded`：fetchSettings 落地前 `sectorTopN` 是兜底值，那时写回等于拿兜底值
+ * 覆盖掉库里真正的设置。
+ */
 watch(
-  () => settings.sectorTopN,
-  (n) => {
-    mode.value = deriveMode(n);
-    customText.value = String(n);
+  [() => settings.loaded, () => settings.sectorTopN],
+  ([loaded, n]) => {
+    if (!loaded) return;
+    if (!SECTOR_TOP_N_PRESETS.includes(n)) void settings.setSectorTopN(nearestTopNPreset(n));
   },
+  { immediate: true },
 );
-
-const modeOptions = [
-  { value: '5' as const, label: '5 条' },
-  { value: '10' as const, label: '10 条' },
-  { value: 'custom' as const, label: '自定义' },
-];
-
-function onModeChange(m: TopNMode) {
-  mode.value = m;
-  if (m === 'custom') return; // 等用户在输入框里填，不在这里改设置
-  void settings.setSectorTopN(Number(m));
-}
-
-/** 失焦/回车时提交。解析失败就回滚到当前值，不写库里一个 NaN。 */
-function commitCustom() {
-  const n = Number.parseInt(customText.value, 10);
-  if (Number.isNaN(n)) {
-    customText.value = String(settings.sectorTopN);
-    return;
-  }
-  const clamped = clampTopN(n);
-  customText.value = String(clamped);
-  if (clamped !== settings.sectorTopN) void settings.setSectorTopN(clamped);
-}
 </script>
 
 <template>
@@ -74,26 +53,14 @@ function commitCustom() {
 
         <SettingsRow
           title="板块涨跌排名条数"
-          :description="`行业与概念板块的涨跌榜各显示前 N 条，可选 ${SECTOR_TOP_N_MIN}–${SECTOR_TOP_N_MAX} 条`"
+          description="行业与概念板块的涨跌榜各显示前 N 条"
           :disabled="!settings.marketOverviewVisible"
         >
           <SegmentedControl
-            :model-value="mode"
+            :model-value="settings.sectorTopN"
             :options="modeOptions"
             label="板块涨跌排名条数"
-            @update:model-value="onModeChange"
-          />
-          <input
-            v-if="mode === 'custom'"
-            v-model="customText"
-            class="num-input"
-            type="text"
-            inputmode="numeric"
-            maxlength="2"
-            aria-label="自定义板块条数"
-            :placeholder="String(settings.sectorTopN)"
-            @blur="commitCustom"
-            @keydown.enter="commitCustom"
+            @update:model-value="settings.setSectorTopN($event)"
           />
         </SettingsRow>
       </div>

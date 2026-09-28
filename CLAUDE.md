@@ -76,6 +76,10 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 
 Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
 
+Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command.
+
+**标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在前端的 `applyTheme` 上而不是只挂 `toggleTheme`，因为主窗口启动恢复和行情条收到 `theme-changed` 走的都是它 —— 行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画。
+
 **`domain/mod.rs`** — Shared data types serialized across the IPC boundary to TypeScript types in [src/types/index.ts](src/types/index.ts):
 - `Market` enum (CN/HK/US)
 - `Quote` — real-time quote with price, change, open/high/low, volume, turnover, turnover_rate
@@ -142,7 +146,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
   - Ticker range: `set_watch_ticker_enabled`, `set_ticker_enabled_bulk`, `reorder_ticker`
 - `settings.rs` — `get_settings`, `set_setting`, `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
 - `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
-- `window.rs` — `show_main_window` (restore from tray), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`)
+- `window.rs` — `show_main_window` (restore from tray), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI.
 - `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
 
@@ -151,7 +155,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 **Stores (Pinia)** — Four stores mirroring the backend state:
 - `quote.ts` — Listens to `quotes-updated` and `indices-updated` Tauri events. Quotes stored in a `Map<"market:code", Quote>` for O(1) lookup. `indices` holds the whole 14-index candidate pool; `IndexBar` filters/orders it by `settings.indexCodes`.
 - `watchlist.ts` — Holds the `WatchlistSnapshot` and derives everything else locally: `activeGroup` (the selected tab), `visibleItems` (active group's members in in-group order), `tickerItems` (cross-group, sorted by `ticker_order`). Mutations are one IPC followed by a snapshot refetch — no optimistic updates, because group membership, in-group order, and orphan handling all live in the backend and guessing them locally drifts. The single exception is `setTickerEnabled`, which flips the switch locally first so the toggle feels instant.
-- `settings.ts` — Key-value settings map plus a **derived** config layer (`indexCodes`, `sectorTopN`, `tickerTransparent`, `watchlistColumns`, `colorScheme`, …). Every config value is a `computed` over the string map rather than its own `ref`, so the map is the single source of truth and there is no window where local state and the DB disagree. Manages theme (`<html data-theme>`), colour scheme (`<html data-color-scheme>`), data source switching, auto-launch, and the ticker window toggle. `setSetting` broadcasts `settings-changed` for the ticker window; the ticker applies the payload via `applyRemoteSetting` (no refetch — that would cost 5 extra IPC calls per toggle).
+- `settings.ts` — Key-value settings map plus a **derived** config layer (`indexCodes`, `sectorTopN`, `tickerTransparent`, `watchlistColumns`, `colorScheme`, …). Every config value is a `computed` over the string map rather than its own `ref`, so the map is the single source of truth and there is no window where local state and the DB disagree. Manages theme (`<html data-theme>` **and** the OS title bar, via `set_window_theme`), colour scheme (`<html data-color-scheme>`), data source switching, auto-launch, and the ticker window toggle. `toggleTheme` delegates to `applyTheme` instead of setting `data-theme` itself — the title-bar sync hangs off `applyTheme`, so a second copy of "flip the theme" would be a copy that forgets it. `setSetting` broadcasts `settings-changed` for the ticker window; the ticker applies the payload via `applyRemoteSetting` (no refetch — that would cost 5 extra IPC calls per toggle).
 - `updater.ts` — Update state (checking/available/downloading/installing). Watches backend update events.
 
 **`utils/prefs.ts`** — Settings value domains and parsers. Settings are strings in SQLite, so structured values are JSON; every parser (`parseColumns`, `parseDefaultSort`, `parseJsonArray`, `parseBool`, `parseCount`) falls back to a usable default instead of throwing. A single corrupted key must not blank the UI. `ALL_COLUMNS` is the canonical column list (key + label + `required`); `parseColumns` honours the user's order but re-inserts `code`/`name` if a bad config dropped them.
@@ -253,9 +257,9 @@ Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/setti
 | `auto_launch` | `false` | OS-level autostart |
 | `index_codes` | the original 7 | JSON array; order = left-to-right order on the index bar |
 | `market_overview_visible` | `1` | `0` skips the overview entirely (no turnover/breadth/sector requests) |
-| `sector_top_n` | `5` | Sector ranking rows shown, backed by `market::clamp_top_n` (1–50) |
+| `sector_top_n` | `5` | Sector ranking rows shown. The settings page offers only `SECTOR_TOP_N_PRESETS` (5/10); the backend still clamps via `market::clamp_top_n` (1–50) |
 | `ticker_transparent` | `0` | Ticker window background |
-| `ticker_items_per_page` | `2` | Quotes shown per carousel page (1–4) |
+| `ticker_items_per_page` | `2` | Quotes shown per carousel page (1–`TICKER_ITEMS_MAX`, i.e. 10; the control shows presets up to `TICKER_ITEMS_PRESET_MAX` = 4 plus a 自定义 input). The upper bound doubles as the ticker window's max height |
 | `watchlist_columns` | all 8 | JSON array of column keys in display order (never contains `ticker_enabled`) |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`; empty means "no sort" (watchlist order) |
 | `color_scheme` | `cn` | `cn` = red-up/green-down (A-share), `us` = the reverse |
@@ -263,6 +267,8 @@ Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/setti
 The list lives in `Database::DEFAULT_SETTINGS` and every key name comes from the `db::keys` module — bare string literals are what this indirection exists to prevent: a typo in a key doesn't fail to compile, it makes `get_setting` return `None` and the caller silently take its fallback, so the only symptom is "that setting never takes effect". Keys are also read/written from several places (`window_x` and `ticker_x` each appear at three call sites), so a rename has to be a single edit.
 
 `groups_migrated` is deliberately **not** in that table: the one-shot watch-group migration is guarded by its *absence*, so giving it a default would make the migration never run.
+
+`sector_top_n` 的**界面**取值域（5/10）比**库**里的取值域（1–50）窄 —— 差额是「自定义」档移除留下的。老版本可能存过 8、20 这类值，而分段控件对它们一个都匹配不上，会显示成「全都不选中」，看着像坏了。所以 [MarketSection.vue](src/components/settings/MarketSection.vue) 挂载时把它们归到最近的档并写回（`nearestTopNPreset`，等距取小），且必须等 `loaded` 为真 —— 之前 `sectorTopN` 是兜底值，那时写回等于拿兜底值覆盖库里真正的设置。后端区间**没有**跟着收窄：`clamp_top_n` 是 IPC 边界上的兜底，而且 `concept_prefetch_size` 的上限推导与它的测试都建立在 1–50 上。行情条那一侧是反过来的 —— 预设（1–4）之外的值就是「自定义」，必须原样读回（见 [settings.spec.ts](src/stores/settings.spec.ts) 里 `9` 不被夹到 4 的那条）。
 
 Four tests pin the contract between this table and the frontend: `default_settings_keys_are_pinned` (the key strings are the wire format — renaming one merely stops the frontend from reading it), `default_settings_have_no_duplicate_keys`, `migration_marker_is_not_a_default`, and the two wire-format checks `boolean_defaults_use_the_0_1_wire_format` / `numeric_defaults_parse` (the frontend's `parseBool` accepts only `"0"`/`"1"`, and `parseInt` silently yields NaN otherwise).
 

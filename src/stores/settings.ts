@@ -203,9 +203,28 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  /**
+   * 把主题同步到窗口的标题栏。
+   *
+   * `<html data-theme>` 只影响网页内容 —— **标题栏是操作系统画的**，不告诉窗口的话
+   * 暗色主题下会照旧是白的。命令只作用于 main 窗口，所以行情条调它只是白跑一次 IPC
+   * （罕见、且 tao 对同值会提前返回），换来的是「任何改主题的路径都不会漏掉标题栏」。
+   *
+   * 启动时那一次不靠这里，在 Rust 侧（`set_app_theme`，且在 `main.show()` 之前）——
+   * 窗口是先 show 出来、webview 才加载完的，只靠这里会先闪一帧白色标题栏。
+   *
+   * 不 await：它只影响标题栏，主题切换没必要等一次 IPC 往返；失败只记日志。
+   */
+  function applyWindowTheme(t: 'dark' | 'light') {
+    invoke('set_window_theme', { theme: t }).catch((e) => {
+      console.error('[settings] set_window_theme failed:', e);
+    });
+  }
+
   async function toggleTheme() {
-    theme.value = theme.value === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', theme.value);
+    // 复用 applyTheme 而不是自己写一遍置位：标题栏同步挂在 applyTheme 上，
+    // 这里再抄一遍就是两份「切主题」的实现，迟早有一份忘了带标题栏。
+    applyTheme(theme.value === 'dark' ? 'light' : 'dark');
     await setSetting('theme', theme.value);
     emit('theme-changed', { theme: theme.value }).catch((e) => {
       console.error('[settings] Failed to emit theme-changed:', e);
@@ -215,6 +234,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function applyTheme(t: 'dark' | 'light') {
     theme.value = t;
     document.documentElement.setAttribute('data-theme', t);
+    applyWindowTheme(t);
     // NOTE: does NOT emit 'theme-changed' — only toggleTheme() broadcasts.
     // If applyTheme emitted, the ticker's theme-changed listener would call
     // applyTheme again, creating an infinite event loop between windows.

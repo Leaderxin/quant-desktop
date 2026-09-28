@@ -95,6 +95,33 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
     let _ = window; // suppress unused warning on non-Windows
 }
 
+/// 把主题同步到窗口的标题栏。
+///
+/// `<html data-theme>` 只管网页内容 —— **标题栏是操作系统画的**，两者互不相干，
+/// 所以不显式告诉窗口的话，暗色主题下标题栏会照旧是白的。tao 收到 theme 后会调
+/// `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（见 tao 的
+/// platform_impl/windows/dark_mode.rs），Windows 10 1809+ 生效；macOS 走 NSWindow
+/// 的 appearance；其余平台是空操作。所以这一个调用就是「标题栏跟随主题」的全部。
+///
+/// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画。
+///
+/// 启动时必须在 `main.show()` **之前**调。窗口是先 show 出来、webview 才加载完的，
+/// 若等前端 `applyTheme` 跑到这里才变色，暗色主题下会先闪一帧白色标题栏。设置页与
+/// 状态栏的开关走 `commands::window::set_window_theme`，两边共用这一份实现。
+pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    // 只有 "dark" 算暗色，其余（缺键、手改坏的值）一律按亮色 —— 与 DEFAULT_SETTINGS
+    // 里 theme 的默认值一致。
+    let theme = if theme == "dark" {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    };
+    window.set_theme(Some(theme)).map_err(|e| e.to_string())
+}
+
 /// Runtime flag indicating whether the app is in portable mode
 /// (triggered by the presence of `portable.dat` next to the executable).
 #[derive(Debug, Clone, Copy)]
@@ -551,6 +578,17 @@ pub fn run() {
                     .map(|v| v == "1")
                     .unwrap_or(false);
 
+                // 标题栏要先于 show 上色：窗口是先 show 出来、webview 才加载完的，
+                // 等前端 applyTheme 跑起来再变色会先闪一帧白条（见 set_app_theme）。
+                let theme = db
+                    .get_setting(keys::THEME)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "light".to_string());
+                if let Err(e) = set_app_theme(app.handle(), &theme) {
+                    log::warn!("Failed to apply window theme at startup: {e}");
+                }
+
                 // Show first so the native NSWindow is realized before applying
                 // geometry (required for correct sizing on macOS).
                 let _ = main.show();
@@ -710,6 +748,7 @@ pub fn run() {
             commands::market::get_overview_interval,
             commands::window::show_main_window,
             commands::window::set_ticker_visible,
+            commands::window::set_window_theme,
             commands::updater::check_update,
             commands::updater::install_update,
             commands::updater::is_trading_session,

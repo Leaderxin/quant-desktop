@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { formatCode } from '@/utils/format';
-import { TICKER_ITEMS_MAX, TICKER_ITEMS_MIN } from '@/utils/prefs';
+import { clampTickerItems, TICKER_ITEMS_MAX, TICKER_ITEMS_MIN, TICKER_ITEMS_PRESET_MAX } from '@/utils/prefs';
 import { moveByStep } from '@/utils/dragSort';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
@@ -81,13 +81,76 @@ function selectAll(enabled: boolean) {
   void watchlist.setTickerEnabledBulk(filteredItems.value.map((i) => i.id), enabled);
 }
 
-const itemOptions = Array.from(
-  { length: TICKER_ITEMS_MAX - TICKER_ITEMS_MIN + 1 },
+// ── 单次轮播条数 ──
+// 预设只列到 TICKER_ITEMS_PRESET_MAX，更大的走「自定义」输入框（上限 TICKER_ITEMS_MAX）。
+const itemPresets = Array.from(
+  { length: TICKER_ITEMS_PRESET_MAX - TICKER_ITEMS_MIN + 1 },
   (_, i) => {
     const n = TICKER_ITEMS_MIN + i;
     return { value: n, label: `${n} 条` };
   },
 );
+
+type ItemsMode = number | 'custom';
+
+function deriveItemsMode(n: number): ItemsMode {
+  return itemPresets.some((o) => o.value === n) ? n : 'custom';
+}
+
+// mode 是本地状态而不是从设置推导的 computed：刚点「自定义」时还没输入任何数字，
+// 此时推不推导都得停在自定义态等用户填，用本地值表达最直接。
+const itemsMode = ref<ItemsMode>(deriveItemsMode(settings.tickerItemsPerPage));
+const customItemsText = ref(String(settings.tickerItemsPerPage));
+
+// 反向同步：值从别处变了（另一窗口广播的设置，或提交后被夹取）时模式跟着走 ——
+// itemsMode 是本地状态，不跟就会与真实值脱节。
+watch(
+  () => settings.tickerItemsPerPage,
+  (n) => {
+    itemsMode.value = deriveItemsMode(n);
+    customItemsText.value = String(n);
+  },
+);
+
+const itemOptions = computed(() => [
+  ...itemPresets,
+  { value: 'custom' as const, label: '自定义' },
+]);
+
+function onItemsModeChange(m: ItemsMode) {
+  itemsMode.value = m;
+  if (m === 'custom') return; // 等用户在输入框里填，不在这里改设置
+  void settings.setTickerItemsPerPage(m);
+}
+
+/** 失焦/回车时提交。解析失败就回滚到当前值，不写库里一个 NaN。 */
+function commitCustomItems() {
+  const n = Number.parseInt(customItemsText.value, 10);
+  if (Number.isNaN(n)) {
+    customItemsText.value = String(settings.tickerItemsPerPage);
+    return;
+  }
+  const clamped = clampTickerItems(n);
+  customItemsText.value = String(clamped);
+  if (clamped !== settings.tickerItemsPerPage) void settings.setTickerItemsPerPage(clamped);
+}
+
+/** 预览用的样例行。条数上限是 TICKER_ITEMS_MAX，所以这里必须有那么多条 ——
+ *  数组短了第 5 行往后就是空白。 */
+const PREVIEW_ROWS = [
+  { name: '贵州茅台', price: '1486.20', pct: '+1.24%' },
+  { name: '宁德时代', price: '268.44', pct: '+0.31%' },
+  { name: '比亚迪', price: '312.60', pct: '+2.31%' },
+  { name: '招商银行', price: '42.18', pct: '-0.52%' },
+  { name: '中国平安', price: '56.72', pct: '+0.88%' },
+  { name: '五粮液', price: '138.90', pct: '-1.07%' },
+  { name: '隆基绿能', price: '18.63', pct: '+3.42%' },
+  { name: '长江电力', price: '29.15', pct: '+0.14%' },
+  { name: '万华化学', price: '78.06', pct: '-0.76%' },
+  { name: '紫金矿业', price: '19.84', pct: '+1.95%' },
+];
+
+const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPerPage));
 </script>
 
 <template>
@@ -117,12 +180,27 @@ const itemOptions = Array.from(
           />
         </SettingsRow>
 
-        <SettingsRow title="单次轮播条数" description="每屏同时展示几只自选的实时行情">
+        <SettingsRow
+          title="单次轮播条数"
+          :description="`每屏同时展示几只自选的实时行情，可选 ${TICKER_ITEMS_MIN}–${TICKER_ITEMS_MAX} 条`"
+        >
           <SegmentedControl
-            :model-value="settings.tickerItemsPerPage"
+            :model-value="itemsMode"
             :options="itemOptions"
             label="单次轮播条数"
-            @update:model-value="settings.setTickerItemsPerPage($event)"
+            @update:model-value="onItemsModeChange"
+          />
+          <input
+            v-if="itemsMode === 'custom'"
+            v-model="customItemsText"
+            class="num-input"
+            type="text"
+            inputmode="numeric"
+            maxlength="2"
+            aria-label="自定义单次轮播条数"
+            :placeholder="String(settings.tickerItemsPerPage)"
+            @blur="commitCustomItems"
+            @keydown.enter="commitCustomItems"
           />
         </SettingsRow>
       </div>
@@ -132,10 +210,10 @@ const itemOptions = Array.from(
       <div class="preview-wrap">
         <div class="preview" :class="{ transparent: settings.tickerTransparent }">
           <div class="preview-pill" :class="{ bare: settings.tickerTransparent }">
-            <div v-for="n in settings.tickerItemsPerPage" :key="n" class="preview-row">
-              <span class="preview-name">{{ ['贵州茅台', '宁德时代', '比亚迪', '招商银行'][n - 1] }}</span>
-              <span class="preview-price up">{{ ['1486.20', '268.44', '312.60', '42.18'][n - 1] }}</span>
-              <span class="preview-pct up">{{ ['+1.24%', '+0.31%', '+2.31%', '-0.52%'][n - 1] }}</span>
+            <div v-for="row in previewRows" :key="row.name" class="preview-row">
+              <span class="preview-name">{{ row.name }}</span>
+              <span class="preview-price up">{{ row.price }}</span>
+              <span class="preview-pct up">{{ row.pct }}</span>
             </div>
           </div>
         </div>
