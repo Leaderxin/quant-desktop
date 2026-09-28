@@ -190,12 +190,14 @@ pub struct Scheduler;
 
 impl Scheduler {
     /// Spawn the global polling loop in a background tokio task.
+    ///
+    /// 不接收轮询间隔参数：节奏由 `market_clock`(按时段给出基准) 与下面的自适应
+    /// 状态机(probe → normal → idle) 共同决定，没有用户可配的基准值。
     pub fn spawn(
         data_manager: Arc<crate::datasource::DataSourceManager>,
         cache: Arc<QuoteCache>,
         db: Arc<crate::db::Database>,
         app_handle: tauri::AppHandle,
-        _base_interval_secs: u64,
     ) {
         tauri::async_runtime::spawn(async move {
             let mut last_session = MarketSession::current();

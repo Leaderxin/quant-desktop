@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { StockBrief } from '@/types';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { formatCode } from '@/utils/format';
+import { CircleAlert, Search } from '@lucide/vue';
 import MarketTag from './MarketTag.vue';
 
 const props = defineProps<{ show: boolean }>();
@@ -48,8 +49,15 @@ watch(() => keyword.value, (val) => {
 
 async function handleAdd(stock: StockBrief) {
   try {
+    // 加入**当前分组**。多归属下这只股票本来就在别的分组也没关系，两边都在，
+    // 所以提示里带上组名，让用户知道它落到哪儿了。
+    const groupName = watchlist.groupName(watchlist.activeGroupId);
     await watchlist.addStock(stock.code, stock.market, stock.name);
-    message.success(`已添加 ${stock.name}`);
+    if (watchlist.error) {
+      message.error(watchlist.error);
+      return;
+    }
+    message.success(groupName ? `已添加到「${groupName}」` : `已添加 ${stock.name}`);
     keyword.value = '';
     results.value = [];
   } catch (e) {
@@ -76,10 +84,7 @@ async function handleAdd(stock: StockBrief) {
           size="medium"
         >
           <template #prefix>
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true" style="color:var(--color-text-tertiary)">
-              <circle cx="7" cy="7" r="5"/>
-              <path d="M11 11l2.5 2.5"/>
-            </svg>
+            <Search :size="14" aria-hidden="true" style="color:var(--color-text-tertiary)" />
           </template>
         </NInput>
 
@@ -103,10 +108,7 @@ async function handleAdd(stock: StockBrief) {
           </div>
 
           <div v-else-if="searchError" class="search-error" role="alert">
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true" class="search-error-icon">
-              <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M8 4.5v3.5M8 10.5h.007" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
+            <CircleAlert :size="14" aria-hidden="true" class="search-error-icon" />
             <span>{{ searchError }}</span>
           </div>
           <div v-else-if="keyword && !searching" class="no-results">

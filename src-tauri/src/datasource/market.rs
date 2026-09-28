@@ -32,6 +32,27 @@ const EASTMONEY_PUSH2DELAY: &str = "https://push2delay.eastmoney.com";
 /// getTopicZDFenBu 的 ut token
 const BREADTH_UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
 
+/// 板块榜单条数的合法区间。设置页的「自定义」输入框与后端共用这一对边界 ——
+/// 前端限位只是为了不让人填出离谱的值，真正的兜底在 `clamp_top_n`:
+/// IPC 参数是前端传来的，不能假设它已经被校验过。
+pub const SECTOR_TOP_N_MIN: usize = 1;
+pub const SECTOR_TOP_N_MAX: usize = 50;
+
+/// 把请求的榜单条数夹到合法区间。上限 50 同时是概念板块预拉量(200 条)的约束来源。
+pub fn clamp_top_n(n: usize) -> usize {
+    n.clamp(SECTOR_TOP_N_MIN, SECTOR_TOP_N_MAX)
+}
+
+/// 概念板块排名的预拉条数。
+///
+/// 不能直接按 `top_n` 拉:东财「概念」(`m:90+t:3`) 里混着风格因子、指数成分、
+/// 资金持仓这些非主题板块(见 `is_non_concept_board`),若榜首恰好是这类,按 `top_n`
+/// 拉完再过滤就会列数不足。按 10 倍留余量,再封顶 200 控制响应体大小 ——
+/// `top_n` 上限 50,而 200 条在最坏情况(涨停潮,被剔比例远超平日)下过滤完仍够 50。
+pub fn concept_prefetch_size(top_n: usize) -> usize {
+    (clamp_top_n(top_n) * 10).clamp(50, 200)
+}
+
 impl MarketOverviewClient {
     pub fn new() -> Self {
         Self {
@@ -90,34 +111,36 @@ impl MarketOverviewClient {
     }
 
     /// 板块排名(行业或概念)。`fs` 为东财筛选串(`m:90+t:2` 行业 / `m:90+t:3` 概念)。
-    /// 按 `direction` 排序取前 5 返回。
+    /// 按 `direction` 排序取前 `top_n` 条返回(条数由设置页配置)。
     pub async fn fetch_sector_ranking(
         &self,
         fs: &str,
         direction: &str,
+        top_n: usize,
     ) -> Result<Vec<SectorItem>, AppError> {
-        self.fetch_sector_ranking_paged(fs, direction, 5).await
+        let n = clamp_top_n(top_n);
+        self.fetch_sector_ranking_paged(fs, direction, n).await
     }
 
     /// 概念板块排名 —— 与 `fetch_sector_ranking` 相同,但先多拉一些再剔除
-    /// 风格/指数/资金/业绩等「非主题概念」板块,最后截取前 5。
+    /// 风格/指数/资金/业绩等「非主题概念」板块,最后截取前 `top_n`。
     ///
-    /// 为什么不能 `pz=5` 直接过滤:东财 `m:90+t:3` 的「概念」实为主题概念 +
+    /// 为什么不能 `pz=top_n` 直接过滤:东财 `m:90+t:3` 的「概念」实为主题概念 +
     /// 风格因子(历史新高、微盘股…) + 指数成分(中证500、茅指数…) + 资金持仓的
-    /// 大杂烩,若榜首就是这类板块,直接过滤会导致列数不足 5。
+    /// 大杂烩,若榜首就是这类板块,直接过滤会导致列数不足。
     ///
-    /// 为什么是 50 而不是刚好够用的 30:非主题板块之间高度相关 —— 涨停潮那天
-    /// `昨日涨停`/`昨日连板`/`昨日炸板`/`微盘股`/`历史新高` 会同时冲榜,被剔比例
-    /// 可能远超平日的 20~30%。30 条在极端行情下会过滤到不足 5 条,50 条留出余量。
+    /// 预拉倍率的取值理由见 `concept_prefetch_size`。
     pub async fn fetch_concept_ranking(
         &self,
         direction: &str,
+        top_n: usize,
     ) -> Result<Vec<SectorItem>, AppError> {
+        let n = clamp_top_n(top_n);
         let mut items = self
-            .fetch_sector_ranking_paged("m:90+t:3", direction, 50)
+            .fetch_sector_ranking_paged("m:90+t:3", direction, concept_prefetch_size(n))
             .await?;
         items.retain(|s| !is_non_concept_board(&s.code));
-        items.truncate(5);
+        items.truncate(n);
         Ok(items)
     }
 
@@ -292,6 +315,34 @@ fn parse_count(v: Option<&serde_json::Value>) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clamp_top_n_bounds_the_configurable_sector_count() {
+        assert_eq!(clamp_top_n(0), SECTOR_TOP_N_MIN, "0 条无意义，夹到下限");
+        assert_eq!(clamp_top_n(5), 5);
+        assert_eq!(clamp_top_n(50), 50);
+        assert_eq!(clamp_top_n(999), SECTOR_TOP_N_MAX, "超限夹到上限");
+    }
+
+    /// 预拉量必须**严格大于**所需条数，否则概念榜过滤掉非主题板块后会缺列。
+    /// 同时封顶 200：设置页允许填到 50，无上限的话 pz 会随配置线性放大，
+    /// 东财那个接口的响应体也跟着涨。
+    #[test]
+    fn concept_prefetch_size_leaves_headroom_and_is_capped() {
+        for n in SECTOR_TOP_N_MIN..=SECTOR_TOP_N_MAX {
+            assert!(
+                concept_prefetch_size(n) > n,
+                "预拉 {} 条不足以在过滤后凑出 {} 条",
+                concept_prefetch_size(n),
+                n
+            );
+        }
+        assert_eq!(concept_prefetch_size(1), 50, "小值走 50 下限");
+        assert_eq!(concept_prefetch_size(5), 50);
+        assert_eq!(concept_prefetch_size(10), 100);
+        assert_eq!(concept_prefetch_size(50), 200, "大值封顶 200");
+        assert_eq!(concept_prefetch_size(999), 200, "越界先夹到 50 再算");
+    }
 
     #[test]
     fn parses_sina_turnover_two_lines() {

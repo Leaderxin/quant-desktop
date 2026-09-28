@@ -58,10 +58,34 @@ export interface WatchItem {
   code: string;
   market: string;
   name: string;
-  sort_order: number;
   added_at: string;
   /** 是否参与行情条滚动播报。新增自选默认 true。 */
   ticker_enabled: boolean;
+  /** 行情条轮播位次。与分组无关 —— 播报范围是跨分组的扁平列表。 */
+  ticker_order: number;
+}
+
+export interface WatchGroup {
+  id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+  /** 组内成员的自选 id，按组内顺序。 */
+  watch_ids: number[];
+}
+
+/**
+ * 自选表的一次性全量状态。分组标签栏切换是纯本地过滤 —— 若分组与成员分两次
+ * 拉取，切换时必然出现「分组已到、成员还没到」的中间态。
+ *
+ * 多归属模型：`items` 是全局股票池（一只股票只入池一次），`groups[].watch_ids`
+ * 是 (分组, 股票) 多对多关联，同一只股票可以出现在多个分组里。
+ */
+export interface WatchlistSnapshot {
+  items: WatchItem[];
+  groups: WatchGroup[];
+  /** 展示顺序最靠前的分组。新建自选在未指定分组时落进这里。 */
+  default_group_id: number;
 }
 
 export interface Level {

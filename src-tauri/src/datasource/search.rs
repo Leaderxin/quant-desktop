@@ -135,9 +135,9 @@ fn parse_tencent_smartbox(body: &str, limit: usize) -> Vec<StockBrief> {
         }
 
         let market = match fields[0] {
-            "sh" => "CN",
-            "sz" => "CN",
-            _ => "CN",
+            "sh" | "sz" | "bj" => "CN",
+            // Anything else (hk/us, and Tencent's `jj` for funds) has no CN ticker.
+            _ => continue,
         };
 
         // Preserve the full symbol (exchange + code) so ambiguous codes
@@ -156,6 +156,21 @@ fn parse_tencent_smartbox(body: &str, limit: usize) -> Vec<StockBrief> {
     }
 
     results
+}
+
+/// Whether a full symbol carries an exchange prefix both adapters can build a
+/// quote request from (`sh`/`sz`/`bj` — see `code_to_tencent` / `code_to_sina`).
+///
+/// Sina suggests 场外基金 (open-end funds) under an `of` prefix, reusing the very
+/// same 6-digit code as the exchange-traded share class: searching 588000 returns
+/// both `of588000` (type 22, the OTC class of 科创50ETF华夏) and `sh588000`
+/// (type 203, the ETF itself), two rows with identical names. An `of` symbol has
+/// no exchange ticker — the quote request falls back to `szof588000` and comes
+/// back empty, so the watchlist row sits blank forever. Same for 159915/510050,
+/// and for a pure OTC fund like 华夏成长混合A (`of000001`) no listed sibling
+/// exists at all, which is why the entry is dropped rather than rewritten.
+fn is_exchange_listed(full_code: &str) -> bool {
+    full_code.starts_with("sh") || full_code.starts_with("sz") || full_code.starts_with("bj")
 }
 
 /// Decode \uXXXX escape sequences into UTF-8 characters.
@@ -213,9 +228,10 @@ fn urlencoding(s: &str) -> String {
 ///   var cn="<entry>;<entry>;...;"
 ///
 /// Each entry (comma-separated):
-///   [0]=full_code (sh600519), [1]=type (11=A-share), [2]=code, [4]=name
+///   [0]=full_code (sh600519), [1]=type (11=A-share), [2]=code, [3]=symbol, [4]=name
 ///
-/// Filter: only type-11/12 entries (A-shares, both Shanghai and Shenzhen).
+/// Filter: type whitelist (A/B-share, ETF, LOF) **and** an exchange-prefixed symbol
+/// (see `is_exchange_listed`).
 fn parse_sina_suggest(body: &str, limit: usize) -> Vec<StockBrief> {
     // Extract content between quotes after "cn="
     let content = body
@@ -267,6 +283,9 @@ fn parse_sina_suggest(body: &str, limit: usize) -> Vec<StockBrief> {
         // ambiguous — e.g. 000852 is both sh000852 (中证1000 index) and sz000852
         // (石化机械 stock) — so we key on the full symbol to keep them distinct.
         let full_code = fields[3].to_string();
+        if !is_exchange_listed(&full_code) {
+            continue;
+        }
         let market = "CN".to_string();
         let category = super::cn_category(&full_code).to_string();
 
@@ -326,11 +345,32 @@ mod tests {
 
     #[test]
     fn test_parse_sina_etf() {
-        // Type 22 = ETF (off-exchange), Type 203 = ETF (on-exchange)
+        // Type 203 = ETF (on-exchange); type 22 is its OTC share class, `of`-prefixed
         let body = "var cn=\"sh510050,203,510050,sh510050,ETF_50,,\u{4e0a}\u{8bc1}50ETF,99,1,,,\"";
         let results = parse_sina_suggest(body, 20);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].code, "sh510050");
+    }
+
+    #[test]
+    fn test_parse_sina_suggest_drops_otc_fund_share_class() {
+        // The real response for 588000: the OTC share class (`of`, type 22) and the
+        // ETF itself (type 203) carry the same code and name. Only the latter is
+        // quotable — the `of` symbol has no exchange ticker.
+        let body = "var cn=\"of588000,22,588000,of588000,科创50ETF华夏,,科创50ETF华夏,99,1,,,;sh588000,203,588000,sh588000,科创50ETF华夏,,科创50ETF华夏,99,1,,,\"";
+        let results = parse_sina_suggest(body, 20);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].code, "sh588000");
+        assert_eq!(results[0].category, "ETF");
+    }
+
+    #[test]
+    fn test_parse_sina_suggest_drops_pure_otc_fund() {
+        // 华夏成长混合A (of000001, type 201) has no listed sibling — 000001 is
+        // 上证指数 / 平安银行, unrelated instruments. Nothing to keep.
+        let body = "var cn=\"of000001,201,000001,of000001,华夏成长混合A,,华夏成长混合A,99,1,,,;of000001,21,000001,of000001,华夏成长混合A,,华夏成长混合A,99,1,,,\"";
+        let results = parse_sina_suggest(body, 20);
+        assert_eq!(results.len(), 0);
     }
 
     #[test]
@@ -392,6 +432,17 @@ mod tests {
         let body = "v_hint=\"N\"";
         let results = parse_tencent_smartbox(body, 20);
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_tencent_drops_non_cn_exchange() {
+        // A `hk`/`us` symbol has no CN ticker: `code_to_tencent` would leave it as-is
+        // (market != "CN") or `code_to_sina` would prepend `sz`. Guard on the exchange
+        // itself rather than trusting the type whitelist to cover every case.
+        let body = "v_hint=\"hk~00700~\\u817e\\u8baf\\u63a7\\u80a1~txkg~GP-A^sh~600519~\\u8d35\\u5dde\\u8305\\u53f0~gzmt~GP-A\"";
+        let results = parse_tencent_smartbox(body, 20);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].code, "sh600519");
     }
 
     #[test]

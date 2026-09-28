@@ -1,0 +1,216 @@
+/* ================================================================
+   设置页共享样式
+   ----------------------------------------------------------------
+   6 个分区组件各自 scoped 的话，卡片/表头/说明文字这几十行会在每个文件里
+   复制一遍，改一处必然漏掉其余五处。这里用 `.settings-page` 后裔选择器统一，
+   由 SettingsPage.vue 提供祖先元素。
+   ================================================================ */
+
+/* ── 字号整体上调一档（2026-09） ──
+   设置页文字原先跟随全局令牌（说明/元信息多为 11/12px），用户反馈偏小。
+   在 .settings-page 作用域内把文字令牌整体上移一档，页内所有
+   var(--text-*) 消费方自动跟随。注意：本作用域内不许再写字面 px 字号 ——
+   字面值不跟这组映射走，下次调档会漏掉它们（历史上的 11px 已统一改为
+   var(--text-xs)）。 */
+.settings-page {
+  --text-xs: 0.75rem;     /* 说明/元信息 11 → 12px */
+  --text-sm: 0.8125rem;   /* 标签/卡片标题 12 → 13px */
+  --text-base: 0.875rem;  /* 未显式设字号的正文 13 → 14px */
+  --text-md: 1rem;        /* 导航卡片标题 14 → 16px */
+  --text-lg: 1.125rem;    /* 分区标题 16 → 18px（上一档 xl=20px 对分区标题过大） */
+}
+
+/* ── 内容列宽度 ──
+   居中限宽 1000px（CC Switch 设置窗口的原生宽度）。不限宽的话，宽窗口下
+   「标签在左、控件在右」的行中间会拉出上千像素的空档；左对齐限宽又会让
+   右侧整条死白。居中 + Tab 条同一套外边距（见 SettingsPage.vue）保证
+   两者右缘在任何窗口宽度下都对齐。窄于 1000px 的窗口自然回退为铺满。 */
+.settings-page .panel {
+  max-width: 1000px;
+  margin-inline: auto;
+}
+
+/* ── 分区说明 ──
+   分区名由顶部的分区 Tab 承载，内容区不再有页面级大标题，只留一行说明。 */
+.settings-page .panel-hint {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
+/* ── 卡片 ── */
+.settings-page .card {
+  margin-bottom: var(--space-4);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border-0);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.settings-page .card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-0);
+}
+.settings-page .card-head h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+.settings-page .card-head .meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+.settings-page .card-body {
+  padding: var(--space-2) var(--space-4);
+}
+/* 装列表的卡片体：列表行自带内边距，外层再留 16px 会显得松散 */
+.settings-page .card-body.flush {
+  padding: var(--space-2);
+}
+.settings-page .card-foot {
+  margin: 0;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+.settings-page .card-foot .warn {
+  color: var(--color-warning);
+}
+
+/* ── 列表行（各分区共用：指数、显示列、轮播范围） ── */
+.settings-page .dname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+.settings-page .dcode {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+.settings-page .dmeta {
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ── 复选框 ── */
+.settings-page .cbx {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin: 0;
+  border: 1px solid var(--color-border-1);
+  border-radius: 3px;
+  background: var(--color-surface-0);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.settings-page .cbx:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+.settings-page .cbx:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.settings-page .cbx:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.8px 1.8px 0;
+  transform: rotate(43deg);
+}
+.settings-page .cbx:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* 必选列：勾选框恒为选中且不可改，需要看起来就不可点 */
+.settings-page .cbx:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 数字输入框 ── */
+.settings-page .num-input {
+  width: 68px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.settings-page .num-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-dim);
+}
+.settings-page .num-input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* ── 下拉 ── */
+.settings-page .select {
+  height: 26px;
+  padding: 0 26px 0 8px;
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238b949e' stroke-width='1.5'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 12px;
+}
+.settings-page .select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* ── 说明性提示条 ── */
+.settings-page .note {
+  display: flex;
+  gap: 6px;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+.settings-page .note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

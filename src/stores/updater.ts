@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { UpdateInfo } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
+import { openExternal } from '@/utils/external';
 
 export const useUpdaterStore = defineStore('updater', () => {
   const updateStatus = ref<'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'>('idle');
@@ -138,8 +139,7 @@ export const useUpdaterStore = defineStore('updater', () => {
 
   async function openReleasePage() {
     if (!updateInfo.value?.release_url) return;
-    const { openUrl } = await import('@tauri-apps/plugin-opener');
-    await openUrl(updateInfo.value.release_url);
+    await openExternal(updateInfo.value.release_url);
   }
 
   function showDialog() {

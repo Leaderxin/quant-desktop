@@ -9,6 +9,7 @@ import { useWatchlistStore } from '@/stores/watchlist';
 import { useSettingsStore } from '@/stores/settings';
 import { useTickerWindowHeight } from '@/composables/useTickerWindowHeight';
 import { formatPrice } from '@/utils/format';
+import { nextPageStart, windowItems } from '@/utils/paging';
 
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
@@ -26,21 +27,46 @@ const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
 let unlistenTheme: UnlistenFn | null = null;
 let unlistenDatasource: UnlistenFn | null = null;
-
 let unlistenWatchlist: UnlistenFn | null = null;
+let unlistenSettings: UnlistenFn | null = null;
 
 const initFailed = ref(false);
+
+/** 每屏展示几只。设置页可配，默认 2。 */
+const perPage = computed(() => settings.tickerItemsPerPage);
+
+/**
+ * 透明背景是窗口级的视觉效果，而底板画在 body 上（见 ticker.html），
+ * 不在 Vue 组件里 —— 所以开关要落到 document.body 的 class 上。
+ */
+watch(
+  () => settings.tickerTransparent,
+  (v) => {
+    document.body.classList.toggle('ticker-transparent', v);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => settings.colorScheme,
+  (v) => {
+    settings.applyColorScheme(v);
+  },
+  { immediate: true },
+);
 
 onMounted(async () => {
   try {
     await settings.fetchSettings();
     settings.applyTheme(settings.theme);
+    settings.applyColorScheme(settings.colorScheme);
     await watchlist.fetchWatchlist();
     await quoteStore.startListening();
     startCycle();
     startThemeListen();
     startDatasourceListen();
     startWatchlistListener();
+    startSettingsListen();
     heightReady.value = true;
   } catch (e) {
     initFailed.value = true;
@@ -56,6 +82,7 @@ onUnmounted(() => {
   if (unlistenTheme) unlistenTheme();
   if (unlistenDatasource) unlistenDatasource();
   if (unlistenWatchlist) unlistenWatchlist();
+  if (unlistenSettings) unlistenSettings();
 });
 
 function startWatchlistListener() {
@@ -67,6 +94,23 @@ function startWatchlistListener() {
     unlistenWatchlist = unlisten;
   }).catch((e) => {
     console.error('[TickerBar] Failed to listen watchlist-changed:', e);
+  });
+}
+
+/**
+ * 监听主窗口播出的设置变更。
+ *
+ * 按 payload 就地更新而不是重拉整份设置：这个窗口读不到主窗口的 store，
+ * 而 `fetchSettings()` 会连带拉数据源列表、指数池、自启状态等 5 个命令 ——
+ * 为一个轮播条数开关付这个代价不值得。
+ */
+function startSettingsListen() {
+  listen<{ key: string; value: string }>('settings-changed', (event) => {
+    settings.applyRemoteSetting(event.payload.key, event.payload.value);
+  }).then((unlisten) => {
+    unlistenSettings = unlisten;
+  }).catch((e) => {
+    console.error('[TickerBar] Failed to listen settings-changed:', e);
   });
 }
 
@@ -93,24 +137,27 @@ function startDatasourceListen() {
 
 function startCycle() {
   cycleTimer = setInterval(() => {
-    if (!paused.value && tickerItems.value.length > 2) {
-      page.value = (page.value + 2) % tickerItems.value.length;
-    }
+    if (paused.value) return;
+    // nextPageStart 在「一屏装得下」时归零，所以短列表不会每隔 3 秒把同一批
+    // 数据重排一次（那在界面上是无意义的抖动）。
+    page.value = nextPageStart(page.value, tickerItems.value.length, perPage.value);
   }, 3000);
 }
 
+/**
+ * 播报列表。顺序取自 store 的 `tickerItems`（按 `ticker_order` 排）——
+ * 轮播顺序由设置页独立维护，与自选表的组内顺序无关。
+ */
 const tickerItems = computed(() =>
-  watchlist.items
-    .filter((item) => item.ticker_enabled)
-    .map((item) => {
-      const q = quoteStore.getQuote(item.code, item.market);
-      return {
-        name: item.name,
-        code: item.code,
-        price: q?.price ?? null,
-        changePct: q?.change_pct ?? null,
-      };
-    })
+  watchlist.tickerItems.map((item) => {
+    const q = quoteStore.getQuote(item.code, item.market);
+    return {
+      name: item.name,
+      code: item.code,
+      price: q?.price ?? null,
+      changePct: q?.change_pct ?? null,
+    };
+  })
 );
 
 // 可见集合变化时回到第一屏，避免列表变短后观众从半截开始看。
@@ -118,24 +165,19 @@ const tickerItems = computed(() =>
 // 必须监听 length 而不是 tickerItems 本身：tickerItems 依赖 quote store，
 // 行情每次轮询都会重算，直接监听它会每 2 秒重置一次 page，翻页将永远
 // 停在第一屏。
+//
+// perPage 也要一起监听：每屏条数变大后当前 page 可能已越过列表末尾，
+// 虽然 visibleItems 里取模不会越界，但会让人看到半截窗口。
 watch(
-  () => tickerItems.value.length,
+  [() => tickerItems.value.length, perPage],
   () => {
     page.value = 0;
   }
 );
 
-const visibleItems = computed(() => {
-  const items = tickerItems.value;
-  if (items.length === 0) return [];
-  if (items.length === 1) return [items[0]];
-  const count = Math.min(2, items.length);
-  const result = [];
-  for (let i = 0; i < count; i++) {
-    result.push(items[(page.value + i) % items.length]);
-  }
-  return result;
-});
+const visibleItems = computed(() =>
+  windowItems(tickerItems.value, page.value, perPage.value),
+);
 
 const retryHintVisible = ref(false);
 
@@ -188,6 +230,7 @@ async function handleClick() {
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
     if (unlistenDatasource) { unlistenDatasource(); unlistenDatasource = null; }
     if (unlistenWatchlist) { unlistenWatchlist(); unlistenWatchlist = null; }
+    if (unlistenSettings) { unlistenSettings(); unlistenSettings = null; }
     quoteStore.stopListening();
 
     initFailed.value = false;
@@ -197,12 +240,14 @@ async function handleClick() {
     try {
       await settings.fetchSettings();
       settings.applyTheme(settings.theme);
+      settings.applyColorScheme(settings.colorScheme);
       await watchlist.fetchWatchlist();
       await quoteStore.startListening();
       startCycle();
       startThemeListen();
       startDatasourceListen();
       startWatchlistListener();
+      startSettingsListen();
       retryHintVisible.value = false;
       heightReady.value = true;
     } catch (e) {
@@ -220,6 +265,7 @@ async function handleClick() {
 <template>
   <div
     class="ticker-bar"
+    :class="{ 'is-transparent': settings.tickerTransparent }"
     role="button"
     tabindex="0"
     aria-label="显示主界面"
@@ -278,6 +324,11 @@ async function handleClick() {
 }
 .ticker-bar:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+/* 透明模式下不能有 hover 底色：底板已经去掉了，悬停时冒出一块半透明矩形
+   会像渲染残留。光标仍会变成 grab，交互提示没有丢。 */
+.ticker-bar.is-transparent:hover {
+  background: transparent;
 }
 /* 内容层：高度由内容撑开（不要写 height:100%，否则量高度会自我循环）。
    useTickerWindowHeight 量的就是这个元素，再据此设窗口高度。 */

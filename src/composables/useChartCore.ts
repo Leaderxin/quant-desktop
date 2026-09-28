@@ -4,6 +4,7 @@ import type { Chart, KLineData as KCLineData, Period } from 'klinecharts';
 import type { PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
+import { hexToRgba } from '@/utils/color';
 import { isMinuteK, minuteKSpan } from './minutePeriod';
 
 /**
@@ -27,7 +28,18 @@ export function useChartCore(options: {
 
   function themeColors() {
     const isDark = settings.theme === 'dark';
+    // 涨跌语义色读 CSS 令牌：variables.css 是唯一事实源 —— 主题（dark/light）
+    // × 涨跌配色（cn/us）四种组合全在级联里定好，这里不用自己维护组合矩阵。
+    // 图表画在 canvas 上读不了 var()，只能解析成字面值；读不到时回落 cn
+    // 红涨绿跌，别让整块图表没颜色。
+    const rootStyle = getComputedStyle(document.documentElement);
+    const up = rootStyle.getPropertyValue('--color-up').trim() || '#f85149';
+    const down = rootStyle.getPropertyValue('--color-down').trim() || '#3fb950';
+    const noChange = '#8b949e';
     return {
+      up,
+      down,
+      noChange,
       lineColor: isDark ? '#58a6ff' : '#0969da',
       gridHColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
       gridVColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
@@ -38,14 +50,14 @@ export function useChartCore(options: {
       separatorColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
       crosshairBg: isDark ? 'rgba(22,27,34,0.9)' : 'rgba(31,35,40,0.85)',
       crosshairText: isDark ? '#c9d1d9' : '#e6edf3',
-      // 副图指标配色 — 柱子与主图蜡烛一致，深/浅主题自适应
-      indicatorBarUp: isDark ? 'rgba(248,81,73,0.7)' : 'rgba(248,81,73,0.72)',
-      indicatorBarDown: isDark ? 'rgba(63,185,80,0.7)' : 'rgba(63,185,80,0.72)',
-      indicatorBarNoChange: isDark ? 'rgba(139,148,158,0.6)' : 'rgba(139,148,158,0.6)',
+      // 副图指标配色 — 柱子跟随涨跌令牌（含配色方案），透明度随深/浅主题微调
+      indicatorBarUp: hexToRgba(up, isDark ? 0.7 : 0.72),
+      indicatorBarDown: hexToRgba(down, isDark ? 0.7 : 0.72),
+      indicatorBarNoChange: hexToRgba(noChange, 0.6),
       // 量比柱低透明度
-      volumeBarUp: isDark ? 'rgba(248,81,73,0.5)' : 'rgba(248,81,73,0.55)',
-      volumeBarDown: isDark ? 'rgba(63,185,80,0.5)' : 'rgba(63,185,80,0.55)',
-      volumeBarNoChange: isDark ? 'rgba(139,148,158,0.45)' : 'rgba(139,148,158,0.5)',
+      volumeBarUp: hexToRgba(up, isDark ? 0.5 : 0.55),
+      volumeBarDown: hexToRgba(down, isDark ? 0.5 : 0.55),
+      volumeBarNoChange: hexToRgba(noChange, isDark ? 0.45 : 0.5),
       // 多条均线配色
       lineColors: isDark
         ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
@@ -67,7 +79,7 @@ export function useChartCore(options: {
       },
       candle: {
         type: 'area',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'current_open' },
+        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'previous_close' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           labels: ['时间', '开', '高', '低', '收', '量', '额'],
@@ -78,11 +90,11 @@ export function useChartCore(options: {
         priceMark: {
           high: { show: false },
           low: { show: false },
-          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] },
+          last: { show: false, upColor: c.up, downColor: c.down, noChangeColor: c.noChange, extendTexts: [] },
         },
       },
       indicator: {
-        ohlc: { upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', compareRule: 'current_open' },
+        ohlc: { upColor: c.up, downColor: c.down, noChangeColor: c.noChange, compareRule: 'previous_close' },
         bars: [
           { upColor: c.indicatorBarUp, downColor: c.indicatorBarDown, noChangeColor: c.indicatorBarNoChange },
         ],
@@ -121,7 +133,7 @@ export function useChartCore(options: {
     chart.value.setStyles({
       candle: {
         type: 'candle_solid',
-        bar: { upColor: '#f85149', downColor: '#3fb950', upBorderColor: '#f85149', downBorderColor: '#3fb950', upWickColor: '#f85149', downWickColor: '#3fb950', noChangeColor: '#8b949e', noChangeBorderColor: '#8b949e', noChangeWickColor: '#8b949e', compareRule: 'current_open' },
+        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'previous_close' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           legend: {
@@ -142,7 +154,7 @@ export function useChartCore(options: {
         priceMark: {
           high: { show: false },
           low: { show: false },
-          last: { show: false, upColor: '#f85149', downColor: '#3fb950', noChangeColor: '#8b949e', extendTexts: [] },
+          last: { show: false, upColor: c.up, downColor: c.down, noChangeColor: c.noChange, extendTexts: [] },
         },
       },
     });
@@ -232,8 +244,9 @@ export function useChartCore(options: {
     }
   }
 
-  // Theme change: reapply styles
-  watch(() => settings.theme, () => {
+  // 主题或涨跌配色变化时重设样式：图表画在 canvas 上，令牌在 CSS 里翻转后
+  // 不会自动生效，必须重新 setStyles
+  watch(() => [settings.theme, settings.colorScheme], () => {
     reapplyStyles();
   });
 

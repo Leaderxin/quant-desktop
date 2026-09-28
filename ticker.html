@@ -17,6 +17,20 @@
       background: var(--color-surface-1, #f6f8fa);
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
     }
+    /*
+      设置页「透明背景」开启时由 TickerBar 挂上这个 class。
+
+      底板、圆角、阴影必须一起去掉：只把 background 改成 transparent 的话，
+      半透明阴影会留在字周围，看起来是一圈脏边。窗口本身在 tauri.conf.json 里
+      已经开了 transparent: true，否则 webview 会画一层不透明底，这里怎么改
+      都透不过去。
+    */
+    body.ticker-transparent,
+    [data-theme="light"] body.ticker-transparent {
+      background: transparent;
+      border-radius: 0;
+      box-shadow: none;
+    }
   </style>
 </head>
 <body>
