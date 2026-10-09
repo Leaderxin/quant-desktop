@@ -2,7 +2,7 @@
 
 桌面级 A 股行情监控工具，基于 Tauri 2 + Vue 3 + Rust 构建。
 
-当前版本：**v1.6.0**
+当前版本：**v1.6.1**
 
 > 本文是技术文档（技术栈 / 项目结构 / 数据流 / 构建发布）。功能介绍与截图见 [README.md](README.md)。
 
@@ -128,7 +128,7 @@ $staging = "portable\quant-desktop"
 mkdir $staging -Force > $null
 Copy-Item "$src\quant-desktop.exe" -Destination "$staging\"
 New-Item -ItemType File -Path "$staging\portable.dat" > $null
-Compress-Archive -Path "$staging\*" -DestinationPath "$src\bundle\quant-desktop_1.6.0_x64-portable.zip"
+Compress-Archive -Path "$staging\*" -DestinationPath "$src\bundle\quant-desktop_1.6.1_x64-portable.zip"
 ```
 
 > 产物：`src-tauri\target\release\bundle\quant-desktop_<version>_x64-portable.zip`
@@ -296,7 +296,7 @@ quant-desktop/
 | Phase 1 (MVP) | ✅ 完成 | 项目脚手架、新浪适配器、托盘、行情条、自选 CRUD、指数看板、暗色主题 |
 | Phase 2 (体验) | ✅ 完成 | 个股详情（分时图+盘口+概要）、腾讯适配器、列排序、窗口记忆、交易时段感知轮询 |
 | Phase 3 (增强) | ✅ 完成 | K 线图（日/周/月）+ 成交量副图、指数详情面板、图表自动刷新、自适应轮询（探测/空闲）、自动更新、开机自启、五档盘口自动刷新 |
-| Phase 4 (扩展) | ✅ 进行中 | MACD 技术指标（v1.4.0）、K线主图 MA/BOLL 叠加指标切换（v1.4.1）、行情条显隐持久化（v1.4.2）、市场标签（v1.4.3）、北交所支持（v1.4.5）、行情条逐只播报开关（v1.4.7）、市场概览面板 + Microsoft Store 上架（v1.5.0）、分时图涨跌幅刻度与固定交易日（v1.5.2）、统一设置页 + 自选多归属分组 + 可配置指数池 + 行情条轮播范围与透明背景 + 窗口标题栏跟随主题（v1.6.0）；价格预警、自选导入/导出、港股/美股规划中 |
+| Phase 4 (扩展) | ✅ 进行中 | MACD 技术指标（v1.4.0）、K线主图 MA/BOLL 叠加指标切换（v1.4.1）、行情条显隐持久化（v1.4.2）、市场标签（v1.4.3）、北交所支持（v1.4.5）、行情条逐只播报开关（v1.4.7）、市场概览面板 + Microsoft Store 上架（v1.5.0）、分时图涨跌幅刻度与固定交易日（v1.5.2）、统一设置页 + 自选多归属分组 + 可配置指数池 + 行情条轮播范围与透明背景 + 窗口标题栏跟随主题（v1.6.0）、全局老板键（v1.6.1）；价格预警、自选导入/导出、港股/美股规划中 |
 
 ## 交流群
 
