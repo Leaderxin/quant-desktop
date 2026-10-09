@@ -20,6 +20,37 @@ pub fn set_setting(
     db.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
+/// 设置老板键（设置页 → 通用）。空串表示取消。
+///
+/// 没有走 `set_setting`：改热键不只是写一行库 —— 还要把旧键注销、新键注册
+/// 上去，而注册会失败（组合键已被别的程序占着），用户需要看到这个失败。
+///
+/// 顺序是「先注册、成功了再落库」，失败时**回滚到旧键**：`hotkey::apply`
+/// 内部是先注销全部再注册，新键注册不上时旧键已经没了 —— 不回滚的话，用户
+/// 试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉。
+#[tauri::command]
+pub fn set_boss_key(
+    app: tauri::AppHandle,
+    db: State<'_, Arc<Database>>,
+    accelerator: String,
+) -> Result<(), String> {
+    let previous = db
+        .get_setting(crate::db::keys::BOSS_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
+    if let Err(e) = crate::hotkey::apply(&app, &accelerator) {
+        if let Err(rollback) = crate::hotkey::apply(&app, &previous) {
+            log::warn!("[hotkey] Failed to restore previous boss key: {}", rollback);
+        }
+        return Err(e);
+    }
+
+    db.set_setting(crate::db::keys::BOSS_KEY, &accelerator)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn switch_datasource(
     manager: State<'_, Arc<DataSourceManager>>,

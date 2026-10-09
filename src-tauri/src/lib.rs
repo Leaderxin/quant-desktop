@@ -3,6 +3,7 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
+pub mod hotkey;
 
 use std::fs::File;
 use std::sync::Arc;
@@ -259,7 +260,10 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None::<Vec<&str>>,
-        ));
+        ))
+        // 全局快捷键(老板键)。注册的值在下面的 setup 里从库里读 —— 插件本身
+        // 只是把事件循环和 handler 支起来，注册/注销都由 hotkey::apply 负责。
+        .plugin(hotkey::plugin());
 
     // Store builds skip the built-in updater — the Microsoft Store distributes
     // updates itself, so the updater plugin is not registered at all.
@@ -749,6 +753,10 @@ pub fn run() {
                 }
             }
 
+            // 老板键：库里存了值才注册。放在窗口都就绪之后，让「按下去要藏的
+            // 那个窗口」确定存在。
+            hotkey::register_from_db(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -776,6 +784,7 @@ pub fn run() {
             commands::watchlist::search_stocks,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::settings::set_boss_key,
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
             commands::settings::list_index_pool,

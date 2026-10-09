@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
+  parseAccelerator,
   parseBool,
   parseColumns,
   parseCount,
@@ -43,6 +44,8 @@ export const useSettingsStore = defineStore('settings', () => {
   // 必须同时等待它，否则商店/便携构建启动时会先以 false 渲染、闪现本应隐藏的控件。
   const loaded = ref(false);
   const error = ref<string | null>(null);
+  /** 老板键注册失败的原因（组合键被占用等）。只作用于设置页那一行。 */
+  const bossKeyError = ref<string | null>(null);
 
   // 自更新 UI 可见性的单一判定点（状态栏按钮等）。行为层面的拦截在
   // updater store 的 checkForUpdate 内统一处理，此处只管"要不要显示"。
@@ -85,6 +88,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
   const colorScheme = computed<'cn' | 'us'>(() =>
     settings.value['color_scheme'] === 'us' ? 'us' : 'cn');
+
+  /** 老板键；空串表示未设置（见 utils/prefs 的 parseAccelerator）。 */
+  const bossKey = computed(() => parseAccelerator(settings.value['boss_key']));
 
   async function fetchSettings() {
     try {
@@ -187,6 +193,24 @@ export const useSettingsStore = defineStore('settings', () => {
     applyColorScheme(scheme);
   }
 
+  /**
+   * 老板键。走 IPC 命令而不是 `setSetting` —— 改热键要真的去操作系统注册，
+   * 而注册会失败（组合键已被别的程序占着）。这个失败必须留在设置页上：
+   * `error` 那条横幅在主界面，用户正对着设置页，看不到它。
+   * 失败时 store 里的值不动，所以界面显示的还是旧键 —— 与后端一致
+   * （后端失败时会回滚到旧键，见 `set_boss_key`）。
+   */
+  async function setBossKey(accelerator: string) {
+    try {
+      await invoke('set_boss_key', { accelerator });
+      settings.value['boss_key'] = accelerator;
+      bossKeyError.value = null;
+    } catch (e) {
+      console.error('[settings] setBossKey failed:', e);
+      bossKeyError.value = String(e);
+    }
+  }
+
   async function switchDatasource(name: string) {
     const previous = activeDatasource.value;
     try {
@@ -267,15 +291,15 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     settings, datasources, indexPool, activeDatasource, theme, autoLaunch,
-    isPortable, isStoreBuild, loaded, updaterAvailable, error,
+    isPortable, isStoreBuild, loaded, updaterAvailable, error, bossKeyError,
     // 派生配置
     indexCodes, marketOverviewVisible, sectorTopN, tickerVisible, tickerTransparent,
-    tickerItemsPerPage, watchlistColumns, watchlistDefaultSort, colorScheme,
+    tickerItemsPerPage, watchlistColumns, watchlistDefaultSort, colorScheme, bossKey,
     // 动作
     fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme,
     applyColorScheme, applyRemoteSetting,
     setIndexCodes, setMarketOverviewVisible, setSectorTopN, setTickerVisible,
     setTickerTransparent, setTickerItemsPerPage, setWatchlistColumns,
-    setWatchlistDefaultSort, setColorScheme,
+    setWatchlistDefaultSort, setColorScheme, setBossKey,
   };
 });

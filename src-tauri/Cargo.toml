@@ -34,6 +34,15 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-autostart = "2"
+# 全局快捷键(设置页 → 通用 → 老板键)。注册放在 Rust 侧而不是用配套的 JS
+# 插件：老板键要在主窗口隐藏、整个应用失去焦点时仍然响应，而这正是 JS 侧
+# 拿不到执行时机的情形。
+#
+# 钉在 ~2.3 而不是 "2"：2.4.0 起要求 tauri ^2.12，会让 cargo 顺势把 tauri
+# (2.11.2) 连同 tao / wry / webview2-com 一起顶上去 —— 那是一次独立的依赖
+# 升级，混在这个改动里既不好审，也会把刚验证过的窗口行为(show / unminimize /
+# is_minimized)重新洗一遍。要升到 2.4+ 时，请单独提一次依赖更新。
+tauri-plugin-global-shortcut = "~2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }

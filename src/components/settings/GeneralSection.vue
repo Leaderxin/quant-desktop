@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// 通用：主题、开机自启、数据源，以及刷新策略的只读说明。
+// 通用：主题、开机自启、数据源、快捷键。
 import { computed } from 'vue';
 import { NSwitch } from 'naive-ui';
+import { CircleAlert } from '@lucide/vue';
 import { useSettingsStore } from '@/stores/settings';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
+import HotkeyInput from './HotkeyInput.vue';
 
 const settings = useSettingsStore();
 
@@ -26,7 +28,7 @@ const dsOptions = computed(() =>
 
 <template>
   <section class="panel">
-    <p class="panel-hint">界面主题、开机自启与行情数据来源。</p>
+    <p class="panel-hint">界面主题、全局快捷键、开机自启与行情数据来源。</p>
 
     <div class="card">
       <div class="card-body">
@@ -62,7 +64,23 @@ const dsOptions = computed(() =>
             <option v-for="o in dsOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
         </SettingsRow>
+
+        <SettingsRow
+          title="老板键"
+          description="按下这个组合键立刻把主窗口藏起来（行情条不受影响，它由自己的开关管）。恢复用托盘图标，或点一下行情条。"
+        >
+          <HotkeyInput
+            :model-value="settings.bossKey"
+            label="老板键"
+            @update:model-value="settings.setBossKey($event)"
+          />
+        </SettingsRow>
       </div>
+    </div>
+
+    <div v-if="settings.bossKeyError" class="note">
+      <CircleAlert :size="12" aria-hidden="true" />
+      <span>{{ settings.bossKeyError }}，原快捷键保持不变。</span>
     </div>
   </section>
 </template>

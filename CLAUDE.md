@@ -43,6 +43,7 @@ Coverage by area:
 | [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
 | [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
+| [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及裸的普通字符键不许单独当热键（全局热键会把它从全系统抢走） |
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
 | [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
@@ -127,6 +128,14 @@ Volume/turnover normalization: adapters return raw data in 手 (hands) / 万元 
 
 - `market_clock.rs` — Trading session detection (China Standard Time / UTC+8). `MarketSession` enum: PreOpen/MorningTrade/LunchBreak/AfternoonTrade/Closed with weekend detection. `recommended_interval()`: 2s trading, 5s pre-open, 10s lunch, 30s closed. Scheduler uses this as the base interval, then applies adaptive polling on top.
 
+**`hotkey.rs`** — 全局快捷键。目前只有一个老板键：按下即隐藏主窗口。注册放在 Rust 侧而不是用配套的 JS 插件 —— 它要在主窗口已经隐藏、整个应用没有焦点的时候仍然响应，那正是 webview 里的 JS 拿不到执行时机的情形。
+
+`apply(app, accelerator)` 是唯一的注册入口（空串 = 不设），**先 `unregister_all()` 再注册**：改键时只加不减的话，旧键会继续响应而设置页上已经看不到它了 —— 一个用户既关不掉也查不到的全局热键。`commands::settings::set_boss_key` 是「先注册、成功了再落库」，失败时**回滚到旧键**：`apply` 会先注销全部，新键注册不上时旧键已经没了，不回滚的话用户试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉。启动那次由 `register_from_db` 在 setup 末尾读库注册，注册失败只记 warning，不拦启动（组合键被别的程序占着是用户环境问题，设置页里改一次就会重试并把原因回显）。
+
+老板键**只隐藏主窗口**，不碰行情条，也不改任何设置 —— 这是一次临时躲避，不是把配置改掉。恢复走托盘图标或点一下行情条（即上面的 `show_main_window`）。做成来回切的键，在「人真的站在身后」的那一刻就有被按亮的风险。
+
+加速键字符串的词表是 global-hotkey 那套 `Code` 名（`KeyH` / `Digit1` / `F5` / `ArrowUp` …），与浏览器 `KeyboardEvent.code` 几乎逐字相同，所以前端录制时直接取 `e.code`、不做映射表；词表两边各写一份，由 [src/utils/hotkey.ts](src/utils/hotkey.ts) 与其 spec 钉住对齐 —— 对不上的症状是「录进去了、按了没反应」，而设置页上显示得好好的。`Cargo.toml` 里插件钉在 `~2.3`：2.4.0 起要求 tauri ^2.12，会让 cargo 顺势顶掉 tauri / tao / wry。
+
 **`cache/mod.rs`** — `QuoteCache` provides in-memory `HashMap` storage with SQLite dual-write persistence. `restore_from_db()` on startup for instant quote display.
 
 **`Scheduler`** spawns a `tokio` background task with an **adaptive polling state machine**:
@@ -148,7 +157,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
   - Per-group ordering: `move_group_member_top|up|down`, `reorder_group_members` — all keyed by `(group_id, watch_id)`, since the same stock sits at different positions in different groups
   - Groups: `add_watch_group`, `rename_watch_group`, `delete_watch_group`, `reorder_watch_groups`
   - Ticker range: `set_watch_ticker_enabled`, `set_ticker_enabled_bulk`, `reorder_ticker`
-- `settings.rs` — `get_settings`, `set_setting`, `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
+- `settings.rs` — `get_settings`, `set_setting`, `set_boss_key` (writes the setting *and* re-registers the global shortcut; empty string = unset), `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
 - `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
 - `window.rs` — `show_main_window` (ticker-bar click; delegates to `crate::show_main_window`), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI.
@@ -173,7 +182,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
        │    ├─ MarketSection.vue     (显示开关 + 榜单条数)
        │    ├─ WatchlistSection.vue  (列显示/顺序、默认排序、涨跌配色)
        │    ├─ TickerSection.vue     (显示、透明背景、每屏条数、轮播范围)
-       │    ├─ GeneralSection.vue    (主题、开机自启、数据源)
+       │    ├─ GeneralSection.vue    (主题、开机自启、数据源、老板键)
        │    └─ AboutSection.vue      (关于：版本、检查更新、更新说明、GitHub Star / 商店好评引导)
        └─ 看盘界面
             ├─ TopBar.vue (slogan, data source dropdown)
@@ -246,7 +255,7 @@ Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-
 
 ### Key dependencies
 
-- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging)
+- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging), `tauri-plugin-global-shortcut` (老板键，钉 `~2.3`，见 `hotkey.rs`)
 - **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
 
 ### Default settings (auto-inserted on first run)
@@ -267,6 +276,7 @@ Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/setti
 | `watchlist_columns` | all 8 | JSON array of column keys in display order (never contains `ticker_enabled`) |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`; empty means "no sort" (watchlist order) |
 | `color_scheme` | `cn` | `cn` = red-up/green-down (A-share), `us` = the reverse |
+| `boss_key` | `""` | Global accelerator that hides the main window. Empty = not set — the app registers no global hotkey unless the user picks one |
 
 The list lives in `Database::DEFAULT_SETTINGS` and every key name comes from the `db::keys` module — bare string literals are what this indirection exists to prevent: a typo in a key doesn't fail to compile, it makes `get_setting` return `None` and the caller silently take its fallback, so the only symptom is "that setting never takes effect". Keys are also read/written from several places (`window_x` and `ticker_x` each appear at three call sites), so a rename has to be a single edit.
 
