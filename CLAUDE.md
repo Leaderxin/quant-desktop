@@ -72,11 +72,15 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 
 ### Rust backend (`src-tauri/src/`)
 
-**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/toggle-ticker/quit), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
+**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/settings/toggle-ticker/quit), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
 
 Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
 
 Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command.
+
+Also home to `show_main_window(app)` — the single implementation of "把主窗口显示出来并聚焦", shared by the three entries that need it: the ticker bar's click, the tray menu's 「显示主界面」and 「设置」, and the tray icon's left-click. The step that matters is `unminimize()`: `show()` 在 Windows 上走 `SW_SHOW`，对最小化的窗口只是「在当前大小和位置显示」，窗口照旧缩在任务栏里 —— 用户看到任务栏图标闪一下、界面不出来。漏掉这一处的症状是「点了没反应」，而另外两处照旧正常，改哪一处都看不出来。托盘左键还要额外判一次 `is_minimized()`：最小化的窗口在 Win32 眼里**仍然是 visible**（`WS_VISIBLE` 还在），只判 `is_visible()` 会落进「隐藏」分支，把用户想叫回来的窗口反倒藏起来。
+
+托盘菜单的「设置」不只是一次 `show_main_window` —— 它随后 `emit("open-settings")`，由主窗口 `AppLayout` 的监听把 `showSettings` 置真。主窗口的 webview 是常驻的（隐藏不等于卸载），所以窗口处于隐藏或最小化状态时这个事件也收得到。
 
 **标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在前端的 `applyTheme` 上而不是只挂 `toggleTheme`，因为主窗口启动恢复和行情条收到 `theme-changed` 走的都是它 —— 行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画。
 
@@ -146,7 +150,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
   - Ticker range: `set_watch_ticker_enabled`, `set_ticker_enabled_bulk`, `reorder_ticker`
 - `settings.rs` — `get_settings`, `set_setting`, `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
 - `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
-- `window.rs` — `show_main_window` (restore from tray), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
+- `window.rs` — `show_main_window` (ticker-bar click; delegates to `crate::show_main_window`), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI.
 - `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
 
