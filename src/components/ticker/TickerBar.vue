@@ -29,8 +29,18 @@ let unlistenTheme: UnlistenFn | null = null;
 let unlistenDatasource: UnlistenFn | null = null;
 let unlistenWatchlist: UnlistenFn | null = null;
 let unlistenSettings: UnlistenFn | null = null;
+/** 当前手势挂出去的监听清理函数，见 onMouseDown。 */
+let stopMouseTracking: (() => void) | null = null;
+let openErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
 const initFailed = ref(false);
+
+/**
+ * 「打开主窗口」失败。行情条会短暂变成错误行，几秒后自动退回行情显示 ——
+ * 常驻不清的话，一次偶发的 IPC 失败会把行情条永久占成错误页。
+ */
+const openError = ref(false);
+const OPEN_ERROR_MS = 5000;
 
 /** 每屏展示几只。设置页可配，默认 2。 */
 const perPage = computed(() => settings.tickerItemsPerPage);
@@ -77,6 +87,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  stopMouseTracking?.();
+  clearOpenError();
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
   if (unlistenTheme) unlistenTheme();
@@ -185,16 +197,30 @@ const retryHintVisible = ref(false);
 // Uses Tauri's startDragging() API (Win32 DefWindowProc) for smooth
 // OS-level window dragging on both Windows 10 and 11.
 // Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
-// Click vs drag detection via mousemove threshold:
-// - Click (mouse moves <3px): @click fires → opens main window
-// - Drag (mouse moves ≥3px): startDragging() triggers OS drag → @click does NOT fire
-//   because startDragging() enters a Win32 modal drag loop that consumes mouseup.
-//   Document-level mousemove listener ensures we catch fast mouse movements
-//   that leave the ticker bar element.
+//
+// 点击 / 拖动靠按下后的位移区分：
+// - 点击(位移 ≤ 阈值)：@click 照常触发 → 打开主窗口
+// - 拖动(位移 > 阈值)：startDragging() 走 Win32 模态拖拽循环，它把 mouseup
+//   吃掉，所以 @click 不会触发。
+//
+// ⚠ 关键在于「mouseup 被吃掉」不止发生在拖动之后：窗口失焦、或 OS 抢走
+// mouseup，都会让挂在 document 上的 mousemove 留在原地。而它闭包里存的是
+// 上一次按下的起点，于是用户只是把鼠标移到行情条上悬停(buttons 为 0)，
+// 就会拿陈旧的起点算出一个巨大位移、误判成拖动并调用 startDragging() ——
+// 窗口无端跳一下，紧跟着的那次点击也进不了 handleClick。
+// 所以下面有三道收尾：按下前先收上一次的、事件里发现按键已松开就收、失焦也收。
+/** 判定为拖动的最小位移(CSS px)。留点余量：手抖 4~5px 是常事，按 3px 判会
+ *  把正常点击吃掉，主窗口反而打不开。 */
+const DRAG_THRESHOLD_PX = 6;
 
 let isDragging = false;
 
 function onMouseDown(e: MouseEvent) {
+  // 中键/右键既不拖动也不打开主窗口，别为它们挂监听。
+  if (e.button !== 0) return;
+  // 上一次手势没收到 mouseup 的话，它的监听还挂着 —— 先收干净再挂新的，
+  // 否则两份并存，旧的那份会拿旧起点抢先判定。
+  stopMouseTracking?.();
   isDragging = false;
   if (initFailed.value) {
     return;
@@ -202,29 +228,51 @@ function onMouseDown(e: MouseEvent) {
   const startX = e.clientX;
   const startY = e.clientY;
 
-  const onMouseMove = (ev: MouseEvent) => {
+  function cleanup() {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', cleanup);
+    window.removeEventListener('blur', cleanup);
+    stopMouseTracking = null;
+  }
+
+  function onMouseMove(ev: MouseEvent) {
+    // 左键已经松开却还收到 mousemove —— 那次 mouseup 被吞了，现在这只是
+    // 悬停产生的事件。不拦住它，下面就会拿上次的起点误判成拖动。
+    if (!(ev.buttons & 1)) { cleanup(); return; }
     if (isDragging) return;
-    if (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3) {
+    if (
+      Math.abs(ev.clientX - startX) > DRAG_THRESHOLD_PX ||
+      Math.abs(ev.clientY - startY) > DRAG_THRESHOLD_PX
+    ) {
       isDragging = true;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
+      cleanup();
       getCurrentWindow().startDragging().catch((err) => {
+        // 没真的拖起来，就别把这次手势算成拖动 —— 否则它之后的点击全被吞掉。
+        isDragging = false;
         console.error('[TickerBar] startDragging failed:', err);
       });
     }
-  };
+  }
 
-  const onMouseUp = () => {
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-  };
-
+  stopMouseTracking = cleanup;
   document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mouseup', onMouseUp);
+  document.addEventListener('mouseup', cleanup);
+  // 按下期间窗口失焦(Alt-Tab、系统模态框)后，mouseup 不会再送进这个 webview，
+  // 只能靠 blur 兜底。
+  window.addEventListener('blur', cleanup);
 }
 
-async function handleClick() {
-  if (isDragging) return;
+function clearOpenError() {
+  if (openErrorTimer) {
+    clearTimeout(openErrorTimer);
+    openErrorTimer = null;
+  }
+  openError.value = false;
+}
+
+async function handleClick(event: MouseEvent | KeyboardEvent) {
+  // 键盘走 keydown，没有 button；鼠标事件里中键/右键也不该打开主窗口。
+  if (event instanceof MouseEvent && (event.button !== 0 || isDragging)) return;
   if (initFailed.value) {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
     if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
@@ -258,7 +306,15 @@ async function handleClick() {
     }
     return;
   }
-  await invoke('show_main_window').catch((e) => { console.error('[TickerBar] show_main_window failed:', e); });
+  // 上一次失败留下的错误行，点一下就当重试，先撤掉
+  clearOpenError();
+  try {
+    await invoke('show_main_window');
+  } catch (e) {
+    console.error('[TickerBar] show_main_window failed:', e);
+    openError.value = true;
+    openErrorTimer = setTimeout(clearOpenError, OPEN_ERROR_MS);
+  }
 }
 </script>
 
@@ -286,6 +342,14 @@ async function handleClick() {
       <template v-else-if="retryHintVisible">
         <div class="ticker-row ticker-error-row">
           <span class="ticker-error-text">重连中...</span>
+        </div>
+      </template>
+      <!-- 打开主窗口没成功。和上面的重连失败同一套行内样式，几秒后自动退回
+           行情显示(见 OPEN_ERROR_MS)，不会把行情条永久占成错误页。 -->
+      <template v-else-if="openError">
+        <div class="ticker-row ticker-error-row">
+          <span class="ticker-error-text">打开失败</span>
+          <span class="ticker-retry-hint">· 点击重试</span>
         </div>
       </template>
       <template v-else-if="visibleItems.length > 0">

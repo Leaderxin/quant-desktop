@@ -3,6 +3,7 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
+pub mod hotkey;
 
 use std::fs::File;
 use std::sync::Arc;
@@ -13,11 +14,11 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
-// `Emitter` is used by the tray menu's "check update" handler below, which is
-// compile-gated out of store builds (the Microsoft Store distributes updates
-// itself). The check_update/install_update IPC commands stay compiled and
-// registered in store builds, guarded at runtime — see commands/updater.rs.
-#[cfg(not(feature = "store"))]
+// `Emitter` serves the tray menu: the "设置" item emits `open-settings` to the
+// main window in every build, and "检查更新" emits update events — the latter
+// is compile-gated out of store builds (the Microsoft Store distributes
+// updates itself). The check_update/install_update IPC commands stay compiled
+// and registered in store builds, guarded at runtime — see commands/updater.rs.
 use tauri::Emitter;
 use db::{keys, Database};
 use datasource::DataSourceManager;
@@ -127,6 +128,31 @@ pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> 
 #[derive(Debug, Clone, Copy)]
 pub struct PortableMode(pub bool);
 
+/// 把主窗口显示出来并聚焦 —— 托盘(菜单项与左键)和行情条的
+/// `show_main_window` 命令共用这一份实现。
+///
+/// **`show()` 不会退出最小化**：Windows 上它走 `SW_SHOW`，对最小化的窗口
+/// 只是「在当前大小和位置显示」，窗口照旧缩在任务栏里，后面的 `set_focus()`
+/// 于是聚焦了一个最小化的窗口 —— 用户看到的是任务栏图标闪一下，界面不出来。
+/// 恢复最小化要显式 `unminimize()`(走 `SW_RESTORE`)。行情条点一下打不开主
+/// 窗口、托盘「显示主界面」没反应，都是漏了这一步的症状，所以这三处必须共用。
+///
+/// 顺序也有依赖：先 `show()`(窗口可能是隐藏的)再 `unminimize()`，两者都经
+/// tao 的 `execute_in_thread` 排到窗口线程，FIFO 保证了这个顺序。
+pub fn show_main_window(app: &tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    // is_minimized() 读的是真实的 IsIconic(hwnd) 而非缓存的标志位，
+    // 所以紧跟在异步的 show() 后面判断也不会读到过期状态。
+    if window.is_minimized().map_err(|e| e.to_string())? {
+        window.unminimize().map_err(|e| e.to_string())?;
+    }
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 显示/隐藏行情条窗口，并把可见性落盘到 `ticker_visible`。
 ///
 /// 托盘菜单的「显示/隐藏行情条」与设置页的 `set_ticker_visible` 命令共用这一份
@@ -234,7 +260,10 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None::<Vec<&str>>,
-        ));
+        ))
+        // 全局快捷键(老板键)。注册的值在下面的 setup 里从库里读 —— 插件本身
+        // 只是把事件循环和 handler 支起来，注册/注销都由 hotkey::apply 负责。
+        .plugin(hotkey::plugin());
 
     // Store builds skip the built-in updater — the Microsoft Store distributes
     // updates itself, so the updater plugin is not registered at all.
@@ -334,6 +363,7 @@ pub fn run() {
 
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
+            let settings_item = MenuItemBuilder::with_id("settings", "设置").build(app)?;
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
@@ -342,6 +372,7 @@ pub fn run() {
             // zip), and Store updates are handled by the Microsoft Store itself.
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
+                .item(&settings_item)
                 .item(&toggle_ticker)
                 .separator();
 
@@ -369,10 +400,19 @@ pub fn run() {
                     move |app, event| {
                     match event.id().as_ref() {
                         "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                            if let Err(e) = show_main_window(app) {
+                                log::warn!("Failed to show main window: {}", e);
                             }
+                        }
+                        "settings" => {
+                            // 先把窗口恢复出来再发事件：设置页要有个窗口承载，
+                            // 而窗口若是最小化的，事件到了也看不见。
+                            if let Err(e) = show_main_window(app) {
+                                log::warn!("Failed to show main window for settings: {}", e);
+                            }
+                            // 主窗口的 webview 是常驻的(隐藏不等于卸载)，AppLayout
+                            // 挂载时就注册了监听，所以隐藏状态下这次 emit 也收得到。
+                            let _ = app.emit("open-settings", ());
                         }
                         "toggle_ticker" => {
                             let was_visible = app
@@ -433,11 +473,14 @@ pub fn run() {
                     } = event {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
+                            // 最小化的窗口在 Win32 眼里仍然是 visible(WS_VISIBLE
+                            // 还在)，只判 is_visible() 会落进「隐藏」分支 —— 用户
+                            // 点托盘本想把窗口叫回来，窗口反倒不见了。
+                            let minimized = window.is_minimized().unwrap_or(false);
+                            if window.is_visible().unwrap_or(false) && !minimized {
                                 let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                            } else if let Err(e) = show_main_window(app) {
+                                log::warn!("Failed to show main window: {}", e);
                             }
                         }
                     }
@@ -710,6 +753,10 @@ pub fn run() {
                 }
             }
 
+            // 老板键：库里存了值才注册。放在窗口都就绪之后，让「按下去要藏的
+            // 那个窗口」确定存在。
+            hotkey::register_from_db(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -737,6 +784,7 @@ pub fn run() {
             commands::watchlist::search_stocks,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::settings::set_boss_key,
             commands::settings::switch_datasource,
             commands::settings::list_datasources,
             commands::settings::list_index_pool,

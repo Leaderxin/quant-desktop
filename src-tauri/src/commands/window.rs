@@ -1,15 +1,15 @@
-use tauri::{Manager, State};
+use tauri::State;
 use std::sync::Arc;
 use crate::db::Database;
 
+/// 恢复并聚焦主窗口(行情条点击、托盘菜单)。
+///
+/// 与托盘菜单的两处入口共用 `crate::show_main_window` —— 关键是其中
+/// `unminimize()` 那一步： `show()` 单独用对最小化的窗口无效，漏掉的话
+/// 症状是「点了没反应」，而另一处照旧正常，改动时看不出来。
 #[tauri::command]
 pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or_else(|| "Main window not found".to_string())?;
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
-    Ok(())
+    crate::show_main_window(&app)
 }
 
 /// 显示/隐藏行情条窗口(设置页「显示行情条」开关)。

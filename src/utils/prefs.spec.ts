@@ -13,6 +13,7 @@ import {
   clampTickerItems,
   clampTopN,
   nearestTopNPreset,
+  parseAccelerator,
   parseBool,
   parseColumns,
   parseCount,
@@ -144,5 +145,26 @@ describe('parseBool / parseCount', () => {
     expect(parseCount(undefined, 5, clampTopN)).toBe(5);
     expect(parseCount('abc', 5, clampTopN)).toBe(5);
     expect(parseCount('999', 5, clampTopN)).toBe(50);
+  });
+});
+
+describe('parseAccelerator', () => {
+  it('认得的值原样返回', () => {
+    expect(parseAccelerator('Ctrl+Shift+KeyH')).toBe('Ctrl+Shift+KeyH');
+    expect(parseAccelerator('F9')).toBe('F9');
+  });
+
+  /**
+   * 这里与其它解析器不同：不能退回某个 fallback 值。退回一个具体的组合键等于
+   * 替用户注册一个他没按过的全局热键，而全局热键会把那个键从整个系统抢走。
+   */
+  it('空值与坏值都归为「未设置」，而不是退回某个默认键', () => {
+    expect(parseAccelerator(undefined)).toBe('');
+    expect(parseAccelerator('')).toBe('');
+    expect(parseAccelerator('Ctrl+')).toBe('');
+    expect(parseAccelerator('KeyH')).toBe('');
+    // 大写字母的输入路径，与录制端同一条规矩
+    expect(parseAccelerator('Shift+KeyH')).toBe('');
+    expect(parseAccelerator('Ctrl+Nonsense')).toBe('');
   });
 });

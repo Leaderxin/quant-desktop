@@ -43,6 +43,7 @@ Coverage by area:
 | [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
 | [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
+| [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及不在打字路径上的组合才许当热键 —— 裸键与只带 Shift 的组合都会把字符从全系统抢走（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」） |
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
 | [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
@@ -72,11 +73,15 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 
 ### Rust backend (`src-tauri/src/`)
 
-**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/toggle-ticker/quit), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
+**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/settings/toggle-ticker/quit), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
 
 Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
 
 Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command.
+
+Also home to `show_main_window(app)` — the single implementation of "把主窗口显示出来并聚焦", shared by the three entries that need it: the ticker bar's click, the tray menu's 「显示主界面」and 「设置」, and the tray icon's left-click. The step that matters is `unminimize()`: `show()` 在 Windows 上走 `SW_SHOW`，对最小化的窗口只是「在当前大小和位置显示」，窗口照旧缩在任务栏里 —— 用户看到任务栏图标闪一下、界面不出来。漏掉这一处的症状是「点了没反应」，而另外两处照旧正常，改哪一处都看不出来。托盘左键还要额外判一次 `is_minimized()`：最小化的窗口在 Win32 眼里**仍然是 visible**（`WS_VISIBLE` 还在），只判 `is_visible()` 会落进「隐藏」分支，把用户想叫回来的窗口反倒藏起来。
+
+托盘菜单的「设置」不只是一次 `show_main_window` —— 它随后 `emit("open-settings")`，由主窗口 `AppLayout` 的监听把 `showSettings` 置真。主窗口的 webview 是常驻的（隐藏不等于卸载），所以窗口处于隐藏或最小化状态时这个事件也收得到。
 
 **标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在前端的 `applyTheme` 上而不是只挂 `toggleTheme`，因为主窗口启动恢复和行情条收到 `theme-changed` 走的都是它 —— 行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画。
 
@@ -123,6 +128,14 @@ Volume/turnover normalization: adapters return raw data in 手 (hands) / 万元 
 
 - `market_clock.rs` — Trading session detection (China Standard Time / UTC+8). `MarketSession` enum: PreOpen/MorningTrade/LunchBreak/AfternoonTrade/Closed with weekend detection. `recommended_interval()`: 2s trading, 5s pre-open, 10s lunch, 30s closed. Scheduler uses this as the base interval, then applies adaptive polling on top.
 
+**`hotkey.rs`** — 全局快捷键。目前只有一个老板键：按下即隐藏主窗口。注册放在 Rust 侧而不是用配套的 JS 插件 —— 它要在主窗口已经隐藏、整个应用没有焦点的时候仍然响应，那正是 webview 里的 JS 拿不到执行时机的情形。
+
+`apply(app, accelerator)` 是唯一的注册入口（空串 = 不设），**先 `unregister_all()` 再注册**：改键时只加不减的话，旧键会继续响应而设置页上已经看不到它了 —— 一个用户既关不掉也查不到的全局热键。`commands::settings::set_boss_key` 是「先注册、成功了再落库」，两条失败路径都**回滚到旧键**：注册失败时 —— `apply` 会先注销全部，新键注册不上时旧键已经没了，不回滚的话用户试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉；落库失败时（DB 锁 / IO）—— OS 里已经在响应新键，不回滚的话「系统响应的键」与「库/界面显示的键」会分家到下次重启。启动那次由 `register_from_db` 在 setup 末尾读库注册，注册失败只记 warning，不拦启动（组合键被别的程序占着是用户环境问题，设置页里改一次就会重试并把原因回显）。
+
+老板键**只隐藏主窗口**，不碰行情条，也不改任何设置 —— 这是一次临时躲避，不是把配置改掉。恢复走托盘图标或点一下行情条（即上面的 `show_main_window`）。做成来回切的键，在「人真的站在身后」的那一刻就有被按亮的风险。
+
+加速键字符串的词表是 global-hotkey 那套 `Code` 名（`KeyH` / `Digit1` / `F5` / `ArrowUp` …），与浏览器 `KeyboardEvent.code` 几乎逐字相同，所以前端录制时直接取 `e.code`、不做映射表；词表两边各写一份，由 [src/utils/hotkey.ts](src/utils/hotkey.ts) 与其 spec 钉住对齐 —— 对不上的症状是「录进去了、按了没反应」，而设置页上显示得好好的。`Cargo.toml` 里插件钉在 `~2.3`：2.4.0 起要求 tauri ^2.12，会让 cargo 顺势顶掉 tauri / tao / wry。
+
 **`cache/mod.rs`** — `QuoteCache` provides in-memory `HashMap` storage with SQLite dual-write persistence. `restore_from_db()` on startup for instant quote display.
 
 **`Scheduler`** spawns a `tokio` background task with an **adaptive polling state machine**:
@@ -144,9 +157,9 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
   - Per-group ordering: `move_group_member_top|up|down`, `reorder_group_members` — all keyed by `(group_id, watch_id)`, since the same stock sits at different positions in different groups
   - Groups: `add_watch_group`, `rename_watch_group`, `delete_watch_group`, `reorder_watch_groups`
   - Ticker range: `set_watch_ticker_enabled`, `set_ticker_enabled_bulk`, `reorder_ticker`
-- `settings.rs` — `get_settings`, `set_setting`, `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
+- `settings.rs` — `get_settings`, `set_setting`, `set_boss_key` (writes the setting *and* re-registers the global shortcut; empty string = unset), `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
 - `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
-- `window.rs` — `show_main_window` (restore from tray), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
+- `window.rs` — `show_main_window` (ticker-bar click; delegates to `crate::show_main_window`), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI.
 - `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
 
@@ -169,7 +182,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
        │    ├─ MarketSection.vue     (显示开关 + 榜单条数)
        │    ├─ WatchlistSection.vue  (列显示/顺序、默认排序、涨跌配色)
        │    ├─ TickerSection.vue     (显示、透明背景、每屏条数、轮播范围)
-       │    ├─ GeneralSection.vue    (主题、开机自启、数据源)
+       │    ├─ GeneralSection.vue    (主题、开机自启、数据源、老板键)
        │    └─ AboutSection.vue      (关于：版本、检查更新、更新说明、GitHub Star / 商店好评引导)
        └─ 看盘界面
             ├─ TopBar.vue (slogan, data source dropdown)
@@ -189,7 +202,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 **设置页（`src/components/settings/`）** — 覆盖式整页，入口在状态栏的齿轮按钮。用 `KeepAlive` 切换分区，保住各分区的本地 UI 状态（正在输入的自定义条数、轮播范围的分组筛选）。`AppLayout` 用 `v-if` 而非 `v-show` 承载它，两个后果都是要的：设置期间看盘界面的轮询全部停掉；返回时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新设置重新应用（否则改完默认排序要重启应用才看得到）。
 
-共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
+共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
 
 **分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 上移 / 下移）、＋新建。删除确认框在本地算出影响面（快照里已有每组的有序成员 id）：`orphans` 是「只属于这一个分组」的股票，会并入默认分组；其余不受影响；并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
 
@@ -207,7 +220,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 - `variables.css` — Design system tokens: 4 surface levels, border system, text palette, semantic up/down colors (red=up, green=down per A-share convention), monospace font for numbers (tabular-nums), 4px-base spacing scale, radius tokens, shadow tokens, dark + light theme overrides. Also holds the **涨跌配色方案覆盖块** (`[data-color-scheme="us"]`) — placed *after* both theme blocks because it has the same specificity (0,1,0) as `[data-theme="light"]` and wins on source order; the light variant needs the compound `[data-theme="light"][data-color-scheme="us"]` (0,2,0) to beat the light-theme definitions. The derived `-bg`/`-bar` tokens must flip with the primaries, or heat bars and text colours disagree.
 - `dark.css` — Scrollbar theming
 - `chart.css` — Shared chart container styles (overlay, error, status text)
-- `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs, select), scoped under `.settings-page` so the five section components don't each carry a copy
+- `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs), scoped under `.settings-page` so the five section components don't each carry a copy
 
 ### Data flow
 
@@ -242,7 +255,7 @@ Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-
 
 ### Key dependencies
 
-- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging)
+- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging), `tauri-plugin-global-shortcut` (老板键，钉 `~2.3`，见 `hotkey.rs`)
 - **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
 
 ### Default settings (auto-inserted on first run)
@@ -263,6 +276,7 @@ Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/setti
 | `watchlist_columns` | all 8 | JSON array of column keys in display order (never contains `ticker_enabled`) |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`; empty means "no sort" (watchlist order) |
 | `color_scheme` | `cn` | `cn` = red-up/green-down (A-share), `us` = the reverse |
+| `boss_key` | `""` | Global accelerator that hides the main window. Empty = not set — the app registers no global hotkey unless the user picks one |
 
 The list lives in `Database::DEFAULT_SETTINGS` and every key name comes from the `db::keys` module — bare string literals are what this indirection exists to prevent: a typo in a key doesn't fail to compile, it makes `get_setting` return `None` and the caller silently take its fallback, so the only symptom is "that setting never takes effect". Keys are also read/written from several places (`window_x` and `ticker_x` each appear at three call sites), so a rename has to be a single edit.
 

@@ -20,6 +20,50 @@ pub fn set_setting(
     db.set_setting(&key, &value).map_err(|e| e.to_string())
 }
 
+/// 设置老板键（设置页 → 通用）。空串表示取消。
+///
+/// 没有走 `set_setting`：改热键不只是写一行库 —— 还要把旧键注销、新键注册
+/// 上去，而注册会失败（组合键已被别的程序占着），用户需要看到这个失败。
+///
+/// 顺序是「先注册、成功了再落库」，两条失败路径都**回滚到旧键**：
+/// - 注册失败：`hotkey::apply` 内部是先注销全部再注册，新键注册不上时旧键
+///   已经没了 —— 不回滚的话，用户试着换一个已被占用的键，代价是连原来能用
+///   的那个也一起丢掉。
+/// - 落库失败（DB 锁 / IO）：此时 OS 里已经在响应新键，而库与界面显示的都
+///   还是旧键 —— 不回滚的话两边会分家到下次重启。
+#[tauri::command]
+pub fn set_boss_key(
+    app: tauri::AppHandle,
+    db: State<'_, Arc<Database>>,
+    accelerator: String,
+) -> Result<(), String> {
+    let previous = db
+        .get_setting(crate::db::keys::BOSS_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
+    if let Err(e) = crate::hotkey::apply(&app, &accelerator) {
+        rollback_boss_key(&app, &previous);
+        return Err(e);
+    }
+
+    if let Err(e) = db.set_setting(crate::db::keys::BOSS_KEY, &accelerator) {
+        rollback_boss_key(&app, &previous);
+        return Err(e.to_string());
+    }
+    Ok(())
+}
+
+/// 把 OS 侧的热键还原成库里记的那个（两条失败路径共用，见 `set_boss_key`）。
+/// 回滚本身失败只能记日志 —— 此时 OS 与库已经分家，但命令会带着原始错误
+/// 返回，设置页会显示失败，用户改一次键就会重试。
+fn rollback_boss_key(app: &tauri::AppHandle, previous: &str) {
+    if let Err(rollback) = crate::hotkey::apply(app, previous) {
+        log::warn!("[hotkey] Failed to restore previous boss key: {}", rollback);
+    }
+}
+
 #[tauri::command]
 pub fn switch_datasource(
     manager: State<'_, Arc<DataSourceManager>>,

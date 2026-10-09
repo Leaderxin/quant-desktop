@@ -4,6 +4,8 @@
 // 「字符串 → 结构化值」的解析集中在这里，避免每个组件各写一份 JSON.parse
 // 并在数据损坏时抛出未捕获异常。
 
+import { isValidAccelerator } from './hotkey';
+
 /** 自选表可配置的列。顺序即设置页里的展示顺序，也是「全部显示」时的表格列序。 */
 export const ALL_COLUMNS = [
   { key: 'code', label: '代码', required: true },
@@ -131,4 +133,15 @@ export function parseBool(raw: string | undefined, fallback: boolean): boolean {
 export function parseCount(raw: string | undefined, fallback: number, clamp: (n: number) => number): number {
   const n = Number.parseInt(raw ?? '', 10);
   return Number.isNaN(n) ? clamp(fallback) : clamp(n);
+}
+
+/**
+ * 老板键。空串和坏值都归为「未设置」。
+ *
+ * 与其它解析器不同，这里不能退回某个 fallback 值 —— 退回一个具体的组合键，
+ * 等于替用户注册一个他没按过的全局热键，而这个键会被全系统抢走。
+ * 判定规则（词表、裸字符键的限制）都在 utils/hotkey 里，与录制端共用一份。
+ */
+export function parseAccelerator(raw: string | undefined): string {
+  return raw && isValidAccelerator(raw) ? raw : '';
 }

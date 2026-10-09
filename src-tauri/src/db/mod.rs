@@ -32,6 +32,8 @@ pub mod keys {
     pub const WATCHLIST_COLUMNS: &str = "watchlist_columns";
     pub const WATCHLIST_DEFAULT_SORT: &str = "watchlist_default_sort";
     pub const COLOR_SCHEME: &str = "color_scheme";
+    /// 老板键(全局快捷键,按下即隐藏主窗口)。空串表示不设 —— 见 `crate::hotkey`。
+    pub const BOSS_KEY: &str = "boss_key";
 
     // ── 窗口几何:不在设置页里,由窗口 move/resize/close 事件自动持久化 ──
     pub const WINDOW_X: &str = "window_x";
@@ -351,6 +353,9 @@ impl Database {
         (keys::WATCHLIST_COLUMNS, DEFAULT_WATCHLIST_COLUMNS_JSON),
         (keys::WATCHLIST_DEFAULT_SORT, ""),
         (keys::COLOR_SCHEME, "cn"),
+        // 通用。默认不占用任何全局热键:注册一个用户没要的组合键会去抢别的软件
+        // 已经在用的键,而失败的提示用户根本看不到(设置页没开)。空串 = 不注册。
+        (keys::BOSS_KEY, ""),
     ];
 
     /// Insert default settings values (default data source is Tencent)
@@ -1844,6 +1849,7 @@ mod tests {
                 "watchlist_columns",
                 "watchlist_default_sort",
                 "color_scheme",
+                "boss_key",
             ]
         );
     }

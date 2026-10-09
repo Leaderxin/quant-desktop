@@ -5,7 +5,8 @@ import MarketOverviewPanel from '@/components/market/MarketOverviewPanel.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
 import StatusBar from './StatusBar.vue';
 import SettingsPage from '@/components/settings/SettingsPage.vue';
-import { provide, ref } from 'vue';
+import { onMounted, onUnmounted, provide, ref } from 'vue';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSettingsStore } from '@/stores/settings';
 import { CircleAlert, RefreshCw, TriangleAlert } from '@lucide/vue';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
@@ -31,6 +32,26 @@ provide(CLEAR_INDEX_DETAIL_KEY, {
   clearIndexDetail: () => { clearIndexDetailFn.value?.(); },
   registerClearStockFn: (fn: () => void) => { clearStockDetailFn.value = fn; },
   clearStockDetail: () => { clearStockDetailFn.value?.(); },
+});
+
+/**
+ * 托盘的「设置」菜单项：主窗口可能是隐藏的，由 Rust 侧先恢复窗口再发这个
+ * 事件。webview 是常驻的(隐藏不等于卸载)，所以这里的监听从挂载起就能收到。
+ */
+let unlistenOpenSettings: UnlistenFn | null = null;
+
+onMounted(async () => {
+  try {
+    unlistenOpenSettings = await listen('open-settings', () => {
+      showSettings.value = true;
+    });
+  } catch (e) {
+    console.error('[AppLayout] Failed to listen open-settings:', e);
+  }
+});
+
+onUnmounted(() => {
+  if (unlistenOpenSettings) unlistenOpenSettings();
 });
 
 defineProps<{
