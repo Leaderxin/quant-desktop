@@ -2,6 +2,7 @@
 // 自选列表：表格列、默认排序、涨跌配色。
 // 分组本身在自选表表头的标签栏里维护，这里不重复一套入口。
 import { computed } from 'vue';
+import { NSelect } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import {
   ALL_COLUMNS,
@@ -60,6 +61,12 @@ function onColumnMove(index: number, direction: -1 | 1) {
 
 const sortKey = computed(() => settings.watchlistDefaultSort?.key ?? '');
 const sortOrder = computed(() => settings.watchlistDefaultSort?.order ?? 'descend');
+
+/** 排序字段的选项。空串 = 不排序，与 onSortKeyChange 的约定一致。 */
+const sortOptions = [
+  { label: '不排序（自选顺序）', value: '' },
+  ...ALL_COLUMNS.map((c) => ({ label: c.label, value: c.key })),
+];
 
 function onSortKeyChange(key: string) {
   if (key === '') {
@@ -137,15 +144,14 @@ const orderOptions = [
     <div class="card">
       <div class="card-body">
         <SettingsRow title="默认排序字段" description="打开应用时自选表默认的排列方式">
-          <select
-            class="select"
+          <NSelect
+            size="small"
+            style="width: 160px"
             :value="sortKey"
-            aria-label="默认排序字段"
-            @change="onSortKeyChange(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">不排序（自选顺序）</option>
-            <option v-for="c in ALL_COLUMNS" :key="c.key" :value="c.key">{{ c.label }}</option>
-          </select>
+            :options="sortOptions"
+            :input-props="{ 'aria-label': '默认排序字段' }"
+            @update:value="onSortKeyChange"
+          />
           <SegmentedControl
             :model-value="sortOrder"
             :options="orderOptions"

@@ -202,7 +202,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 **设置页（`src/components/settings/`）** — 覆盖式整页，入口在状态栏的齿轮按钮。用 `KeepAlive` 切换分区，保住各分区的本地 UI 状态（正在输入的自定义条数、轮播范围的分组筛选）。`AppLayout` 用 `v-if` 而非 `v-show` 承载它，两个后果都是要的：设置期间看盘界面的轮询全部停掉；返回时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新设置重新应用（否则改完默认排序要重启应用才看得到）。
 
-共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
+共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
 
 **分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 上移 / 下移）、＋新建。删除确认框在本地算出影响面（快照里已有每组的有序成员 id）：`orphans` 是「只属于这一个分组」的股票，会并入默认分组；其余不受影响；并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
 
@@ -220,7 +220,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 - `variables.css` — Design system tokens: 4 surface levels, border system, text palette, semantic up/down colors (red=up, green=down per A-share convention), monospace font for numbers (tabular-nums), 4px-base spacing scale, radius tokens, shadow tokens, dark + light theme overrides. Also holds the **涨跌配色方案覆盖块** (`[data-color-scheme="us"]`) — placed *after* both theme blocks because it has the same specificity (0,1,0) as `[data-theme="light"]` and wins on source order; the light variant needs the compound `[data-theme="light"][data-color-scheme="us"]` (0,2,0) to beat the light-theme definitions. The derived `-bg`/`-bar` tokens must flip with the primaries, or heat bars and text colours disagree.
 - `dark.css` — Scrollbar theming
 - `chart.css` — Shared chart container styles (overlay, error, status text)
-- `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs, select), scoped under `.settings-page` so the five section components don't each carry a copy
+- `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs), scoped under `.settings-page` so the five section components don't each carry a copy
 
 ### Data flow
 

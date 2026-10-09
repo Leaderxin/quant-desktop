@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 通用：主题、开机自启、数据源、快捷键。
 import { computed } from 'vue';
-import { NSwitch } from 'naive-ui';
+import { NSwitch, NSelect } from 'naive-ui';
 import { CircleAlert } from '@lucide/vue';
 import { useSettingsStore } from '@/stores/settings';
 import SettingsRow from './SettingsRow.vue';
@@ -54,15 +54,14 @@ const dsOptions = computed(() =>
         </SettingsRow>
 
         <SettingsRow title="数据源" description="行情数据来自哪家服务商，和顶部栏的下拉是同一个设置；行情异常时可换一家试试">
-          <select
-            class="select"
-            style="min-width: 110px"
+          <NSelect
+            size="small"
+            style="width: 120px"
             :value="settings.activeDatasource"
-            aria-label="数据源"
-            @change="settings.switchDatasource(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="o in dsOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
+            :options="dsOptions"
+            :input-props="{ 'aria-label': '数据源' }"
+            @update:value="settings.switchDatasource"
+          />
         </SettingsRow>
 
         <SettingsRow

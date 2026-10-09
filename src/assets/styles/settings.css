@@ -174,29 +174,6 @@
   color: var(--color-text-tertiary);
 }
 
-/* ── 下拉 ── */
-.settings-page .select {
-  height: 26px;
-  padding: 0 26px 0 8px;
-  border: 1px solid var(--color-border-1);
-  border-radius: var(--radius-sm);
-  background-color: var(--color-surface-0);
-  color: var(--color-text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238b949e' stroke-width='1.5'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
-  background-size: 12px;
-}
-.settings-page .select:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-}
-
 /* ── 说明性提示条 ── */
 .settings-page .note {
   display: flex;
