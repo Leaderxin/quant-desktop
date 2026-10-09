@@ -43,7 +43,7 @@ Coverage by area:
 | [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
 | [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
-| [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及裸的普通字符键不许单独当热键（全局热键会把它从全系统抢走） |
+| [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及不在打字路径上的组合才许当热键 —— 裸键与只带 Shift 的组合都会把字符从全系统抢走（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」） |
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
 | [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
@@ -130,7 +130,7 @@ Volume/turnover normalization: adapters return raw data in 手 (hands) / 万元 
 
 **`hotkey.rs`** — 全局快捷键。目前只有一个老板键：按下即隐藏主窗口。注册放在 Rust 侧而不是用配套的 JS 插件 —— 它要在主窗口已经隐藏、整个应用没有焦点的时候仍然响应，那正是 webview 里的 JS 拿不到执行时机的情形。
 
-`apply(app, accelerator)` 是唯一的注册入口（空串 = 不设），**先 `unregister_all()` 再注册**：改键时只加不减的话，旧键会继续响应而设置页上已经看不到它了 —— 一个用户既关不掉也查不到的全局热键。`commands::settings::set_boss_key` 是「先注册、成功了再落库」，失败时**回滚到旧键**：`apply` 会先注销全部，新键注册不上时旧键已经没了，不回滚的话用户试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉。启动那次由 `register_from_db` 在 setup 末尾读库注册，注册失败只记 warning，不拦启动（组合键被别的程序占着是用户环境问题，设置页里改一次就会重试并把原因回显）。
+`apply(app, accelerator)` 是唯一的注册入口（空串 = 不设），**先 `unregister_all()` 再注册**：改键时只加不减的话，旧键会继续响应而设置页上已经看不到它了 —— 一个用户既关不掉也查不到的全局热键。`commands::settings::set_boss_key` 是「先注册、成功了再落库」，两条失败路径都**回滚到旧键**：注册失败时 —— `apply` 会先注销全部，新键注册不上时旧键已经没了，不回滚的话用户试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉；落库失败时（DB 锁 / IO）—— OS 里已经在响应新键，不回滚的话「系统响应的键」与「库/界面显示的键」会分家到下次重启。启动那次由 `register_from_db` 在 setup 末尾读库注册，注册失败只记 warning，不拦启动（组合键被别的程序占着是用户环境问题，设置页里改一次就会重试并把原因回显）。
 
 老板键**只隐藏主窗口**，不碰行情条，也不改任何设置 —— 这是一次临时躲避，不是把配置改掉。恢复走托盘图标或点一下行情条（即上面的 `show_main_window`）。做成来回切的键，在「人真的站在身后」的那一刻就有被按亮的风险。
 

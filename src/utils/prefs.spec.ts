@@ -163,6 +163,8 @@ describe('parseAccelerator', () => {
     expect(parseAccelerator('')).toBe('');
     expect(parseAccelerator('Ctrl+')).toBe('');
     expect(parseAccelerator('KeyH')).toBe('');
+    // 大写字母的输入路径，与录制端同一条规矩
+    expect(parseAccelerator('Shift+KeyH')).toBe('');
     expect(parseAccelerator('Ctrl+Nonsense')).toBe('');
   });
 });

@@ -53,11 +53,8 @@ function buildSupportedCodes(): Set<string> {
 export const SUPPORTED_CODES: ReadonlySet<string> = buildSupportedCodes();
 
 /**
- * 允许**不带修饰键**单独使用的主键：功能键、PrintScreen、媒体/音量键。
- *
- * 这条限制不是洁癖：全局热键注册之后是全系统生效的。把裸的 `KeyH` 设成老板键，
- * 用户在任何输入框里都再也打不出 h —— 而带一个修饰键就撞不上正常打字。
- * 功能键与媒体键本来就是「单独按」的键，没有这个问题。
+ * 允许**不带 Ctrl/Alt/Super** 单独使用的主键：功能键、PrintScreen、媒体/音量键。
+ * 这些键本来就是「单独按」的键，不在文本输入的路径上。
  */
 function canStandAlone(code: string): boolean {
   return (
@@ -69,17 +66,31 @@ function canStandAlone(code: string): boolean {
 }
 
 /**
+ * 这组组合会不会撞上正常打字 —— 撞上的不许注册。
+ *
+ * 裸键与「只带 Shift」的组合都在打字路径上：KeyH 是小写 h，Shift+KeyH 是
+ * 大写 H，Shift+Digit1 是「!」。全局热键注册之后是全系统生效的，把它设成
+ * 老板键，等于把这些字符从每个应用的输入框里抢走 —— 用户在任何地方都打
+ * 不出那个字符，而且很难联想到是热键干的。Ctrl / Alt / Super 不产生文本，
+ * 带上它们才安全；功能键、PrintScreen、媒体键不在打字路径上，不受此限。
+ */
+function collidesWithTyping(mods: Modifier[], code: string): boolean {
+  const hasNonShiftMod = mods.some((m) => m !== 'Shift');
+  return !hasNonShiftMod && !canStandAlone(code);
+}
+
+/**
  * 把一次按键翻译成加速键字符串；不是一组能用的组合就返回 `null`。
  *
- * 纯修饰键（ControlLeft 之类）、词表外的主键、以及不带修饰键的普通字符键都
- * 会被拒掉 —— 见 `canStandAlone`。
+ * 纯修饰键（ControlLeft 之类）、词表外的主键、以及会撞上打字的组合（裸的
+ * 普通字符键、只带 Shift 的组合）都会被拒掉 —— 见 `collidesWithTyping`。
  */
 export function acceleratorFromEvent(e: KeyboardEvent): string | null {
   const code = e.code;
   if (!SUPPORTED_CODES.has(code)) return null;
 
   const mods = MODIFIERS.filter((m) => MODIFIER_FLAG[m](e));
-  if (mods.length === 0 && !canStandAlone(code)) return null;
+  if (collidesWithTyping(mods, code)) return null;
 
   return [...mods, code].join('+');
 }
@@ -101,7 +112,7 @@ function parseAccelerator(accelerator: string): { mods: Modifier[]; code: string
   // 主键写在最后，修饰键不能重复 —— 解析端对 "Ctrl+A+Shift" 也是直接报错。
   if (new Set(mods).size !== mods.length) return null;
   if (!mods.every((m) => (MODIFIERS as readonly string[]).includes(m))) return null;
-  if (mods.length === 0 && !canStandAlone(code)) return null;
+  if (collidesWithTyping(mods as Modifier[], code)) return null;
 
   return { mods: mods as Modifier[], code };
 }

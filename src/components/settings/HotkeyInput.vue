@@ -52,7 +52,7 @@ function onKeydown(e: KeyboardEvent) {
 
   const accelerator = acceleratorFromEvent(e);
   if (!accelerator) {
-    hint.value = '需要「修饰键 + 主键」，或单按功能键';
+    hint.value = '修饰键需含 Ctrl / Alt / Win 之一（只按 Shift 会挡住打字），或单按功能键';
     return;
   }
   emit('update:modelValue', accelerator);

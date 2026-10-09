@@ -5,8 +5,9 @@
 // 只会表现为「录进去了，按了没反应」，而设置页上显示得好好的。
 //
 // 顺带钉住两条不是洁癖的规矩：修饰键顺序固定（否则「同一个键」没法按字符串比），
-// 以及裸的普通字符键不许单独当热键（全局热键会把它从全系统抢走，用户在任何
-// 输入框里都打不出那个字母）。
+// 以及不在打字路径上的组合才许当热键 —— 裸键挡小写、只带 Shift 的组合挡大写
+// 与上档标点（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」），全局
+// 热键都会把它从全系统抢走。
 import { describe, expect, it } from 'vitest';
 import { acceleratorFromEvent, formatAccelerator, isValidAccelerator } from './hotkey';
 
@@ -47,6 +48,19 @@ describe('acceleratorFromEvent', () => {
     expect(acceleratorFromEvent(key({ code: 'ArrowUp' }))).toBeNull();
   });
 
+  it('只带 Shift 的组合同样拒掉 —— 那是大写字母与上档标点的输入路径', () => {
+    // Shift+KeyH 就是输入大写 H，Shift+Digit1 就是「!」。RegisterHotKey(MOD_SHIFT)
+    // 全系统生效，注册后这些字符在任何应用的输入框里都打不出来了。
+    expect(acceleratorFromEvent(key({ code: 'KeyH', shiftKey: true }))).toBeNull();
+    expect(acceleratorFromEvent(key({ code: 'Digit1', shiftKey: true }))).toBeNull();
+    expect(acceleratorFromEvent(key({ code: 'Space', shiftKey: true }))).toBeNull();
+  });
+
+  it('Shift 与 Ctrl/Alt/Super 同用没问题；Shift+功能键不在打字路径上，放行', () => {
+    expect(acceleratorFromEvent(key({ code: 'KeyH', ctrlKey: true, shiftKey: true }))).toBe('Ctrl+Shift+KeyH');
+    expect(acceleratorFromEvent(key({ code: 'F5', shiftKey: true }))).toBe('Shift+F5');
+  });
+
   it('功能键与媒体键可以单独用', () => {
     expect(acceleratorFromEvent(key({ code: 'F5' }))).toBe('F5');
     expect(acceleratorFromEvent(key({ code: 'F24' }))).toBe('F24');
@@ -78,6 +92,12 @@ describe('isValidAccelerator', () => {
     expect(isValidAccelerator('Ctrl+Ctrl+KeyA')).toBe(false);
     expect(isValidAccelerator('KeyH')).toBe(false); // 裸字符键，与录制端同一条规矩
     expect(isValidAccelerator('Meta+KeyH')).toBe(false); // 写法是 Super，不是 Meta
+  });
+
+  it('只带 Shift 的组合拒掉、Shift+功能键放行 —— 与录制端同一条规矩', () => {
+    expect(isValidAccelerator('Shift+KeyH')).toBe(false);
+    expect(isValidAccelerator('Shift+Digit1')).toBe(false);
+    expect(isValidAccelerator('Shift+F5')).toBe(true);
   });
 });
 
