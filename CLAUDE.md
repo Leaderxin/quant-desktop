@@ -240,11 +240,13 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
 
-Pages 的**首次启用需要在仓库 Settings → Pages 里把 Source 改成「GitHub Actions」**，工作流里的 `configure-pages: enablement: true` 通常能自动开，但不算数。工作流的 `paths` 过滤器里带着 `public/screenshots/**`：换一张截图同样应该重新发布，否则站点上还是旧图。
+工作流的 `paths` 过滤器里带着 `public/screenshots/**` 与 `docs/privacy.html`：换一张截图、改一次隐私政策，同样应该重新发布，否则站点上还是旧的，而「只改了 public/」看起来与官网无关。
 
 **从 `docs/` 迁过来这件事本身有个坑，别踩。** 迁之前 Pages 的源是 `master:/docs`（`build_type: legacy`），为的是 Microsoft Store 上架需要的隐私政策页（见 `183bba7 docs: 新增隐私政策页面(Microsoft Store 上架用)`）—— 也就是说 `https://leaderxin.github.io/quant-desktop/privacy.html` 是**商店登记过的地址**；同一个源顺带把 `docs/superpowers/` 下 20 份内部规划稿也公开了。而切到 GitHub Actions 后站点根变成 `website/`，那个地址会 404。所以 `scripts/site-assets.mjs` 会把 `docs/privacy.html` 复制到**站点根**（`website/privacy.html`，已 gitignore），与截图同一套「单一来源 + 脚本复制」的做法，两份不可能分家 —— **改隐私政策只改 `docs/privacy.html` 一处**。
 
-迁移的动作本身就是一次 API 调用：`gh api -X PUT repos/Leaderxin/quant-desktop/pages -f build_type=workflow`（等价于在 Settings → Pages 里点一下）。**顺序上要让新部署先就绪**：先合并到 master，再切 `build_type`，然后立刻 `gh workflow run pages.yml` —— 切与部署之间那段窗口里 `privacy.html` 是断的，越短越好。
+迁移的动作本身就是一次 API 调用：`gh api -X PUT repos/Leaderxin/quant-desktop/pages -f build_type=workflow`（等价于在 Settings → Pages 里点一下）。**但切完之后必须再手动跑一次 `gh workflow run pages.yml`，否则站点上挂的仍是旧的 docs 构建。**
+
+原因是 push 到 master 会**同时**触发两条路：`build_type` 还是 `legacy` 时 GitHub 用自己的构建器从 `master:/docs` 出一版，而工作流也提交一版部署。两条路都在跑，谁后落地谁赢 —— 实测就是 legacy 那次晚 3 秒完成，把 Actions 的部署盖掉了。症状很有迷惑性：**deploy job 报绿、`pages/builds/latest` 也是一条成功的 legacy 构建，但站点内容还是旧的**。切完 `build_type` 之后不会再有新的 legacy 构建，重跑一次就稳了。以后若再遇到「部署成功但内容没变」，先看 `gh api repos/{owner}/{repo}/pages/builds/latest` 的 commit 是不是你刚推的那个。
 
 ### Data flow
 
