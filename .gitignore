@@ -18,6 +18,9 @@ website/assets/
 # Copied from docs/privacy.html so the Microsoft Store's privacy-policy URL
 # (…github.io/quant-desktop/privacy.html) survives the switch to Actions.
 website/privacy.html
+# sitemap.xml 由 scripts/site-assets.mjs 按实际页面生成（含 git 取到的 lastmod），
+# 手维护的话加了页面必然忘记登记。
+website/sitemap.xml
 
 # Editor directories and files
 .vscode/*

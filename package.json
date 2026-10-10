@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "site:assets": "node scripts/site-assets.mjs",
+    "site:images": "node scripts/optimize-images.mjs",
     "tauri": "tauri",
     "tauri:build": "node scripts/build.mjs"
   },

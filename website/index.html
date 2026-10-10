@@ -4,13 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>QuantDesktop —— 免费开源的 A 股桌面看盘工具</title>
-<meta name="description" content="QuantDesktop 是一款免费、开源、零打扰的桌面级 A 股实时行情工具。安装包不到 5 MB，常驻桌面的悬浮行情条让上班族余光就能看盘。支持 Windows / macOS / Linux。" />
+<meta name="description" content="免费的 A 股桌面看盘工具，开源、无广告、无需注册。安装包不到 5 MB，悬浮行情条常驻桌面角落，余光一扫就能看盘。支持 Windows / macOS / Linux。" />
 <!-- max-image-preview:large 让搜索结果能出大图；没有它 Google 只给缩略图 -->
 <meta name="robots" content="index, follow, max-image-preview:large" />
 <meta name="theme-color" content="#0d1117" />
 <link rel="canonical" href="https://leaderxin.github.io/quant-desktop/" />
-<link rel="icon" href="assets/icon.png" />
-<link rel="apple-touch-icon" href="assets/icon.png" />
+<!-- 以前直接挂 512×512 的 icon.png（203KB）当 favicon，而浏览器只要 32×32。
+     多尺寸由 scripts/optimize-images.mjs 生成。 -->
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png" />
 
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="QuantDesktop" />
@@ -18,15 +20,17 @@
 <meta property="og:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
 <meta property="og:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
 <meta property="og:url" content="https://leaderxin.github.io/quant-desktop/" />
-<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
-<!-- 声明真实尺寸，抓取方才知道该按什么比例取景；宽高对不上会被判为无效图 -->
-<meta property="og:image:width" content="2057" />
-<meta property="og:image:height" content="1466" />
-<meta property="og:image:alt" content="QuantDesktop 主界面：顶部指数栏、市场涨跌概览与自选股列表" />
+<!-- 专用 1200×630 卡片，不是拿截图缩放：截图比例 1.40:1，平台按 1.91:1
+     居中取景会把顶部那排指数切掉。由 scripts/og-card.html 渲染，见
+     scripts/optimize-images.mjs。 -->
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="QuantDesktop —— 免费的 A 股桌面看盘工具，安装包不到 5 MB" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
 <meta name="twitter:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
-<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
 
 <!-- 结构化数据。这一段同时服务两件事：SEO 的富结果，以及 GEO —— 让 AI 检索
      问答直接拿到「这是什么、多少钱、支持哪些平台、这些问题的答案是什么」，
@@ -64,6 +68,10 @@
         "name": "Leaderxin",
         "url": "https://github.com/Leaderxin"
       },
+      "sameAs": [
+        "https://github.com/Leaderxin/quant-desktop",
+        "https://apps.microsoft.com/detail/9P46MZZDTTZ0"
+      ],
       "screenshot": [
         "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png",
         "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png",
@@ -159,7 +167,7 @@
 <header class="nav" id="nav">
   <div class="container nav__inner">
     <a class="nav__brand" href="#top">
-      <img src="assets/icon.png" alt="" width="28" height="28" />
+      <img src="icon-128.png" alt="" width="28" height="28" />
       <span>QuantDesktop</span>
     </a>
 
@@ -203,12 +211,15 @@
       <b>&lt;5&nbsp;MB</b>
     </p>
 
-    <img class="hero__icon" src="assets/icon.png" alt="QuantDesktop 应用图标" width="92" height="92" />
-    <h1 class="hero__title">QuantDesktop</h1>
+    <img class="hero__icon" src="icon-128.png" alt="QuantDesktop 应用图标" width="92" height="92" />
+    <h1 class="hero__title">
+      <span class="hero__wordmark">QuantDesktop</span>
+      <span class="hero__title-sub">免费开源的 A 股桌面看盘工具</span>
+    </h1>
     <p class="hero__tagline">让看盘更<em>安静</em>一点</p>
     <p class="hero__sub">
-      免费、开源、零打扰的桌面级 A 股实时行情工具。一枚悬浮行情条常驻桌面角落，
-      余光一扫就知道自选股怎么样了 —— 不用切窗口，不用打开浏览器。
+      一枚悬浮行情条常驻桌面角落，余光一扫就知道自选股怎么样了 ——
+      不用切窗口，不用打开浏览器。
     </p>
 
     <div class="hero__cta">
@@ -241,28 +252,53 @@
       <div class="carousel__viewport">
         <div class="carousel__track" id="carouselTrack">
           <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="1 / 5">
-            <img src="assets/screenshots/main-light.png" width="2057" height="1466" fetchpriority="high"
-                 alt="QuantDesktop 主界面日间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 1200px) calc(100vw - 48px), 1072px"
+                      srcset="assets/screenshots/main-light-600.webp 600w, assets/screenshots/main-light-1100.webp 1100w, assets/screenshots/main-light-2057.webp 2057w" />
+              <img src="assets/screenshots/main-light.png" width="2057" height="1466" fetchpriority="high"
+                   alt="QuantDesktop 主界面日间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
+            </picture>
           </div>
           <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="2 / 5"
                data-caption="主界面 · 夜间主题 —— 同一套界面，暗光环境下更省眼">
-            <img src="assets/screenshots/main-dark.png" width="2057" height="1466" loading="lazy"
-                 alt="QuantDesktop 主界面夜间主题" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 1200px) calc(100vw - 48px), 1072px"
+                      srcset="assets/screenshots/main-dark-600.webp 600w, assets/screenshots/main-dark-1100.webp 1100w, assets/screenshots/main-dark-2057.webp 2057w" />
+              <img src="assets/screenshots/main-dark.png" width="2057" height="1466" loading="lazy"
+                   alt="QuantDesktop 主界面夜间主题" />
+            </picture>
           </div>
           <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="3 / 5"
                data-caption="市场概览 —— 涨跌分布 · 两市成交额 · 行业与概念板块排行">
-            <img src="assets/screenshots/market-overview.png" width="2057" height="1466" loading="lazy"
-                 alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 1200px) calc(100vw - 48px), 1072px"
+                      srcset="assets/screenshots/market-overview-600.webp 600w, assets/screenshots/market-overview-1100.webp 1100w, assets/screenshots/market-overview-2057.webp 2057w" />
+              <img src="assets/screenshots/market-overview.png" width="2057" height="1466" loading="lazy"
+                   alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" />
+            </picture>
           </div>
           <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="4 / 5"
                data-caption="个股详情 —— 分时走势 + 五档盘口，盘口每 3 秒静默刷新">
-            <img src="assets/screenshots/detail-minute-depth.png" width="2057" height="1466" loading="lazy"
-                 alt="个股分时图与五档盘口" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 1200px) calc(100vw - 48px), 1072px"
+                      srcset="assets/screenshots/detail-minute-depth-600.webp 600w, assets/screenshots/detail-minute-depth-1100.webp 1100w, assets/screenshots/detail-minute-depth-2057.webp 2057w" />
+              <img src="assets/screenshots/detail-minute-depth.png" width="2057" height="1466" loading="lazy"
+                   alt="个股分时图与五档盘口" />
+            </picture>
           </div>
           <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="5 / 5"
                data-caption="指数详情 —— 上证指数日 K，均线与量能一应俱全">
-            <img src="assets/screenshots/index-kline.png" width="2057" height="1466" loading="lazy"
-                 alt="上证指数日 K 线图，含均线与成交量" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 1200px) calc(100vw - 48px), 1072px"
+                      srcset="assets/screenshots/index-kline-600.webp 600w, assets/screenshots/index-kline-1100.webp 1100w, assets/screenshots/index-kline-2057.webp 2057w" />
+              <img src="assets/screenshots/index-kline.png" width="2057" height="1466" loading="lazy"
+                   alt="上证指数日 K 线图，含均线与成交量" />
+            </picture>
           </div>
         </div>
 
@@ -404,7 +440,12 @@
       </div>
       <div class="feature__media">
         <figure>
-          <img src="assets/screenshots/market-overview.png" alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" loading="lazy" />
+          <picture>
+            <source type="image/webp" sizes="(max-width: 860px) calc(100vw - 36px), 590px"
+                    srcset="assets/screenshots/market-overview-600.webp 600w, assets/screenshots/market-overview-1100.webp 1100w, assets/screenshots/market-overview-2057.webp 2057w" />
+            <img src="assets/screenshots/market-overview.png" loading="lazy"
+                 alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" />
+          </picture>
           <figcaption>涨跌分布 · 两市成交额 · 行业 / 概念板块排行</figcaption>
         </figure>
       </div>
@@ -427,16 +468,30 @@
       <div class="feature__media">
         <div class="feature__media--pair">
           <figure>
-            <img src="assets/screenshots/detail-minute-depth.png" alt="个股分时图与五档盘口" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/detail-minute-depth-600.webp 600w, assets/screenshots/detail-minute-depth-1100.webp 1100w, assets/screenshots/detail-minute-depth-2057.webp 2057w" />
+              <img src="assets/screenshots/detail-minute-depth.png" loading="lazy" alt="个股分时图与五档盘口" />
+            </picture>
             <figcaption>分时走势 + 五档盘口</figcaption>
           </figure>
           <figure>
-            <img src="assets/screenshots/detail-kline-sub.png" alt="个股分钟 K 线与副图指标" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/detail-kline-sub-600.webp 600w, assets/screenshots/detail-kline-sub-1100.webp 1100w, assets/screenshots/detail-kline-sub-2057.webp 2057w" />
+              <img src="assets/screenshots/detail-kline-sub.png" loading="lazy" alt="个股分钟 K 线与副图指标" />
+            </picture>
             <figcaption>分钟 K 线 + 副图指标</figcaption>
           </figure>
         </div>
         <figure>
-          <img src="assets/screenshots/index-kline.png" alt="上证指数日 K 线图，含均线与成交量" loading="lazy" />
+          <picture>
+            <source type="image/webp" sizes="(max-width: 860px) calc(100vw - 36px), 590px"
+                    srcset="assets/screenshots/index-kline-600.webp 600w, assets/screenshots/index-kline-1100.webp 1100w, assets/screenshots/index-kline-2057.webp 2057w" />
+            <img src="assets/screenshots/index-kline.png" loading="lazy" alt="上证指数日 K 线图，含均线与成交量" />
+          </picture>
           <figcaption>指数详情 —— 上证指数日 K</figcaption>
         </figure>
       </div>
@@ -462,11 +517,15 @@
       <div class="feature__media">
         <!-- These two PNGs are 344×59; they are framed at natural size rather
              than stretched to the column width, which would blur them. -->
+        <!-- 这两张只有 344×59，按原尺寸展示；源图比每个目标宽度都小，所以
+             没有 WebP 派生，PNG 本身也只有 6KB。 -->
         <div class="ticker-runway">
           <span class="ticker-runway__label">夜间主题</span>
-          <img src="assets/screenshots/ticker-dark.png" alt="悬浮行情条夜间主题，显示三只自选股的名称、现价与涨跌幅" loading="lazy" />
+          <img src="assets/screenshots/ticker-dark.png" loading="lazy"
+               alt="悬浮行情条夜间主题，显示三只自选股的名称、现价与涨跌幅" />
           <span class="ticker-runway__label">日间主题</span>
-          <img src="assets/screenshots/ticker-light.png" alt="悬浮行情条日间主题，显示三只自选股的名称、现价与涨跌幅" loading="lazy" />
+          <img src="assets/screenshots/ticker-light.png" loading="lazy"
+               alt="悬浮行情条日间主题，显示三只自选股的名称、现价与涨跌幅" />
         </div>
       </div>
     </article>
@@ -486,7 +545,12 @@
       </div>
       <div class="feature__media">
         <figure>
-          <img src="assets/screenshots/add-stock.png" alt="添加自选对话框：输入 6 位代码搜索，结果带沪A、ETF 等市场标签" loading="lazy" />
+          <picture>
+            <source type="image/webp" sizes="(max-width: 860px) calc(100vw - 36px), 590px"
+                    srcset="assets/screenshots/add-stock-600.webp 600w, assets/screenshots/add-stock-1100.webp 1100w, assets/screenshots/add-stock-2057.webp 2057w" />
+            <img src="assets/screenshots/add-stock.png" loading="lazy"
+                 alt="添加自选对话框：输入 6 位代码搜索，结果带沪A、ETF 等市场标签" />
+          </picture>
           <figcaption>代码搜索 + 市场标签，同码指数与个股不再混淆</figcaption>
         </figure>
       </div>
@@ -509,11 +573,23 @@
       <div class="feature__media">
         <div class="feature__media--pair">
           <figure>
-            <img src="assets/screenshots/settings-index.png" alt="设置页指数区：14 个候选指数勾选与拖拽排序" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/settings-index-600.webp 600w, assets/screenshots/settings-index-1100.webp 1100w" />
+              <img src="assets/screenshots/settings-index.png" loading="lazy"
+                   alt="设置页指数区：14 个候选指数勾选与拖拽排序" />
+            </picture>
             <figcaption>指数区</figcaption>
           </figure>
           <figure>
-            <img src="assets/screenshots/settings-ticker.png" alt="设置页行情条分区：显隐、透明背景、单次条数与轮播范围" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/settings-ticker-600.webp 600w, assets/screenshots/settings-ticker-1100.webp 1100w" />
+              <img src="assets/screenshots/settings-ticker.png" loading="lazy"
+                   alt="设置页行情条分区：显隐、透明背景、单次条数与轮播范围" />
+            </picture>
             <figcaption>行情条</figcaption>
           </figure>
         </div>
@@ -534,11 +610,21 @@
       <div class="feature__media">
         <div class="feature__media--pair">
           <figure>
-            <img src="assets/screenshots/main-dark.png" alt="主界面夜间主题" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/main-dark-600.webp 600w, assets/screenshots/main-dark-1100.webp 1100w, assets/screenshots/main-dark-2057.webp 2057w" />
+              <img src="assets/screenshots/main-dark.png" loading="lazy" alt="主界面夜间主题" />
+            </picture>
             <figcaption>夜间主题（默认）</figcaption>
           </figure>
           <figure>
-            <img src="assets/screenshots/main-light.png" alt="主界面日间主题" loading="lazy" />
+            <picture>
+              <source type="image/webp"
+                      sizes="(max-width: 620px) calc(100vw - 36px), (max-width: 860px) calc(50vw - 24px), 288px"
+                      srcset="assets/screenshots/main-light-600.webp 600w, assets/screenshots/main-light-1100.webp 1100w, assets/screenshots/main-light-2057.webp 2057w" />
+              <img src="assets/screenshots/main-light.png" loading="lazy" alt="主界面日间主题" />
+            </picture>
             <figcaption>日间主题</figcaption>
           </figure>
         </div>
@@ -761,7 +847,7 @@
     <div class="footer__grid">
       <div>
         <div class="footer__brand">
-          <img src="assets/icon.png" alt="" width="30" height="30" />
+          <img src="icon-128.png" alt="" width="30" height="30" />
           <span>QuantDesktop</span>
         </div>
         <p class="footer__slogan">免费 · 开源 · 零打扰的桌面级 A 股实时行情工具。让看盘更安静一点。</p>
