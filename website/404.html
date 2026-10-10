@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>页面不存在 · QuantDesktop</title>
+<!-- 项目站（/quant-desktop/）的自定义 404，替代 GitHub 默认那个纯文字页。
+     这里一律用站点绝对路径：GitHub Pages 会对这个站点下**任意深度**的失效
+     路径返回本文件，相对链接会以那条坏 URL 为基准解析，而不是站点根。
+     noindex + 不进 sitemap（见 scripts/site-assets.mjs 的 SITEMAP_SKIP）。 -->
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/png" sizes="32x32" href="/quant-desktop/favicon-32.png" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: linear-gradient(180deg, #0d1117, #05080c);
+    color: #e6edf3; text-align: center; padding: 24px 24px calc(24px + env(safe-area-inset-bottom, 0px));
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .code {
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    font-size: .8rem; letter-spacing: .18em; color: #58a6ff; margin: 0 0 16px;
+  }
+  h1 { font-size: 1.6rem; margin: 0 0 12px; letter-spacing: -.01em; }
+  p { margin: 0 auto 28px; color: #8b949e; max-width: 34em; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 6px; text-decoration: none;
+    background: #58a6ff; color: #06101d; font-weight: 600;
+  }
+  .btn:hover { background: #7cb8ff; }
+  .more { margin-top: 30px; font-size: .85rem; }
+  a.plain { color: #58a6ff; }
+</style>
+</head>
+<body>
+  <div>
+    <p class="code">404 / NOT FOUND</p>
+    <h1>这个地址没有内容</h1>
+    <p>你要找的页面不存在，或者链接已经失效。</p>
+    <a class="btn" href="/quant-desktop/">返回 QuantDesktop 官网</a>
+    <p class="more">
+      也可以直接去
+      <a class="plain" href="https://github.com/Leaderxin/quant-desktop">GitHub 仓库</a>
+      或
+      <a class="plain" href="https://github.com/Leaderxin/quant-desktop/releases/latest">下载最新版</a>。
+    </p>
+  </div>
+</body>
+</html>
