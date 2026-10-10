@@ -9,6 +9,8 @@ name: Pages
 #
 # paths 过滤器里必须带上 public/screenshots/** 与组装脚本本身：换一张截图同样
 # 应该重新发布，否则站点上还是旧图，而「只改了 public/」看起来与官网无关。
+# docs/privacy.html 同理 —— 它是站点根上 privacy.html 的来源，而那个地址是
+# Microsoft Store 登记的隐私政策 URL，改了不重新发布就会是旧的。
 on:
   push:
     branches: [master]
@@ -17,6 +19,7 @@ on:
       - 'public/screenshots/**'
       - 'public/qrcode.png'
       - 'src-tauri/icons/icon.png'
+      - 'docs/privacy.html'
       - 'scripts/site-assets.mjs'
       - '.github/workflows/pages.yml'
   pull_request:
@@ -25,6 +28,7 @@ on:
       - 'public/screenshots/**'
       - 'public/qrcode.png'
       - 'src-tauri/icons/icon.png'
+      - 'docs/privacy.html'
       - 'scripts/site-assets.mjs'
       - '.github/workflows/pages.yml'
   workflow_dispatch:

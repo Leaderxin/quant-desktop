@@ -29,6 +29,14 @@ const FILES = [
   ['src-tauri/icons/icon.png', 'icon.png'],
 ];
 
+// Copied to the *site root*, not into assets/. GitHub Pages was previously
+// serving master:/docs, so https://leaderxin.github.io/quant-desktop/privacy.html
+// is already the privacy-policy URL registered with the Microsoft Store (the
+// page was added in 183bba7 for exactly that). Publishing website/ as the new
+// site root would 404 it. Same rule as the screenshots: docs/privacy.html stays
+// the single source and this is a copy, so the two can never disagree.
+const ROOT_FILES = [['docs/privacy.html', 'privacy.html']];
+
 const SCREENSHOT_SRC = 'public/screenshots';
 const ENTRY = 'index.html';
 
@@ -37,6 +45,13 @@ async function assemble(missing) {
   // and get published as a ghost image.
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
+
+  // The root-level copies sit outside assets/, so the rm above misses them —
+  // clear them explicitly or deleting docs/privacy.html upstream would leave a
+  // stale copy published at the site root.
+  for (const [, dest] of ROOT_FILES) {
+    await rm(resolve(siteDir, dest), { force: true });
+  }
 
   let copied = 0;
 
@@ -58,6 +73,16 @@ async function assemble(missing) {
     if (shots.length === 0) missing.push(`${SCREENSHOT_SRC} (empty)`);
     await cp(shotDir, join(outDir, 'screenshots'), { recursive: true });
     copied += shots.length;
+  }
+
+  for (const [src, dest] of ROOT_FILES) {
+    const from = resolve(root, src);
+    if (!existsSync(from)) {
+      missing.push(src);
+      continue;
+    }
+    await cp(from, join(siteDir, dest));
+    copied += 1;
   }
 
   return copied;
