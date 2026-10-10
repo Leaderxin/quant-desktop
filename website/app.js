@@ -232,16 +232,47 @@
 
   /* ── Back to top ─────────────────────────────────────────────────
      The scrolling itself is the anchor's job (html has scroll-behavior:
-     smooth), so this only decides when the button is worth showing. */
+     smooth). This only decides when the button is worth showing, and drives
+     the progress ring. */
   var toTop = document.getElementById('toTop');
 
   if (toTop) {
-    var syncToTop = function () {
+    var ring = document.getElementById('toTopBar');
+    var circumference = 0;
+    var maxScroll = 0;
+
+    if (ring) {
+      circumference = 2 * Math.PI * ring.r.baseVal.value;
+      ring.style.strokeDasharray = circumference;
+      ring.style.strokeDashoffset = circumference;
+    }
+
+    // scrollHeight is a layout-dependent read, so it is measured here instead
+    // of inside the scroll handler — scrolling never forces a reflow. That is
+    // only sound because every image on the page reserves its aspect ratio,
+    // so the document stops changing height once it has loaded.
+    function measure() {
+      maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    }
+
+    function syncToTop() {
+      // Only after the reader has committed to scrolling; a button that shows
+      // up straight away is just chrome.
       toTop.classList.toggle('is-visible', window.scrollY > window.innerHeight * 0.75);
-    };
+
+      if (ring && maxScroll > 0) {
+        var progress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
+        ring.style.strokeDashoffset = circumference * (1 - progress);
+      }
+    }
+
+    measure();
+    syncToTop();
 
     window.addEventListener('scroll', syncToTop, { passive: true });
-    window.addEventListener('resize', syncToTop, { passive: true });
-    syncToTop();
+    window.addEventListener('resize', function () { measure(); syncToTop(); }, { passive: true });
+    // Re-measure once everything has loaded: the first pass runs before the
+    // lazy images below the fold have settled.
+    window.addEventListener('load', function () { measure(); syncToTop(); });
   }
 })();

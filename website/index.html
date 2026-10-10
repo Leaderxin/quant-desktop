@@ -683,8 +683,16 @@
 
 <!-- 回到顶部。做成 <a href="#top"> 而不是 <button>：滚动本身交给
      html{scroll-behavior:smooth} 与片段导航，禁用 JS 时它照样能用，
-     只是不会随滚动淡入淡出（那种隐藏由 .js 类门控）。 -->
-<a class="to-top" id="toTop" href="#top" aria-label="回到页面顶部">
+     只是不会随滚动淡入淡出（那种隐藏由 .js 类门控）。
+
+     里面那个进度环不是装饰：它把「离页尾还有多远」一并表达了，而这是这个
+     位置本来就该回答的问题。禁用 JS 时进度停在 0，环不可见，剩下的仍是一个
+     能用的回到顶部按钮。 -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
+  <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <circle class="to-top__track" cx="20" cy="20" r="16" />
+    <circle class="to-top__bar" id="toTopBar" cx="20" cy="20" r="16" />
+  </svg>
   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
 </a>
 

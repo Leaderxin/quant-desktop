@@ -707,9 +707,15 @@ button {
   display: block;
 }
 
-/* 左右切换按钮。**始终可见**，不做成 hover 才出现：触摸设备根本没有
-   hover，而「看不出可以点」是轮播最常见的失败。深色玻璃底固定不跟主题走 ——
-   它压的是截图而不是页面底色，而截图本身有亮有暗，只有深底浅图标两边都成立。 */
+/* 左右切换按钮。三条决定：
+   1. **始终可见**，不做成 hover 才出现 —— 触摸设备根本没有 hover，而
+      「看不出可以点」是轮播最常见的失败。
+   2. **跟着主题走。** 早先这里是写死的深色实心圆，理由是「它压的是截图、
+      不是页面底色」；那个理由在浅色主题下不成立 —— 一颗黑圆钉在白页面上。
+      改用 --surface-1 + --text-1，并保持 92% 不透明度，于是它既属于当前
+      主题，又压得住任何一张截图（浅色主题的按钮遇到深色截图也照样读得出）。
+   3. **方的，不是圆的。** 全站控件语言是圆角矩形（.btn、各种 chip），
+      圆形箭头是这里唯一的例外，也正是它显得突兀的原因。 */
 .carousel__nav {
   position: absolute;
   top: 50%;
@@ -721,22 +727,26 @@ button {
   height: 46px;
   padding: 0;
   transform: translateY(-50%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--radius-full);
-  background: rgba(13, 17, 23, 0.82);
-  color: #e6edf3;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  box-shadow: var(--sheen), var(--shadow-md);
+  color: var(--text-1);
   font-size: 22px;
   transition: background var(--transition), border-color var(--transition),
-    transform var(--transition);
+    color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 
 .carousel__nav:hover {
-  background: rgba(13, 17, 23, 0.95);
-  border-color: rgba(255, 255, 255, 0.32);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--sheen), var(--shadow-md), 0 0 22px -6px var(--glow-accent);
 }
 
 .carousel__nav:active {
-  transform: translateY(-50%) scale(0.94);
+  transform: translateY(-50%) scale(0.96);
 }
 
 .carousel__nav--prev {
@@ -1524,6 +1534,9 @@ button {
 
 .footer__qr img {
   width: 180px;
+  /* 预留比例的理由不只是 CLS：回到顶部的进度环按 scrollHeight 算，页面高度
+     必须在加载前后一致，否则分母会在图片加载完时突然变大。 */
+  aspect-ratio: 1146 / 1661;
   margin: 0 auto;
   border-radius: var(--radius-md);
   background: #fff;
@@ -1555,11 +1568,16 @@ button {
 }
 
 /* ── 回到顶部 ──
-   fixed 在右下角，滚过一屏后淡入。做成 <a href="#top"> 而不是 <button>：
-   滚动交给片段导航与 html{scroll-behavior:smooth}，禁用 JS 时它照样能用。
-   顺带避开一个坑 —— 若它是按钮，「滚到顶就隐藏」意味着点击后按钮在持有
-   焦点时被藏起来，焦点会掉到 body；锚点导航则把顺序焦点起点移到目标处。 */
+   fixed 在右下角，滚过 3/4 屏后淡入，外圈一圈滚动进度环。做成
+   <a href="#top"> 而不是 <button>：滚动交给片段导航与
+   html{scroll-behavior:smooth}，禁用 JS 时它照样能用。顺带避开一个坑 ——
+   若它是按钮，「滚到顶就隐藏」意味着点击后按钮在持有焦点时被藏起来，
+   焦点会掉到 body；锚点导航则把顺序焦点起点移到目标处。
+
+   形状与轮播箭头一致（圆角矩形），所以右下角这两个悬浮控件是同一套东西。 */
 .to-top {
+  --lift: 0px;
+  --press: 1;
   position: fixed;
   right: 24px;
   bottom: calc(24px + env(safe-area-inset-bottom, 0px));
@@ -1567,37 +1585,127 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
+  /* 位移/缩放/按压合成在一条 transform 上，靠变量切换状态 —— 否则
+     .is-visible 的特异性会盖掉 :active 的缩放，按下去没有反馈。 */
+  transform: translateY(var(--lift)) scale(var(--press));
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-1) 88%, transparent);
   backdrop-filter: saturate(160%) blur(12px);
   -webkit-backdrop-filter: saturate(160%) blur(12px);
-  box-shadow: var(--shadow-md);
-  color: var(--text-2);
-  font-size: 20px;
+  box-shadow: var(--sheen), var(--shadow-md);
+  color: var(--text-1);
+  font-size: 17px;
   transition: opacity var(--transition), transform var(--transition),
-    visibility var(--transition), color var(--transition), border-color var(--transition);
+    visibility var(--transition), color var(--transition),
+    border-color var(--transition), box-shadow var(--transition);
 }
 
 .to-top:hover {
   color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--sheen), var(--shadow-md), 0 0 24px -6px var(--glow-accent);
+}
+
+.to-top:active {
+  --press: 0.96;
+}
+
+/* 悬浮提示。读 aria-label，所以可见文案与无障碍名称是同一个字符串，不会
+   分家；不是 title 属性 —— title 有约 1 秒延迟、样式不可控、触摸设备上根本
+   不出现。这里 hover 与键盘 focus 都会出，且零 JS。放在按钮左侧：它在屏幕
+   右缘，往右会出界。 */
+.to-top::after {
+  content: attr(aria-label);
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+/* 指向按钮的小尖角 */
+.to-top::before {
+  content: "";
+  position: absolute;
+  right: calc(100% + 7px);
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  border-top: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+
+.to-top:hover::after,
+.to-top:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.to-top:hover::before,
+.to-top:focus-visible::before {
+  opacity: 1;
+}
+
+/* 进度环。从 12 点方向起画，所以要整体转 -90°。 */
+.to-top__ring {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.to-top__track,
+.to-top__bar {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.to-top__track {
+  stroke: var(--hairline-strong);
+}
+
+/* dasharray / dashoffset 由 app.js 按真实周长设置；这里给一个「进度为 0」
+   的初值，禁用 JS 时环就是空的，不会画出一段假的进度。 */
+.to-top__bar {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 100.53;
 }
 
 /* 与 .reveal 同一套门控：<head> 的内联脚本给 <html> 加 .js，只有 JS 真在跑
    时才做「随滚动淡入」；脚本没跑就常显，不会变成一个永远点不到的按钮。 */
 .js .to-top {
+  --lift: 10px;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(10px);
 }
 
 .js .to-top.is-visible {
+  --lift: 0px;
   opacity: 1;
   visibility: visible;
-  transform: none;
 }
 
 /* ── 入场（需要 app.js 给 <html> 加 .js） ── */
