@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Website build product — assembled from public/ and src-tauri/icons by
+# scripts/site-assets.mjs. Never edit by hand; it is regenerated and deleted.
+website/assets/
+# Copied from docs/privacy.html so the Microsoft Store's privacy-policy URL
+# (…github.io/quant-desktop/privacy.html) survives the switch to Actions.
+website/privacy.html
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
