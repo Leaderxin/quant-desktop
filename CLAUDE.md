@@ -222,6 +222,20 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 - `chart.css` — Shared chart container styles (overlay, error, status text)
 - `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs), scoped under `.settings-page` so the five section components don't each carry a copy
 
+### 官网（`website/`）
+
+对外落地页，发布在 <https://leaderxin.github.io/quant-desktop/>，由 [pages.yml](.github/workflows/pages.yml) 部署到 GitHub Pages。**它与 Tauri 应用没有任何代码关系** —— 不在 `vite.config.ts` 的两个 Rollup 入口里，不参与 `npm run build`，也不依赖任何 npm 包。三个文件（`index.html` / `styles.css` / `app.js`）就是全部，改完刷新即见。
+
+三处刻意的设计：
+
+- **素材不复制。** `public/screenshots/` 是唯一来源（README 也在用），`website/assets/` 由 [scripts/site-assets.mjs](scripts/site-assets.mjs) 复制生成，并加进 `.gitignore` —— 与 `dist/` 同级，都是产物。之所以要走脚本而不是直接放两份图：两份副本必然漂移，README 换了截图而官网上还是旧的。脚本在 CI 与本地是**同一条命令**（`npm run site:assets`），所以本地过了 CI 就会过。它顺带做一件 CI 才有意义的事：扫描 `index.html` 里每个本地 `src`/`href` 并断言文件存在 —— 截图名写错在浏览器里只是一张破图，评审时看不出来。
+- **配色与 `variables.css` 同源，且是仓库里唯一一处有意重复。** 站点没有构建步骤，就拿不到 `variables.css`；把调色板搬一份进 `website/styles.css` 是唯一的办法。所以**改那边的 surface / text / accent token 时，这里要跟着改** —— 这是「同一个值写两遍」的例外，其余地方一律不允许。
+- **主题契约与应用一致**：`<html data-theme>`，`<head>` 里那段内联脚本在首帧前定好主题（否则深色访问者会先看到一帧白闪），`app.js` 只做增强 —— 禁用 JS 时页面依然完整可读，`.reveal` 的隐藏也由内联脚本加的 `.js` 类门控，不是无条件写死。`app.js` 里没有网络请求。
+
+注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
+
+Pages 的**首次启用需要在仓库 Settings → Pages 里把 Source 改成「GitHub Actions」**，工作流里的 `configure-pages: enablement: true` 通常能自动开，但不算数。工作流的 `paths` 过滤器里带着 `public/screenshots/**`：换一张截图同样应该重新发布，否则站点上还是旧图。
+
 ### Data flow
 
 ```
@@ -306,6 +320,7 @@ Main window position/size is saved to SQLite `settings` table on move/resize/clo
 
 - [release.yml](.github/workflows/release.yml) — triggered on `v*` tags or manual dispatch. Matrix build for Windows (MSVC), macOS (universal), Linux (gnu). Uploads `.exe`/`.msi`/`.dmg`/`.deb`/`.AppImage` artifacts.
 - [ci.yml](.github/workflows/ci.yml) — push/PR CI: `vue-tsc` + vitest (ubuntu), `cargo check` in both feature universes (default and `--features store`) + `cargo test` (windows — the store universe's Windows-only code only compiles there).
+- [pages.yml](.github/workflows/pages.yml) — 官网发布：跑 `node scripts/site-assets.mjs` 组装并校验 `website/`，push 到 master 时部署到 GitHub Pages；PR 上只校验不部署（`configure-pages` 可能尝试开启 Pages，而来自 fork 的 PR 拿不到那个权限）。
 - [store-release.yml](.github/workflows/store-release.yml) — manually dispatched Microsoft Store (MSIX) build: `tauri build --features store --config tauri.microsoftstore.conf.json`, then repacks the intermediate MSI into an unsigned MSIX (Store-signed on ingestion) via `msiexec /a` + `makeappx` with [store/AppxManifest.xml](store/AppxManifest.xml). The `store` cargo feature disables the built-in updater (Store distributes updates) and switches Windows autostart to the StartupTask API.
 
 `scripts/build.mjs` provides a cross-platform build wrapper with automatic proxy detection (Clash/V2Ray on common ports 7890/10809/1080/8118/8080/1087/4780).

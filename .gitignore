@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Website build product — assembled from public/ and src-tauri/icons by
+# scripts/site-assets.mjs. Never edit by hand; it is regenerated and deleted.
+website/assets/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

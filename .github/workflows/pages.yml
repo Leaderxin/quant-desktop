@@ -1,0 +1,81 @@
+name: Pages
+
+# 官网（website/）发布：push 到 master 时组装并部署到 GitHub Pages。
+#
+# 站点是零构建的静态页 —— 没有 npm 依赖、没有打包步骤，唯一的「构建」是把
+# public/screenshots 与图标复制进 website/assets/（见 scripts/site-assets.mjs）。
+# 那一步同时也是校验：页面上引用的每个本地资源都必须真的存在，否则这个 job 失败。
+# 截图名写错在浏览器里只表现为一张破图，评审时看不出来，让它在这里断掉。
+#
+# paths 过滤器里必须带上 public/screenshots/** 与组装脚本本身：换一张截图同样
+# 应该重新发布，否则站点上还是旧图，而「只改了 public/」看起来与官网无关。
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'website/**'
+      - 'public/screenshots/**'
+      - 'public/qrcode.png'
+      - 'src-tauri/icons/icon.png'
+      - 'scripts/site-assets.mjs'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'public/screenshots/**'
+      - 'public/qrcode.png'
+      - 'src-tauri/icons/icon.png'
+      - 'scripts/site-assets.mjs'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一次发布；新的一次直接取消排队中的旧的一次。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 本地预览跑的是同一条命令，所以本地过了 CI 就会过。
+      - name: Assemble and verify site
+        run: node scripts/site-assets.mjs
+
+      # PR 上只做上面的校验：configure-pages 可能尝试开启 Pages，而来自 fork 的
+      # PR 拿不到这个权限，会把一次本该通过的校验变成失败。
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

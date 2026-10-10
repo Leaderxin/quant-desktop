@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "site:assets": "node scripts/site-assets.mjs",
     "tauri": "tauri",
     "tauri:build": "node scripts/build.mjs"
   },

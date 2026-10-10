@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://leaderxin.github.io/quant-desktop/sitemap.xml

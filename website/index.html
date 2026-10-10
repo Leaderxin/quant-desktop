@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantDesktop —— 免费开源的 A 股桌面看盘工具</title>
+<meta name="description" content="QuantDesktop 是一款免费、开源、零打扰的桌面级 A 股实时行情工具。安装包不到 5 MB，常驻桌面的悬浮行情条让上班族余光就能看盘。支持 Windows / macOS / Linux。" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="canonical" href="https://leaderxin.github.io/quant-desktop/" />
+<link rel="icon" href="assets/icon.png" />
+<link rel="apple-touch-icon" href="assets/icon.png" />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
+<meta property="og:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
+<meta property="og:url" content="https://leaderxin.github.io/quant-desktop/" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // Runs before first paint: without it a dark-mode visitor sees a white flash
+  // while styles.css loads. Mirrors the app's own <html data-theme> contract.
+  (function () {
+    var root = document.documentElement;
+    root.classList.add('js');
+    var saved = null;
+    try { saved = localStorage.getItem('qd-theme'); } catch (e) { /* private mode */ }
+    var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    root.setAttribute('data-theme', saved || (prefersLight ? 'light' : 'dark'));
+  })();
+</script>
+</head>
+
+<body>
+
+<!-- ── Nav ─────────────────────────────────────────────────────── -->
+<header class="nav" id="nav">
+  <div class="container nav__inner">
+    <a class="nav__brand" href="#top">
+      <img src="assets/icon.png" alt="" width="28" height="28" />
+      <span>QuantDesktop</span>
+    </a>
+
+    <nav class="nav__links" id="navLinks">
+      <a class="nav__link" href="#features">功能亮点</a>
+      <a class="nav__link" href="#screens">界面截图</a>
+      <a class="nav__link" href="#download">下载安装</a>
+      <a class="nav__link" href="#faq">常见问题</a>
+    </nav>
+
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm nav__gh" href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="nav__gh-label">GitHub</span>
+      </a>
+
+      <button class="icon-btn theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a class="btn btn--primary btn--sm" href="#download">下载</a>
+
+      <button class="icon-btn nav__burger" id="navBurger" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="navLinks">
+        <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg class="icon icon-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ── Hero ────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="container">
+    <img class="hero__icon" src="assets/icon.png" alt="QuantDesktop 应用图标" width="92" height="92" />
+    <h1 class="hero__title">QuantDesktop</h1>
+    <p class="hero__tagline">让看盘更<em>安静</em>一点</p>
+    <p class="hero__sub">
+      免费、开源、零打扰的桌面级 A 股实时行情工具。一枚悬浮行情条常驻桌面角落，
+      余光一扫就知道自选股怎么样了 —— 不用切窗口，不用打开浏览器。
+    </p>
+
+    <div class="hero__cta">
+      <a class="btn btn--primary btn--lg" href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+        下载最新版
+      </a>
+      <a class="btn btn--outline btn--lg" href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M3 3h8.5v8.5H3zM12.5 3H21v8.5h-8.5zM3 12.5h8.5V21H3zM12.5 12.5H21V21h-8.5z"/></svg>
+        Microsoft Store
+      </a>
+      <a class="btn btn--outline btn--lg" href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        查看源码
+      </a>
+    </div>
+
+    <div class="hero__badges">
+      <a href="https://github.com/Leaderxin/quant-desktop/releases" target="_blank" rel="noopener"><img src="https://img.shields.io/github/v/release/Leaderxin/quant-desktop?style=flat-square&amp;label=version" alt="最新版本" loading="lazy" /></a>
+      <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square" alt="支持平台：Windows、macOS、Linux" loading="lazy" />
+      <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue?style=flat-square" alt="开源许可：PolyForm Noncommercial" loading="lazy" /></a>
+      <img src="https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square&amp;label=downloads" alt="累计下载量" loading="lazy" />
+    </div>
+
+    <figure class="hero__shot reveal">
+      <img src="assets/screenshots/main-dark.png" alt="QuantDesktop 主界面夜间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
+      <figcaption class="hero__caption">主界面 · 夜间主题 —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Pains ───────────────────────────────────────────────────── -->
+<section class="section section--tint">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">你可能也遇到过</span>
+      <h2 class="section__title">看个盘，何必这么费劲</h2>
+    </div>
+
+    <div class="pains__grid">
+      <div class="pain reveal">
+        <div class="pain__emoji">😎</div>
+        <p>上班想瞄一眼行情，浏览器切来切去太显眼，手机盯盘屏幕又太小。</p>
+      </div>
+      <div class="pain reveal">
+        <div class="pain__emoji">💸</div>
+        <p>付费行情软件年费几百上千，功能一大堆，常用的就那么几个。</p>
+      </div>
+      <div class="pain reveal">
+        <div class="pain__emoji">📢</div>
+        <p>看盘工具广告弹窗满天飞，还顺手推销理财产品。</p>
+      </div>
+      <div class="pain reveal">
+        <div class="pain__emoji">🐢</div>
+        <p>装个「专业客户端」动辄几个 G，越用越卡。</p>
+      </div>
+    </div>
+
+    <p class="pains__turn reveal">QuantDesktop 把「看盘」这一件事，<span>做到极致的简单</span>。</p>
+  </div>
+</section>
+
+<!-- ── Highlights ──────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <div class="highlights__grid">
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 6v2m0 8v2"/></svg></span>
+          <h3 class="highlight__title">完全免费</h3>
+        </div>
+        <p>无需注册、无广告、无弹窗，也不推销任何理财产品。个人使用不花一分钱。</p>
+      </div>
+
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.67 19a2 2 0 0 0 1.42-.59l6.15-6.17a6 6 0 0 0-8.49-8.49L5.59 9.91A2 2 0 0 0 5 11.33V18a1 1 0 0 0 1 1z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></svg></span>
+          <h3 class="highlight__title">极致轻量</h3>
+        </div>
+        <p>Windows 安装包不到 5 MB，冷启动秒开，常驻后台几乎无感 —— 不是几百兆的「客户端」。</p>
+      </div>
+
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg></span>
+          <h3 class="highlight__title">专业看盘</h3>
+        </div>
+        <p>实时行情、分时走势、多周期 K 线与指标、五档盘口、板块涨跌排行，一样不少。</p>
+      </div>
+
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3"/><path d="M14 2v4M8 10v4M16 18v4"/></svg></span>
+          <h3 class="highlight__title">高度可定制</h3>
+        </div>
+        <p>指数、列表列、自选分组、行情条轮播范围、涨跌配色全部可调，改完回到看盘界面即生效。</p>
+      </div>
+
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h8"/><path d="M10 19v-4"/><path d="M7 19h6"/><rect width="6" height="10" x="16" y="12" rx="2"/></svg></span>
+          <h3 class="highlight__title">三端覆盖</h3>
+        </div>
+        <p>Windows、macOS（Intel 与 Apple Silicon）、Linux 全平台支持，同一套体验。</p>
+      </div>
+
+      <div class="highlight reveal">
+        <div class="highlight__head">
+          <span class="highlight__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <h3 class="highlight__title">隐私安全</h3>
+        </div>
+        <p>没有账号系统，不采集任何个人信息。自选与配置只存在你自己的电脑上。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ────────────────────────────────────────────────── -->
+<section class="section section--tint" id="features">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">功能亮点</span>
+      <h2 class="section__title">从一屏总览，到一只个股的每个细节</h2>
+      <p class="section__desc">该有的专业能力一个不少，用不上的一个都不塞。</p>
+    </div>
+
+    <!-- 1. Market overview -->
+    <article class="feature reveal">
+      <div class="feature__text">
+        <span class="feature__tag">市场全景</span>
+        <h3 class="feature__title">今天市场怎么样，一眼看完</h3>
+        <p class="feature__lead">不必逐个翻板块，也不用去别处找数据。</p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>指数任你搭配</b> —— 14 个主流指数候选池自由勾选、拖拽排序，勾上就出现在顶栏</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>涨跌速览</b> —— 上涨 / 下跌 / 平盘、涨停 / 跌停家数常驻主界面，市场情绪一眼看清</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>概览面板</b> —— 两市成交额、全市场涨跌分布直方图、行业与概念板块排行</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <figure>
+          <img src="assets/screenshots/market-overview.png" alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" loading="lazy" />
+          <figcaption>涨跌分布 · 两市成交额 · 行业 / 概念板块排行</figcaption>
+        </figure>
+      </div>
+    </article>
+
+    <!-- 2. Charts -->
+    <article class="feature feature--reverse reveal" id="screens">
+      <div class="feature__text">
+        <span class="feature__tag">专业图表</span>
+        <h3 class="feature__title">从分时到月 K，该有的周期都有</h3>
+        <p class="feature__lead">主图、副图指标一键切换，向左滑动还能翻更早的历史。</p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>分时走势</b> —— 1 分钟粒度 + 均价线 + 量能副图，打开期间每 5 秒增量刷新，不闪烁</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>周期全覆盖</b> —— 日 / 周 / 月 / 1 / 5 / 15 / 30 / 60 分钟自由切换</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>指标可切换</b> —— 主图 MA 均线 / BOLL 布林带，副图成交量（含均量线）/ MACD</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>对称的涨跌幅刻度</b> —— 右轴价格、左轴涨跌幅，以昨收为中心，0.00% 正好落在中线上</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>指数也有详情</b> —— 点击指数卡片，查看指数专属分时图与 K 线</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <div class="feature__media--pair">
+          <figure>
+            <img src="assets/screenshots/detail-minute-depth.png" alt="个股分时图与五档盘口" loading="lazy" />
+            <figcaption>分时走势 + 五档盘口</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/detail-kline-sub.png" alt="个股分钟 K 线与副图指标" loading="lazy" />
+            <figcaption>分钟 K 线 + 副图指标</figcaption>
+          </figure>
+        </div>
+        <figure>
+          <img src="assets/screenshots/index-kline.png" alt="上证指数日 K 线图，含均线与成交量" loading="lazy" />
+          <figcaption>指数详情 —— 上证指数日 K</figcaption>
+        </figure>
+      </div>
+    </article>
+
+    <!-- 3. Ticker bar (the headline feature) -->
+    <article class="feature reveal">
+      <div class="feature__text">
+        <span class="feature__tag feature__tag--hot">最受欢迎</span>
+        <h3 class="feature__title">悬浮行情条：上班族的「余光看盘」</h3>
+        <p class="feature__lead">
+          一枚常驻桌面的迷你行情条，始终置顶于所有窗口，无边框、不占任务栏。
+          把它拖到副屏边缘或任务栏旁，工作时余光一扫就够了 —— 它看起来就像桌面的一部分。
+        </p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>每 3 秒自动轮播</b>自选股：名称 / 现价 / 涨跌幅，每屏 1–10 只可调</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>轮播范围自定</b> —— 跨分组挑选播报标的、拖拽调整顺序，不需要的逐只关掉</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>可设为透明背景</b> —— 底板、圆角与阴影一并去掉，只留数字浮在桌面上</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>拖到哪儿，下次就在哪儿</b> —— 位置自动记忆，鼠标悬停自动暂停</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>深浅主题实时同步</b>，单击行情条立即恢复主窗口</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <!-- These two PNGs are 344×59; they are framed at natural size rather
+             than stretched to the column width, which would blur them. -->
+        <div class="ticker-runway">
+          <span class="ticker-runway__label">夜间主题</span>
+          <img src="assets/screenshots/ticker-dark.png" alt="悬浮行情条夜间主题，显示三只自选股的名称、现价与涨跌幅" loading="lazy" />
+          <span class="ticker-runway__label">日间主题</span>
+          <img src="assets/screenshots/ticker-light.png" alt="悬浮行情条日间主题，显示三只自选股的名称、现价与涨跌幅" loading="lazy" />
+        </div>
+      </div>
+    </article>
+
+    <!-- 4. Watchlist -->
+    <article class="feature feature--reverse reveal">
+      <div class="feature__text">
+        <span class="feature__tag">自选管理</span>
+        <h3 class="feature__title">分组、列、排序，都按你的习惯来</h3>
+        <p class="feature__lead">输入 6 位代码即时搜索，覆盖沪深京三市个股、指数与 ETF。</p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>自选分组</b> —— 双击标签就地重命名，右键菜单增删与调序；同一只股票可同时属于多个分组，在每个分组里的位置各自独立</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>列随你挑</b> —— 显示哪些列、列的先后、默认按哪列排序都在设置里调；点列头即可临时改排</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>市场标签</b>（沪A / 深A / 北A / 沪指 / ETF…）让同代码的指数与个股一眼可辨</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>跨数据源智能回退</b> —— 一个源搜不到，自动换源再试</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <figure>
+          <img src="assets/screenshots/add-stock.png" alt="添加自选对话框：输入 6 位代码搜索，结果带沪A、ETF 等市场标签" loading="lazy" />
+          <figcaption>代码搜索 + 市场标签，同码指数与个股不再混淆</figcaption>
+        </figure>
+      </div>
+    </article>
+
+    <!-- 5. Settings -->
+    <article class="feature reveal">
+      <div class="feature__text">
+        <span class="feature__tag">设置页</span>
+        <h3 class="feature__title">把界面调成你的样子</h3>
+        <p class="feature__lead">
+          六个分区横向排列：指数区、市场概览、自选列表、行情条、通用、关于。
+          点状态栏的齿轮进入，改完回到看盘界面即生效，不必重启。
+        </p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>排序项都能拖拽，也能用 <b>Alt + ↑ / ↓</b> 或每行按钮 —— 键盘一样排得动</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>说明文字常驻在每一行下方，不藏在悬停提示里</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <div class="feature__media--pair">
+          <figure>
+            <img src="assets/screenshots/settings-index.png" alt="设置页指数区：14 个候选指数勾选与拖拽排序" loading="lazy" />
+            <figcaption>指数区</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/settings-ticker.png" alt="设置页行情条分区：显隐、透明背景、单次条数与轮播范围" loading="lazy" />
+            <figcaption>行情条</figcaption>
+          </figure>
+        </div>
+      </div>
+    </article>
+
+    <!-- 6. Themes -->
+    <article class="feature feature--reverse reveal">
+      <div class="feature__text">
+        <span class="feature__tag">外观</span>
+        <h3 class="feature__title">深浅双主题，涨跌配色也能换</h3>
+        <p class="feature__lead">主窗口与行情条实时同步，窗口标题栏一并跟随 —— 暗色主题下不会留一条刺眼的白边。</p>
+        <ul class="feature__list">
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>配色方案可互换</b> —— 红涨绿跌（A 股习惯）与绿涨红跌（欧美习惯）一键切换，K 线图一并跟随</span></li>
+          <li><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><b>等宽数字字体</b>，价格与涨跌幅成列对齐，刷新时不跳动</span></li>
+        </ul>
+      </div>
+      <div class="feature__media">
+        <div class="feature__media--pair">
+          <figure>
+            <img src="assets/screenshots/main-dark.png" alt="主界面夜间主题" loading="lazy" />
+            <figcaption>夜间主题（默认）</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/main-light.png" alt="主界面日间主题" loading="lazy" />
+            <figcaption>日间主题</figcaption>
+          </figure>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- ── Underside ───────────────────────────────────────────────── -->
+<section class="section">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">看不见的功夫</span>
+      <h2 class="section__title">好工具的体验，藏在看不见的细节里</h2>
+      <p class="section__desc">按交易时段自动调节刷新频率，快慢有度，不浪费一滴带宽和电量。</p>
+    </div>
+
+    <div class="reveal">
+      <table class="poll">
+        <thead>
+          <tr>
+            <th scope="col">状态</th>
+            <th scope="col">轮询间隔</th>
+            <th scope="col">说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>开盘快速探测</td><td>2 秒 × 3 次</td><td>确认交易是否活跃</td></tr>
+          <tr><td>正常交易</td><td>2 秒</td><td>实时跟踪价格变化</td></tr>
+          <tr><td>盘前 / 午休</td><td>5 ~ 10 秒</td><td>适度降频</td></tr>
+          <tr><td>连续无变化</td><td>30 秒</td><td>自动进入空闲态</td></tr>
+          <tr><td>节假日 / 周末</td><td>30 秒</td><td>智能休眠</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="underside__grid">
+      <div class="underside__item reveal">
+        <h4>双数据源</h4>
+        <p>腾讯证券（默认）+ 新浪财经（备用），顶栏一键切换、即时刷新，单源异常自动回退。</p>
+      </div>
+      <div class="underside__item reveal">
+        <h4>离线缓存</h4>
+        <p>行情写入本地 SQLite，重启立即恢复上次报价，打开就有数据，不用干等网络。</p>
+      </div>
+      <div class="underside__item reveal">
+        <h4>窗口位置记忆</h4>
+        <p>主窗口与行情条的位置尺寸自动保存，重启原位恢复，跨显示器自动边界保护。</p>
+      </div>
+      <div class="underside__item reveal">
+        <h4>托盘常驻</h4>
+        <p>关闭窗口不退出，安静缩到系统托盘；支持开机自启，也可以配一个全局老板键一键隐藏。</p>
+      </div>
+      <div class="underside__item reveal">
+        <h4>自动更新</h4>
+        <p>新版本自动检测、一键安装，交易时段智能抑制弹窗，不打断盯盘。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Tech ────────────────────────────────────────────────────── -->
+<section class="section section--tint">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">技术架构</span>
+      <h2 class="section__title">用 Tauri 2，而不是把浏览器打包进去</h2>
+      <p class="section__desc">
+        Rust 后端负责行情抓取、SQLite 存储与自适应调度，Vue 3 驱动主窗口与悬浮行情条两个独立窗口。
+      </p>
+    </div>
+
+    <table class="tech__table reveal">
+      <tbody>
+        <tr><th scope="row">桌面框架</th><td>Tauri 2</td></tr>
+        <tr><th scope="row">后端</th><td>Rust · tokio · rusqlite · reqwest</td></tr>
+        <tr><th scope="row">前端</th><td>Vue 3 · Pinia · Naive UI · klinecharts</td></tr>
+        <tr><th scope="row">数据源</th><td>腾讯证券 · 新浪财经（可插拔适配器架构）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="tech__callout reveal">
+      <div class="tech__size tech__size--win">
+        <b>5 MB</b>
+        <span>QuantDesktop 安装包</span>
+      </div>
+      <span class="tech__vs">对比</span>
+      <div class="tech__size tech__size--lose">
+        <b>80 MB+</b>
+        <span>同类 Electron 应用起步</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Download ────────────────────────────────────────────────── -->
+<section class="section" id="download">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">下载安装</span>
+      <h2 class="section__title">三步开始看盘</h2>
+      <p class="section__desc">
+        全部安装包都在 <a href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>，
+        也可以从 Microsoft Store 安装（随商店自动更新）。
+      </p>
+    </div>
+
+    <div class="dl__grid">
+      <div class="dl__card dl__card--featured reveal">
+        <div class="dl__os">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span>Windows</span>
+        </div>
+        <div class="dl__pkg">x64-setup.exe</div>
+        <div class="dl__size">约 5 MB · Windows 10 / 11</div>
+        <p class="dl__note">NSIS 安装版，推荐绝大多数人使用。也可以下载 <b>x64-portable.zip</b>（约 7 MB）解压即用，不写注册表。</p>
+        <a class="btn btn--primary" href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">下载 Windows 版</a>
+      </div>
+
+      <div class="dl__card reveal">
+        <div class="dl__os">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/></svg>
+          <span>macOS</span>
+        </div>
+        <div class="dl__pkg">universal.dmg</div>
+        <div class="dl__size">约 16 MB · Intel 与 Apple Silicon 通用</div>
+        <p class="dl__note">一个安装包同时支持两种芯片，打开后把图标拖进「应用程序」即可。</p>
+        <a class="btn btn--outline" href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">下载 macOS 版</a>
+      </div>
+
+      <div class="dl__card reveal">
+        <div class="dl__os">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+          <span>Linux</span>
+        </div>
+        <div class="dl__pkg">amd64.deb / .rpm / AppImage</div>
+        <div class="dl__size">约 8 MB（AppImage 约 83 MB）· glibc 2.35+</div>
+        <p class="dl__note">Debian / Ubuntu 用 .deb，Fedora 等用 .rpm；AppImage 自带依赖，各发行版通用。</p>
+        <a class="btn btn--outline" href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">下载 Linux 版</a>
+      </div>
+    </div>
+
+    <div class="dl__store reveal">
+      <div class="dl__store-text">
+        <h3>或者，从 Microsoft Store 安装</h3>
+        <p>由商店负责分发与更新，省去手动升级；也可以在商店里留个好评支持一下。</p>
+      </div>
+      <a class="btn btn--outline btn--lg" href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M3 3h8.5v8.5H3zM12.5 3H21v8.5h-8.5zM3 12.5h8.5V21H3zM12.5 12.5H21V21h-8.5z"/></svg>
+        前往 Microsoft Store
+      </a>
+    </div>
+
+    <div class="dl__steps">
+      <div class="dl__step reveal">
+        <h4>安装启动</h4>
+        <p>首次运行自动初始化，无需任何配置，也不要求注册账号。</p>
+      </div>
+      <div class="dl__step reveal">
+        <h4>添加自选</h4>
+        <p>点「添加股票」，输入 6 位代码（如 <span class="num">600519</span> 贵州茅台）搜索添加。</p>
+      </div>
+      <div class="dl__step reveal">
+        <h4>开始看盘</h4>
+        <p>主窗口看全局，再把行情条拖到桌面角落，让它默默播报。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ─────────────────────────────────────────────────────── -->
+<section class="section section--tint" id="faq">
+  <div class="container">
+    <div class="section__head reveal">
+      <span class="section__eyebrow">常见问题</span>
+      <h2 class="section__title">你可能想问的</h2>
+    </div>
+
+    <div class="faq__list">
+      <details class="faq__item reveal">
+        <summary>行情数据从哪里来？可靠吗？</summary>
+        <div class="faq__body">
+          来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。
+          数据仅供个人参考，不构成任何投资建议。
+        </div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>真的完全免费吗？</summary>
+        <div class="faq__body">
+          个人使用完全免费。项目采用
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">PolyForm Noncommercial</a>
+          非商业开源许可 —— 你可以自由使用、学习和修改，商业使用需获得作者授权。
+        </div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>需要注册账号吗？会收集我的数据吗？</summary>
+        <div class="faq__body">
+          不需要任何账号，也没有任何统计埋点。自选与配置只存储在本机 SQLite 数据库，不采集、不上传任何个人信息。
+          详见<a href="https://github.com/Leaderxin/quant-desktop/blob/master/docs/privacy.html" target="_blank" rel="noopener">隐私说明</a>。
+        </div>
+      </details>
+
+      <details class="faq__item reveal">
+        <summary>支持哪些系统？</summary>
+        <div class="faq__body">
+          Windows 10 / 11、macOS（Intel 与 Apple Silicon）、Linux（Ubuntu 22.04+ / glibc 2.35+ 基线）。
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ── Footer ──────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__grid">
+      <div>
+        <div class="footer__brand">
+          <img src="assets/icon.png" alt="" width="30" height="30" />
+          <span>QuantDesktop</span>
+        </div>
+        <p class="footer__slogan">免费 · 开源 · 零打扰的桌面级 A 股实时行情工具。让看盘更安静一点。</p>
+      </div>
+
+      <div>
+        <h4>项目</h4>
+        <div class="footer__links">
+          <a href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">GitHub 仓库</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/releases" target="_blank" rel="noopener">下载与更新日志</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">开源许可</a>
+        </div>
+      </div>
+
+      <div>
+        <h4>支持</h4>
+        <div class="footer__links">
+          <a href="https://github.com/Leaderxin/quant-desktop/issues" target="_blank" rel="noopener">反馈问题</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/issues" target="_blank" rel="noopener">功能建议</a>
+          <a href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">Microsoft Store</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/docs/privacy.html" target="_blank" rel="noopener">隐私说明</a>
+        </div>
+      </div>
+
+      <div class="footer__qr">
+        <img src="assets/qrcode.png" alt="QuantDesktop 微信用户交流群二维码" loading="lazy" />
+        <span>扫码加入用户交流群</span>
+      </div>
+    </div>
+
+    <div class="footer__bottom">
+      <p>
+        行情数据来自第三方公开接口，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+      </p>
+      <p>© 2026 Leaderxin · 基于 PolyForm Noncommercial License 1.0.0 开源</p>
+    </div>
+  </div>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>

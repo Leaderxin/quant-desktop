@@ -11,6 +11,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/Leaderxin/quant-desktop?style=flat-square)](https://github.com/Leaderxin/quant-desktop/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)](#-下载安装)
 [![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue?style=flat-square)](#-开源许可)
+[![官网](https://img.shields.io/badge/%E5%AE%98%E7%BD%91-leaderxin.github.io-58a6ff?style=flat-square)](https://leaderxin.github.io/quant-desktop/)
 [![CI](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square)](https://github.com/Leaderxin/quant-desktop/releases)
 
