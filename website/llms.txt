@@ -1,0 +1,50 @@
+# QuantDesktop
+
+> 免费的桌面级 A 股实时行情看盘工具，开源、无广告、无需注册。安装包不到 5 MB，提供一枚可常驻桌面角落的悬浮行情条。
+
+QuantDesktop 用 Tauri 2 + Rust + Vue 3 构建，行情数据取自腾讯证券与新浪财经的公开接口。所有自选与配置只保存在本机 SQLite 数据库，不上传任何个人信息，也没有账号系统与统计埋点。
+
+## 关键事实
+
+- 最新版本：https://github.com/Leaderxin/quant-desktop/releases/latest
+- 支持平台：Windows 10 / 11、macOS（Intel 与 Apple Silicon 通用）、Linux（Ubuntu 22.04+ / glibc 2.35+ 基线）
+- 安装包体积：Windows NSIS 安装版约 5 MB，便携版约 7 MB，macOS 通用包约 16 MB，Linux deb/rpm 约 8 MB，AppImage 约 83 MB
+- 价格：个人使用完全免费
+- 开源许可：PolyForm Noncommercial License 1.0.0 —— 个人使用、学习、修改、分发免费；**商业使用需获得作者授权**
+- 数据来源：腾讯证券（默认）与新浪财经（备用）的公开行情接口，双源自动回退
+- 数据存储：本机 SQLite，卸载应用即随之删除
+- 隐私：不收集、不存储、不上传任何用户个人信息，无第三方分析 / 广告 / 追踪 SDK
+
+## 功能
+
+- 实时行情：沪深京三市个股、指数与 ETF，最新价 / 涨跌幅 / 涨跌额 / 成交量 / 成交额 / 换手率
+- 指数区：14 个主流指数候选池自由勾选与拖拽排序
+- 市场概览：全市场涨跌分布、两市成交额、行业与概念板块涨跌排行
+- 图表：1 分钟分时走势（含均价线与量能副图）；日 / 周 / 月 / 1 / 5 / 15 / 30 / 60 分钟 K 线；主图 MA 均线 / BOLL 布林带，副图成交量 / MACD 可切换
+- 五档盘口：3 秒静默刷新
+- 悬浮行情条：始终置顶、无边框、不占任务栏，每 3 秒轮播一次，每屏可显示 1–10 只，可设透明背景，位置自动记忆
+- 自选管理：分组标签栏，同一只股票可同时属于多个分组且各分组内顺序独立；显示列与顺序、默认排序均可配置
+- 外观：深色 / 浅色主题，主窗口与行情条实时同步；红涨绿跌与绿涨红跌两套配色可切换
+- 自适应轮询：开盘探测 2 秒 × 3 次、正常交易 2 秒、盘前与午休 5–10 秒、连续无变化与节假日 30 秒
+- 其他：系统托盘常驻、开机自启、全局老板键、窗口位置记忆、自动更新
+
+## 常见问题
+
+- **需要注册账号吗？** 不需要，也没有任何统计埋点。
+- **会收集数据吗？** 不会。自选与配置只存储在本机。
+- **真的免费吗？** 个人使用免费；商业使用需获授权。
+- **数据可靠吗？** 来自公开行情接口，仅供个人参考，不构成投资建议。
+
+## 链接
+
+- [官网](https://leaderxin.github.io/quant-desktop/)
+- [源码仓库](https://github.com/Leaderxin/quant-desktop)
+- [下载与更新日志](https://github.com/Leaderxin/quant-desktop/releases)
+- [Microsoft Store](https://apps.microsoft.com/detail/9P46MZZDTTZ0)
+- [隐私说明](https://leaderxin.github.io/quant-desktop/privacy.html)
+- [开源许可](https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE)
+- [问题反馈](https://github.com/Leaderxin/quant-desktop/issues)
+
+## 免责声明
+
+行情数据来自第三方公开接口，仅供参考，不构成任何投资建议。投资有风险，入市需谨慎。

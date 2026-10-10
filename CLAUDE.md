@@ -253,6 +253,16 @@ Hero 的截图是一组五张的轮播（`.carousel`），首张是**日间主�
 - 进度环的**分母 `scrollHeight` 只在 load/resize 时量一次**，不在 scroll 里读 —— 那是会触发 layout 的属性。之所以敢这么缓存，是因为页面上每张图现在都预留了宽高比（`aspect-ratio`），文档高度在加载完成后不再变。**给图片加尺寸时别忘了这一层依赖。**
 - 位移、悬浮位移与按压缩放**合成在同一条 `transform` 上、靠 CSS 变量切换**（`--lift` / `--press`）。分开写的话 `.js .to-top.is-visible` 的 (0,3,0) 特异性会盖掉 `.to-top:active` 的 (0,2,0)，按下去没有反馈。
 
+SEO 与 GEO（生成式引擎优化）都落在 `<head>` 与 `website/` 根下的几个文件里，没有构建步骤：
+
+- **`application/ld+json` 是 GEO 的主要抓手。** 一个 `@graph` 装三个节点：`SoftwareApplication`（14 条 `featureList`、5 张 `screenshot`、`offers` 价格 0、`operatingSystem`、`license`）、`FAQPage`（页面上那四条问答）、`WebSite`。两条纪律：字段写**事实**不写形容词；`FAQPage` 的答案必须与**页面上看得见的正文**逐字对得上（结构化数据描述的内容页面没有，属于违规）。`scripts/` 之外有一个校验脚本会同时检查 JSON 能否解析、以及答案是否真的出现在正文里。
+- **有意不写 `softwareVersion`。** 页面上没有任何静态版本号（顶栏那枚徽章是运行时拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。
+- **`og:image` 用 `main-light.png` 而不是 `main-dark.png`。** 缩略图尺寸下深色截图糊成一团，亮色的还能看清界面；同时要声明 `og:image:width/height`，宽高对不上会被判为无效图。
+- **`robots.txt` 把 AI 检索类爬虫（GPTBot / ClaudeBot / PerplexityBot / Google-Extended …）显式放行。** 不写也不会被默认拦（`User-agent: *` 已放行），显式列出的价值是这份文件同时是一份意图声明，将来要收紧只改这一处。`privacy.html` 带 `noindex`，因此**刻意不写进 sitemap**。
+- **`llms.txt`** 是给 AI 检索用的精简事实页（平台、体积、价格、许可、数据来源、功能清单、常见问答）。写它的时候注意把「商业使用需获授权」这条写清楚 —— PolyForm Noncommercial 不是 MIT，答案引擎漏掉这个限制会误导人。
+
+改文案时记得回头看这几处：`<title>`、`meta description`、OG/Twitter 三件套、JSON-LD 里的 `description` 与 `featureList`、以及 `llms.txt`。它们不在一个文件里，最容易只改了一处。
+
 注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
 
 Pages 的**首次启用需要在仓库 Settings → Pages 里把 Source 改成「GitHub Actions」**，工作流里的 `configure-pages: enablement: true` 通常能自动开，但不算数。工作流的 `paths` 过滤器里带着 `public/screenshots/**`：换一张截图同样应该重新发布，否则站点上还是旧图。

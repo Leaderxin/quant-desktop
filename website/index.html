@@ -5,17 +5,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>QuantDesktop —— 免费开源的 A 股桌面看盘工具</title>
 <meta name="description" content="QuantDesktop 是一款免费、开源、零打扰的桌面级 A 股实时行情工具。安装包不到 5 MB，常驻桌面的悬浮行情条让上班族余光就能看盘。支持 Windows / macOS / Linux。" />
+<!-- max-image-preview:large 让搜索结果能出大图；没有它 Google 只给缩略图 -->
+<meta name="robots" content="index, follow, max-image-preview:large" />
 <meta name="theme-color" content="#0d1117" />
 <link rel="canonical" href="https://leaderxin.github.io/quant-desktop/" />
 <link rel="icon" href="assets/icon.png" />
 <link rel="apple-touch-icon" href="assets/icon.png" />
 
 <meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuantDesktop" />
+<meta property="og:locale" content="zh_CN" />
 <meta property="og:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
 <meta property="og:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
 <meta property="og:url" content="https://leaderxin.github.io/quant-desktop/" />
-<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
+<!-- 声明真实尺寸，抓取方才知道该按什么比例取景；宽高对不上会被判为无效图 -->
+<meta property="og:image:width" content="2057" />
+<meta property="og:image:height" content="1466" />
+<meta property="og:image:alt" content="QuantDesktop 主界面：顶部指数栏、市场涨跌概览与自选股列表" />
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
+<meta name="twitter:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
+
+<!-- 结构化数据。这一段同时服务两件事：SEO 的富结果，以及 GEO —— 让 AI 检索
+     问答直接拿到「这是什么、多少钱、支持哪些平台、这些问题的答案是什么」，
+     而不是去猜正文。所以字段要写事实、不写形容词；下面的 featureList 与 FAQ
+     都必须与页面上看得见的内容一致（答案全部来自本页 FAQ 与功能清单）。
+
+     有意不写 softwareVersion：页面上没有任何静态版本号（顶栏那枚徽章是运行时
+     拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://leaderxin.github.io/quant-desktop/#app",
+      "name": "QuantDesktop",
+      "applicationCategory": "FinanceApplication",
+      "applicationSubCategory": "股票行情看盘工具",
+      "operatingSystem": "Windows 10, Windows 11, macOS, Linux",
+      "inLanguage": "zh-CN",
+      "description": "免费的桌面级 A 股实时行情工具。安装包不到 5 MB，提供实时行情、分时走势、多周期 K 线、五档盘口、板块涨跌排行，以及一枚常驻桌面的悬浮行情条。数据全部保存在本机，无需注册。",
+      "url": "https://leaderxin.github.io/quant-desktop/",
+      "downloadUrl": "https://github.com/Leaderxin/quant-desktop/releases/latest",
+      "installUrl": "https://apps.microsoft.com/detail/9P46MZZDTTZ0",
+      "softwareHelp": "https://github.com/Leaderxin/quant-desktop/issues",
+      "license": "https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "CNY"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Leaderxin",
+        "url": "https://github.com/Leaderxin"
+      },
+      "screenshot": [
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/market-overview.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/detail-minute-depth.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/index-kline.png"
+      ],
+      "featureList": [
+        "14 个主流指数候选池，自由勾选与拖拽排序",
+        "全市场涨跌分布、两市成交额、行业与概念板块排行",
+        "1 分钟分时走势，含均价线与量能副图",
+        "日 / 周 / 月 / 1 / 5 / 15 / 30 / 60 分钟 K 线，主图 MA / BOLL、副图成交量 / MACD 可切换",
+        "五档盘口，3 秒静默刷新",
+        "悬浮行情条：始终置顶、每 3 秒轮播、每屏 1–10 只可调、可设透明背景、位置自动记忆",
+        "自选分组：同一只股票可同时属于多个分组，各分组内顺序独立",
+        "自选表列显示与顺序、默认排序、涨跌配色均可配置",
+        "深色 / 浅色主题，主窗口与行情条实时同步",
+        "红涨绿跌与绿涨红跌两套配色方案",
+        "双数据源（腾讯证券 / 新浪财经）互备，接口异常自动回退",
+        "按交易时段自适应轮询，节假日自动休眠",
+        "行情写入本地 SQLite，重启立即恢复上次报价",
+        "系统托盘常驻与开机自启"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://leaderxin.github.io/quant-desktop/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 的行情数据从哪里来？可靠吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成任何投资建议。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 真的完全免费吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "个人使用完全免费。项目采用 PolyForm Noncommercial 非商业开源许可，可以自由使用、学习和修改；商业使用需获得作者授权。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "使用 QuantDesktop 需要注册账号吗？会收集用户数据吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "不需要任何账号，也没有任何统计埋点。自选与配置只存储在本机 SQLite 数据库，不采集、不上传任何个人信息。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 支持哪些操作系统？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Windows 10 / 11、macOS（Intel 与 Apple Silicon）以及 Linux（Ubuntu 22.04+ / glibc 2.35+ 基线）。"
+          }
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://leaderxin.github.io/quant-desktop/#website",
+      "url": "https://leaderxin.github.io/quant-desktop/",
+      "name": "QuantDesktop",
+      "inLanguage": "zh-CN",
+      "about": { "@id": "https://leaderxin.github.io/quant-desktop/#app" }
+    }
+  ]
+}
+</script>
 
 <link rel="stylesheet" href="styles.css" />
 <script>
