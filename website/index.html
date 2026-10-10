@@ -112,10 +112,65 @@
       <img src="https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square&amp;label=downloads" alt="累计下载量" loading="lazy" />
     </div>
 
-    <figure class="hero__shot reveal">
-      <img src="assets/screenshots/main-dark.png" alt="QuantDesktop 主界面夜间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
-      <figcaption class="hero__caption">主界面 · 夜间主题 —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</figcaption>
-    </figure>
+    <!-- 产品导览轮播。首张是日间主题：深色站点上先给一张亮色截图，应用有
+         两套主题这件事才在第一眼就说清楚。不自动播放 —— 会动的 Hero 抢走
+         正文的注意力，而且对前庭敏感的人是干扰。 -->
+    <div class="carousel reveal" id="heroCarousel" role="region" aria-roledescription="轮播"
+         aria-label="QuantDesktop 界面导览">
+      <div class="carousel__viewport">
+        <div class="carousel__track" id="carouselTrack">
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="1 / 5">
+            <img src="assets/screenshots/main-light.png" width="2057" height="1466" fetchpriority="high"
+                 alt="QuantDesktop 主界面日间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="2 / 5"
+               data-caption="主界面 · 夜间主题 —— 同一套界面，暗光环境下更省眼">
+            <img src="assets/screenshots/main-dark.png" width="2057" height="1466" loading="lazy"
+                 alt="QuantDesktop 主界面夜间主题" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="3 / 5"
+               data-caption="市场概览 —— 涨跌分布 · 两市成交额 · 行业与概念板块排行">
+            <img src="assets/screenshots/market-overview.png" width="2057" height="1466" loading="lazy"
+                 alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="4 / 5"
+               data-caption="个股详情 —— 分时走势 + 五档盘口，盘口每 3 秒静默刷新">
+            <img src="assets/screenshots/detail-minute-depth.png" width="2057" height="1466" loading="lazy"
+                 alt="个股分时图与五档盘口" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="5 / 5"
+               data-caption="指数详情 —— 上证指数日 K，均线与量能一应俱全">
+            <img src="assets/screenshots/index-kline.png" width="2057" height="1466" loading="lazy"
+                 alt="上证指数日 K 线图，含均线与成交量" />
+          </div>
+        </div>
+
+        <!-- 放在 viewport 里面，绝对定位才能直接以「截图框」为参照垂直居中；
+             overflow:hidden 不会裁到它们（left/right 都在框内）。 -->
+        <button class="carousel__nav carousel__nav--prev" id="carouselPrev" type="button" aria-label="上一张界面截图">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button class="carousel__nav carousel__nav--next" id="carouselNext" type="button" aria-label="下一张界面截图">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="carousel__bar">
+        <!-- aria-live 放在标题上：换页时读屏会念出「03 / 05 市场概览 —— …」，
+             用户才知道内容变了（图片本身的变化读屏是不报的）。 -->
+        <p class="carousel__caption" aria-live="polite">
+          <span class="carousel__counter"><b id="carouselIndex">01</b> / 05</span>
+          <span id="carouselText">主界面 · 日间主题 —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</span>
+        </p>
+        <div class="carousel__dots" id="carouselDots">
+          <button class="carousel__dot" type="button" aria-label="第 1 张：主界面（日间主题）" aria-current="true"></button>
+          <button class="carousel__dot" type="button" aria-label="第 2 张：主界面（夜间主题）"></button>
+          <button class="carousel__dot" type="button" aria-label="第 3 张：市场概览面板"></button>
+          <button class="carousel__dot" type="button" aria-label="第 4 张：分时走势与五档盘口"></button>
+          <button class="carousel__dot" type="button" aria-label="第 5 张：指数 K 线详情"></button>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -625,6 +680,13 @@
     </div>
   </div>
 </footer>
+
+<!-- 回到顶部。做成 <a href="#top"> 而不是 <button>：滚动本身交给
+     html{scroll-behavior:smooth} 与片段导航，禁用 JS 时它照样能用，
+     只是不会随滚动淡入淡出（那种隐藏由 .js 类门控）。 -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到页面顶部">
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+</a>
 
 <script src="app.js" defer></script>
 </body>

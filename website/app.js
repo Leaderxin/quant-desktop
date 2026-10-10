@@ -121,4 +121,127 @@
       observer.observe(el);
     });
   }
+
+  /* ── Hero carousel ───────────────────────────────────────────────
+     No autoplay on purpose: a hero that moves on its own competes with the
+     copy next to it, and it is exactly the motion prefers-reduced-motion
+     exists to stop. Everything here is manual. */
+  var carousel = document.getElementById('heroCarousel');
+  var track = document.getElementById('carouselTrack');
+
+  if (carousel && track) {
+    var slides = Array.prototype.slice.call(track.children);
+    var prevBtn = document.getElementById('carouselPrev');
+    var nextBtn = document.getElementById('carouselNext');
+    var dots = Array.prototype.slice.call(document.querySelectorAll('.carousel__dot'));
+    var indexEl = document.getElementById('carouselIndex');
+    var textEl = document.getElementById('carouselText');
+    var current = 0;
+
+    // Slide 1's caption is whatever is already in the DOM — that is the no-JS
+    // fallback — so only slides 2+ carry data-caption and no sentence is
+    // written twice.
+    var captions = slides.map(function (slide, i) {
+      return slide.getAttribute('data-caption') || (i === 0 && textEl ? textEl.textContent : '');
+    });
+
+    function goTo(next) {
+      var count = slides.length;
+      current = ((next % count) + count) % count;
+      track.style.transform = 'translateX(' + -current * 100 + '%)';
+
+      slides.forEach(function (slide, i) {
+        // The other slides are only translated out of view, so they are still
+        // in the accessibility tree — without this a screen reader reads all
+        // five screenshots at once.
+        slide.setAttribute('aria-hidden', i === current ? 'false' : 'true');
+      });
+
+      dots.forEach(function (dot, i) {
+        if (i === current) dot.setAttribute('aria-current', 'true');
+        else dot.removeAttribute('aria-current');
+      });
+
+      if (indexEl) indexEl.textContent = (current < 9 ? '0' : '') + (current + 1);
+      if (textEl && captions[current]) textEl.textContent = captions[current];
+    }
+
+    if (prevBtn) prevBtn.addEventListener('click', function () { goTo(current - 1); });
+    if (nextBtn) nextBtn.addEventListener('click', function () { goTo(current + 1); });
+
+    dots.forEach(function (dot, i) {
+      dot.addEventListener('click', function () { goTo(i); });
+    });
+
+    // Arrow keys, but only while focus is inside the carousel — a listener on
+    // document would hijack the page's own arrow-key scrolling.
+    carousel.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowLeft') {
+        goTo(current - 1);
+        e.preventDefault();
+      } else if (e.key === 'ArrowRight') {
+        goTo(current + 1);
+        e.preventDefault();
+      }
+    });
+
+    // Swipe is a bonus, never the only way in (the arrows and dots are always
+    // visible). Strictly guarded and deliberately without preventDefault: a
+    // vertical drag still scrolls the page, and a mostly-vertical one is never
+    // mistaken for a slide change.
+    var startX = 0;
+    var startY = 0;
+    var tracking = false;
+
+    carousel.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { tracking = false; return; }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      tracking = true;
+    }, { passive: true });
+
+    carousel.addEventListener('touchend', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      var dx = e.changedTouches[0].clientX - startX;
+      var dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 3) {
+        goTo(dx < 0 ? current + 1 : current - 1);
+      }
+    }, { passive: true });
+
+    goTo(0);
+
+    // Slides 2–5 are loading="lazy" to keep the first paint light. But an image
+    // that is merely translated out of view is never "near the viewport", so it
+    // would not start loading until the first switch — and that switch would
+    // show a blank frame. Warm the cache once the page is idle.
+    function warmSlides() {
+      slides.forEach(function (slide) {
+        var img = slide.querySelector('img');
+        if (img) new Image().src = img.src;
+      });
+    }
+
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(warmSlides, { timeout: 3000 });
+    } else {
+      window.addEventListener('load', warmSlides);
+    }
+  }
+
+  /* ── Back to top ─────────────────────────────────────────────────
+     The scrolling itself is the anchor's job (html has scroll-behavior:
+     smooth), so this only decides when the button is worth showing. */
+  var toTop = document.getElementById('toTop');
+
+  if (toTop) {
+    var syncToTop = function () {
+      toTop.classList.toggle('is-visible', window.scrollY > window.innerHeight * 0.75);
+    };
+
+    window.addEventListener('scroll', syncToTop, { passive: true });
+    window.addEventListener('resize', syncToTop, { passive: true });
+    syncToTop();
+  }
 })();
