@@ -229,8 +229,14 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 三处刻意的设计：
 
 - **素材不复制。** `public/screenshots/` 是唯一来源（README 也在用），`website/assets/` 由 [scripts/site-assets.mjs](scripts/site-assets.mjs) 复制生成，并加进 `.gitignore` —— 与 `dist/` 同级，都是产物。之所以要走脚本而不是直接放两份图：两份副本必然漂移，README 换了截图而官网上还是旧的。脚本在 CI 与本地是**同一条命令**（`npm run site:assets`），所以本地过了 CI 就会过。它顺带做一件 CI 才有意义的事：扫描 `index.html` 里每个本地 `src`/`href` 并断言文件存在 —— 截图名写错在浏览器里只是一张破图，评审时看不出来。
-- **配色与 `variables.css` 同源，且是仓库里唯一一处有意重复。** 站点没有构建步骤，就拿不到 `variables.css`；把调色板搬一份进 `website/styles.css` 是唯一的办法。所以**改那边的 surface / text / accent token 时，这里要跟着改** —— 这是「同一个值写两遍」的例外，其余地方一律不允许。
+- **配色与 `variables.css` 同源，且是仓库里唯一一处有意重复。** 站点没有构建步骤，就拿不到 `variables.css`；把调色板搬一份进 `website/styles.css` 是唯一的办法。所以**改那边的 surface / text / accent token 时，这里要跟着改**。站点在其上追加了一组**页面级氛围 token**（`--page-*` / `--grid-line` / `--hairline` / `--sheen` / `--glow-*` / `--btn-accent-*`），那批是站点自己的，应用里没有对应物：风格取向是深色金融终端 —— 有纵深的渐变底 + 蓝图网格、发丝描边 + 顶边 1px 高光、主按钮辉光。
 - **主题契约与应用一致**：`<html data-theme>`，`<head>` 里那段内联脚本在首帧前定好主题（否则深色访问者会先看到一帧白闪），`app.js` 只做增强 —— 禁用 JS 时页面依然完整可读，`.reveal` 的隐藏也由内联脚本加的 `.js` 类门控，不是无条件写死。`app.js` 里没有网络请求。
+
+三条踩过坑的约束，改样式时别破坏：
+
+- **不引 webfont。** 通用设计建议会给 Inter + Google Fonts，但 `fonts.googleapis.com` 在国内基本加载不出来，而这个应用的用户主要在国内 —— 引它等于拿首屏去赌。科技感靠**刻意使用等宽栈**（`--font-mono`，应用本来就有这条栈）传达：区块编号、规格行、文件名、体积、表头。零网络依赖。
+- **`--text-3` 只许用在装饰上**（目前只有亮点卡片角上那个序号）。实测对比度：`#6e7681` 在 `#0d1117` 上是 4.12:1，`#8b949e` 在纯白上是 3.08:1 —— 两个都够不上小字号要求的 4.5:1。正文级的灰一律 `--text-2`（深色 6.15:1 / 浅色 5.25:1）。「深色底上一片灰」正是这一点没守住的样子。
+- **主按钮的标签色必须跟着主题走**（`--on-accent`）。深色主题的强调色是亮蓝，标签用近黑；浅色主题是深蓝，标签用白 —— 写死深色标签压在浅色主题的 `#0969da` 上只有 3.68:1。同理浅色主题下 hover 要**变深**而不是变亮。全量配色对有一份实测清单，改动后按它复核（深浅两套 × 各背景 × 按钮四个状态）。
 
 注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
 

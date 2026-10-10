@@ -1,42 +1,69 @@
 /* ================================================================
    QuantDesktop 官网 — 单页静态样式
-   Dark-first, zero build step.
+   Dark-first, zero build step. 风格：深色金融终端。
 
-   The palette is copied verbatim from the app's own design system
-   (src/assets/styles/variables.css). That is deliberate: the site and
-   the software should read as one product, so neither side gets to
-   invent its own greys. Change a token there → change it here too.
+   调色板来自应用自己的 src/assets/styles/variables.css，站点只在其上
+   追加页面级的「氛围」token（底色渐变、发丝线、顶边高光、辉光）。语义色
+   （text / accent / up / down）与应用保持同值 —— 改那边要同步这里，
+   这是仓库里唯一一处有意重复。
+
+   字体刻意不引 webfont：fonts.googleapis.com 在国内加载不出来，首屏会
+   被它拖住。科技感靠**刻意使用等宽栈**传达，而不是靠外部字体。
    ================================================================ */
 
-/* ── Tokens (dark = default, matches the app) ── */
+/* ── Tokens（深色为默认，与应用一致） ── */
 :root {
-  /* Surfaces */
+  /* Surfaces — 与应用 variables.css 同值 */
   --surface-0: #0d1117;
   --surface-1: #161b22;
   --surface-2: #1c2333;
   --surface-3: #252d3f;
 
-  /* Borders */
-  --border-0: #1e293b;
-  --border-1: #30363d;
+  /* Page atmosphere — 站点特有。终端感来自“有纵深的底”，不是一块纯色。 */
+  --page-top: #0d1117;
+  --page-bottom: #05080c;
+  --grid-line: rgba(255, 255, 255, 0.028);
+  --grid-size: 64px;
 
-  /* Text */
+  /* Hairlines & sheen — modern-dark 的标志性做法：发丝描边 + 顶边 1px 高光 */
+  --hairline: rgba(255, 255, 255, 0.075);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --sheen: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  --card-fill: linear-gradient(180deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.012));
+  --card-fill-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.022));
+  --band: rgba(255, 255, 255, 0.016);
+
+  /* Text — 与应用同值。--text-3 只留给纯装饰（卡片角标、分隔符）：
+     #6e7681 在 #0d1117 上只有 4.06:1，#8b949e 在纯白上只有 2.85:1，
+     都够不上小字号要求的 4.5:1，正文级的灰一律用 --text-2。 */
   --text-1: #e6edf3;
   --text-2: #8b949e;
   --text-3: #6e7681;
 
-  /* A-share convention: red = up, green = down. Used only as accents here. */
+  /* A 股约定：红涨绿跌。站内只作点缀，不承担语义。 */
   --up: #f85149;
   --down: #3fb950;
   --accent: #58a6ff;
   --accent-dim: rgba(88, 166, 255, 0.12);
+  --glow-accent: rgba(88, 166, 255, 0.32);
+  --glow-up: rgba(248, 81, 73, 0.22);
 
-  /* Typography — same stacks as the app */
+  /* 主按钮。深色主题下强调色是亮蓝，标签用近黑；浅色主题下强调色是深蓝，
+     标签必须反过来用白 —— 写死深色标签压在 #0969da 上只有 3.68:1。 */
+  --btn-accent-a: #6cb2ff;
+  --btn-accent-b: #58a6ff;
+  --btn-accent-hover-a: #85c0ff;
+  --btn-accent-hover-b: #4a9dfa;
+  --on-accent: #06101d;
+
+  /* 主标题渐变的末端色。浅色主题下必须把品牌色压得更狠 —— 深蓝在
+     白底上比在白字在深底上抢眼得多，同样的比例会变成一根蓝色标题。 */
+  --title-grad-end: color-mix(in srgb, var(--text-1) 76%, var(--accent));
+
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Microsoft YaHei", "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace;
 
-  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -46,22 +73,23 @@
   --space-8: 32px;
   --space-10: 40px;
 
+  /* 比一般落地页更收敛的圆角 —— 终端 UI 是方的 */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --radius-xl: 20px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.55);
 
-  --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* 有物理感的缓动，用于入场；微交互用更短的 --transition */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
 
   --nav-height: 64px;
   --container: 1120px;
-
-  /* Section rhythm */
   --section-y: clamp(64px, 9vw, 112px);
 }
 
@@ -71,8 +99,16 @@
   --surface-2: #eef1f5;
   --surface-3: #e2e5ea;
 
-  --border-0: #d0d7de;
-  --border-1: #c0c7cf;
+  --page-top: #ffffff;
+  --page-bottom: #eef2f7;
+  --grid-line: rgba(15, 23, 42, 0.045);
+
+  --hairline: rgba(15, 23, 42, 0.1);
+  --hairline-strong: rgba(15, 23, 42, 0.2);
+  --sheen: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --card-fill: linear-gradient(180deg, #ffffff, #f8fafc);
+  --card-fill-hover: linear-gradient(180deg, #ffffff, #f1f5f9);
+  --band: rgba(15, 23, 42, 0.022);
 
   --text-1: #1f2328;
   --text-2: #656d76;
@@ -80,10 +116,24 @@
 
   --up: #d1242f;
   --down: #1a7f64;
+  --accent: #0969da;
+  --accent-dim: rgba(9, 105, 218, 0.09);
+  --glow-accent: rgba(9, 105, 218, 0.18);
+  --glow-up: rgba(209, 36, 47, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.08);
-  --shadow-md: 0 4px 16px rgba(31, 35, 40, 0.1);
-  --shadow-lg: 0 16px 48px rgba(31, 35, 40, 0.14);
+  --btn-accent-a: #1a72d0;
+  --btn-accent-b: #0969da;
+  /* 浅色主题下 hover 要**变深**（深色主题下是变亮）—— 白标签配浅色填充
+     只有 3.75:1，方向反了就不达标。 */
+  --btn-accent-hover-a: #0f63c4;
+  --btn-accent-hover-b: #0753ad;
+  --on-accent: #ffffff;
+
+  --title-grad-end: color-mix(in srgb, var(--text-1) 91%, var(--accent));
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.09);
+  --shadow-lg: 0 24px 64px rgba(15, 23, 42, 0.13);
 }
 
 /* ── Reset ── */
@@ -96,18 +146,40 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: calc(var(--nav-height) + 16px);
+  background: var(--page-bottom);
   -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--surface-0);
   color: var(--text-1);
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
-  transition: background-color var(--transition), color var(--transition);
+}
+
+/* 固定的氛围层：纵向渐变 + 蓝图网格。网格用 mask 从顶部淡出，只在上半屏
+   隐约可见 —— 铺满全页会变成噪点。两层都 fixed，页面在它们之上滚动。 */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: linear-gradient(180deg, var(--page-top) 0%, var(--page-bottom) 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  -webkit-mask-image: radial-gradient(ellipse 130% 70% at 50% 0%, #000 25%, transparent 72%);
+  mask-image: radial-gradient(ellipse 130% 70% at 50% 0%, #000 25%, transparent 72%);
 }
 
 img {
@@ -115,10 +187,7 @@ img {
   display: block;
 }
 
-/* The UA default is `margin: 1em 40px`, which silently steals 80px from every
-   screenshot's column — most visibly on the hero shot and inside the two-up
-   feature pairs, where it was the difference between a readable chart and a
-   thumbnail. */
+/* UA 默认 margin: 1em 40px 会从每张截图的列宽里悄悄吃掉 80px。 */
 figure {
   margin: 0;
 }
@@ -152,6 +221,13 @@ button {
   cursor: pointer;
 }
 
+/* 可见的键盘焦点环 —— 深色底上默认 outline 几乎看不见 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
 .icon {
   width: 1em;
   height: 1em;
@@ -163,8 +239,9 @@ button {
   flex-shrink: 0;
 }
 
-/* Numbers get the mono stack + tabular figures, same as the app's price columns */
-.num {
+/* 数字一律等宽 + 表格数字：价格列不会随刷新抖动，也更像终端 */
+.num,
+.mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -178,13 +255,16 @@ button {
 }
 
 .section {
+  position: relative;
   padding: var(--section-y) 0;
 }
 
+/* 交替的浅色带用半透明填充 + 发丝分隔，让底层的网格透过来 ——
+   不透明色块会把整页的纵深感切断。 */
 .section--tint {
-  background: var(--surface-1);
-  border-top: 1px solid var(--border-0);
-  border-bottom: 1px solid var(--border-0);
+  background: var(--band);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
 }
 
 .section__head {
@@ -193,14 +273,35 @@ button {
   text-align: center;
 }
 
+/* 终端风格的区块标签：[ 02 │ 功能亮点 ] */
 .section__eyebrow {
-  display: inline-block;
-  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px 5px 12px;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.022);
+  box-shadow: var(--sheen);
+  color: var(--text-2);
+  font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+[data-theme="light"] .section__eyebrow {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.section__eyebrow-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
   color: var(--accent);
-  margin-bottom: var(--space-3);
+  padding-right: 10px;
+  border-right: 1px solid var(--hairline);
 }
 
 .section__title {
@@ -221,13 +322,13 @@ button {
   justify-content: center;
   gap: var(--space-2);
   padding: 10px 18px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   font-size: 0.94rem;
   font-weight: 600;
   white-space: nowrap;
-  transition: transform var(--transition), background-color var(--transition),
-    border-color var(--transition), box-shadow var(--transition);
+  transition: transform var(--transition), background var(--transition),
+    border-color var(--transition), box-shadow var(--transition), color var(--transition);
 }
 
 .btn:hover {
@@ -239,24 +340,26 @@ button {
 }
 
 .btn--primary {
-  background: var(--accent);
-  color: #08111d;
+  background: linear-gradient(180deg, var(--btn-accent-a), var(--btn-accent-b));
+  color: var(--on-accent);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 6px 20px var(--glow-accent);
 }
 
 .btn--primary:hover {
-  background: #7cb8ff;
-  box-shadow: 0 6px 20px rgba(88, 166, 255, 0.28);
+  background: linear-gradient(180deg, var(--btn-accent-hover-a), var(--btn-accent-hover-b));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 10px 30px var(--glow-accent);
 }
 
 .btn--outline {
-  background: var(--surface-1);
-  border-color: var(--border-1);
+  background: var(--card-fill);
+  border-color: var(--hairline);
+  box-shadow: var(--sheen);
   color: var(--text-1);
 }
 
 .btn--outline:hover {
-  background: var(--surface-2);
-  border-color: var(--text-3);
+  background: var(--card-fill-hover);
+  border-color: var(--hairline-strong);
 }
 
 .btn--ghost {
@@ -268,13 +371,17 @@ button {
 
 .btn--ghost:hover {
   color: var(--text-1);
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+[data-theme="light"] .btn--ghost:hover {
+  background: rgba(15, 23, 42, 0.05);
 }
 
 .btn--lg {
   padding: 14px 26px;
   font-size: 1rem;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
 }
 
 .btn--sm {
@@ -291,17 +398,23 @@ button {
   display: flex;
   align-items: center;
   border-bottom: 1px solid transparent;
-  transition: background-color var(--transition), border-color var(--transition),
-    backdrop-filter var(--transition);
+  transition: background var(--transition), border-color var(--transition);
 }
 
-/* Scrolled state (toggled by app.js) — a blurred bar keeps links legible
-   over the screenshots without ever fully hiding the page behind it. */
 .nav.is-scrolled {
-  background: color-mix(in srgb, var(--surface-0) 82%, transparent);
-  backdrop-filter: saturate(180%) blur(14px);
-  -webkit-backdrop-filter: saturate(180%) blur(14px);
-  border-bottom-color: var(--border-0);
+  background: color-mix(in srgb, var(--page-top) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  border-bottom-color: var(--hairline);
+}
+
+/* 顶栏下沿一道渐变高光，是「终端窗口」的一个便宜信号 */
+.nav.is-scrolled::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glow-accent), transparent);
 }
 
 .nav__inner {
@@ -325,6 +438,7 @@ button {
   width: 28px;
   height: 28px;
   border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 
 .nav__links {
@@ -336,16 +450,20 @@ button {
 
 .nav__link {
   padding: 8px 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-2);
   font-size: 0.92rem;
   font-weight: 500;
-  transition: color var(--transition), background-color var(--transition);
+  transition: color var(--transition), background var(--transition);
 }
 
 .nav__link:hover {
   color: var(--text-1);
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+[data-theme="light"] .nav__link:hover {
+  background: rgba(15, 23, 42, 0.05);
 }
 
 .nav__actions {
@@ -366,17 +484,21 @@ button {
   background: transparent;
   color: var(--text-2);
   font-size: 18px;
-  transition: color var(--transition), background-color var(--transition),
+  transition: color var(--transition), background var(--transition),
     border-color var(--transition);
 }
 
 .icon-btn:hover {
   color: var(--text-1);
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--hairline);
 }
 
-/* The toggle shows the theme you'd switch *to*, so the glyph is chosen by the
-   current theme rather than by a class app.js has to keep in sync. */
+[data-theme="light"] .icon-btn:hover {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+/* 按钮显示的是「切过去会变成什么」，由当前主题决定，不靠 JS 同步类名 */
 .theme-toggle .icon-moon {
   display: none;
 }
@@ -408,32 +530,41 @@ button {
 /* ── Hero ── */
 .hero {
   position: relative;
-  padding: calc(var(--nav-height) + clamp(56px, 8vw, 96px)) 0 clamp(56px, 8vw, 88px);
+  padding: calc(var(--nav-height) + clamp(48px, 7vw, 84px)) 0 clamp(56px, 8vw, 88px);
   overflow: hidden;
   text-align: center;
 }
 
-/* Two soft colour washes — the only decorative gradient on the page.
-   Red/green rather than a generic purple: it is the subject matter. */
+/* 两团环境光斑（品牌蓝 + 涨红）。用柔和的 radial-gradient 直接画，不加
+   filter: blur —— 大面积模糊很贵，而渐变本身就是软的。 */
 .hero::before {
   content: "";
   position: absolute;
-  inset: -30% 0 auto 50%;
-  width: min(1200px, 150vw);
-  height: 720px;
+  inset: -40% 0 auto 50%;
+  width: min(1300px, 165vw);
+  height: 820px;
   transform: translateX(-50%);
   background: radial-gradient(
-      ellipse at 30% 40%,
-      color-mix(in srgb, var(--up) 16%, transparent),
-      transparent 62%
+      ellipse 42% 55% at 28% 42%,
+      var(--glow-up),
+      transparent 68%
     ),
-    radial-gradient(
-      ellipse at 72% 30%,
-      color-mix(in srgb, var(--accent) 15%, transparent),
-      transparent 60%
-    );
+    radial-gradient(ellipse 45% 58% at 72% 32%, var(--glow-accent), transparent 66%);
   pointer-events: none;
   z-index: 0;
+  animation: hero-drift 22s ease-in-out infinite;
+}
+
+@keyframes hero-drift {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateX(-50%) scale(1.07);
+    opacity: 1;
+  }
 }
 
 .hero > .container {
@@ -441,18 +572,49 @@ button {
   z-index: 1;
 }
 
+/* 终端风格的一行规格说明，放在图标之上当 kicker */
+.hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: var(--space-8);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.hero__meta i {
+  font-style: normal;
+  color: var(--hairline-strong);
+}
+
+.hero__meta b {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .hero__icon {
   width: 92px;
   height: 92px;
   border-radius: 22px;
   margin: 0 auto var(--space-6);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--hairline),
+    0 0 60px var(--glow-accent);
 }
 
 .hero__title {
   font-size: clamp(2rem, 5.5vw, 3.25rem);
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.035em;
+  background: linear-gradient(180deg, var(--text-1) 34%, var(--title-grad-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .hero__tagline {
@@ -493,6 +655,7 @@ button {
 .hero__badges img {
   height: 20px;
   width: auto;
+  opacity: 0.9;
 }
 
 .hero__shot {
@@ -500,17 +663,46 @@ button {
   margin-top: clamp(48px, 6vw, 72px);
 }
 
+/* 截图下面压一层品牌色的辉光，让「终端窗口」像是亮着的。用渐变本身做柔化，
+   不加 filter: blur —— 大面积模糊很贵，而这个光斑是静态的。 */
+.hero__shot::after {
+  content: "";
+  position: absolute;
+  inset: 4% -5% -14%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse 58% 52% at 50% 62%, var(--glow-accent), transparent 72%);
+  z-index: -1;
+  pointer-events: none;
+}
+
 .hero__shot img {
   width: 100%;
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border-0);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-lg);
 }
 
 .hero__caption {
   margin-top: var(--space-4);
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 0.875rem;
+}
+
+/* ── 卡片通用外观 ──
+   发丝描边 + 顶边 1px 高光 + 极淡的纵向渐变，是整套「现代深色」的签名。
+   全部卡片共用，避免四种卡片各写一遍。 */
+.pain,
+.highlight,
+.underside__item,
+.dl__card,
+.dl__store,
+.faq__item,
+.tech__callout {
+  position: relative;
+  background: var(--card-fill);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--sheen);
 }
 
 /* ── Pains ── */
@@ -522,9 +714,6 @@ button {
 
 .pain {
   padding: var(--space-6);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
 }
 
 .pain__emoji {
@@ -549,27 +738,24 @@ button {
   color: var(--accent);
 }
 
-/* ── Highlights (6 cells) ── */
+/* ── Highlights ── */
 .highlights__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
+  counter-reset: hl;
 }
 
 .highlight {
   padding: var(--space-6);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  background: var(--surface-0);
-  transition: border-color var(--transition), transform var(--transition);
-}
-
-.section--tint .highlight {
-  background: var(--surface-0);
+  counter-increment: hl;
+  transition: border-color var(--transition), transform var(--transition),
+    background var(--transition);
 }
 
 .highlight:hover {
-  border-color: var(--border-1);
+  border-color: var(--hairline-strong);
+  background: var(--card-fill-hover);
   transform: translateY(-2px);
 }
 
@@ -586,8 +772,9 @@ button {
   justify-content: center;
   width: 38px;
   height: 38px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
   color: var(--accent);
   font-size: 19px;
 }
@@ -595,6 +782,22 @@ button {
 .highlight__title {
   font-size: 1.02rem;
   font-weight: 700;
+}
+
+/* 右上角的等宽序号，纯装饰 —— 终端感的来源之一。用 CSS counter 生成，
+   免得为了一个装饰数字去改六处 HTML。颜色走 --text-3，但不叠 opacity：
+   叠了之后实际对比度会随底色漂移，浅色下基本看不见。 */
+.highlight::after {
+  content: "0" counter(hl);
+  position: absolute;
+  right: var(--space-5);
+  top: var(--space-5);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
 }
 
 .highlight p {
@@ -614,9 +817,8 @@ button {
   margin-top: clamp(64px, 8vw, 112px);
 }
 
-/* `order` only moves the media into the first grid cell — it does not resize
-   the tracks, so the reversed rows would otherwise hand the screenshots the
-   narrow 5fr column and the copy the wide one. Swap the tracks too. */
+/* `order` 只把媒体挪进第一个栅格单元，不会改轨道尺寸 —— 不换轨道的话，
+   反向行会把截图塞进窄的 5fr 列。 */
 .feature--reverse {
   grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
 }
@@ -627,20 +829,26 @@ button {
 
 .feature__tag {
   display: inline-block;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  background: var(--surface-2);
-  border: 1px solid var(--border-0);
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--hairline);
   color: var(--text-2);
-  font-size: 0.78rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   margin-bottom: var(--space-4);
+}
+
+[data-theme="light"] .feature__tag {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .feature__tag--hot {
   background: color-mix(in srgb, var(--up) 14%, transparent);
-  border-color: color-mix(in srgb, var(--up) 32%, transparent);
+  border-color: color-mix(in srgb, var(--up) 34%, transparent);
   color: var(--up);
 }
 
@@ -689,14 +897,13 @@ button {
 
 .feature__media img {
   width: 100%;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-0);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
   box-shadow: var(--shadow-md);
   background: var(--surface-1);
 }
 
-/* A nested group for two side-by-side shots; a third, full-width one can
-   still sit below it inside the same .feature__media column. */
+/* 两张并排的截图；同一列下方还可以再放一张通栏的 */
 .feature__media--pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -705,26 +912,29 @@ button {
 
 .feature__media figcaption {
   margin-top: 10px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 0.82rem;
   text-align: center;
 }
 
-/* The ticker screenshots are only 344×59 — render them at natural size
-   inside a padded frame instead of stretching them across the column. */
+/* 行情条截图只有 344×59，按原尺寸嵌在框里，拉伸会糊 */
 .ticker-runway {
   display: grid;
   gap: var(--space-4);
   padding: var(--space-6);
-  border: 1px dashed var(--border-1);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
   place-items: center;
 }
 
 .ticker-runway__label {
-  color: var(--text-3);
-  font-size: 0.82rem;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .ticker-runway img {
@@ -735,34 +945,47 @@ button {
   border-radius: 8px;
 }
 
-/* ── Underside: adaptive polling ── */
-.poll {
+/* ── 表（轮询状态 / 技术栈） ── */
+.poll,
+.tech__table {
   width: 100%;
-  border-collapse: collapse;
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
   overflow: hidden;
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
   font-size: 0.94rem;
 }
 
 .poll th,
-.poll td {
+.poll td,
+.tech__table th,
+.tech__table td {
   padding: 13px 18px;
   text-align: left;
-  border-bottom: 1px solid var(--border-0);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.poll tbody tr:last-child td,
+.tech__table tr:last-child th,
+.tech__table tr:last-child td {
+  border-bottom: none;
 }
 
 .poll thead th {
-  background: var(--surface-2);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--text-2);
-  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
-.poll tbody tr:last-child td {
-  border-bottom: none;
+[data-theme="light"] .poll thead th {
+  background: rgba(15, 23, 42, 0.03);
 }
 
 .poll td:first-child {
@@ -771,8 +994,10 @@ button {
   white-space: nowrap;
 }
 
+/* 轮询间隔是这张表的重点，给它终端里的高亮色 */
 .poll td:nth-child(2) {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   color: var(--accent);
   white-space: nowrap;
 }
@@ -790,9 +1015,6 @@ button {
 
 .underside__item {
   padding: var(--space-5);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
 }
 
 .underside__item h4 {
@@ -808,32 +1030,15 @@ button {
 }
 
 /* ── Tech ── */
-.tech__table {
-  width: 100%;
-  border-collapse: collapse;
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.tech__table th,
-.tech__table td {
-  padding: 14px 18px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-0);
-  font-size: 0.94rem;
-}
-
-.tech__table tr:last-child th,
-.tech__table tr:last-child td {
-  border-bottom: none;
-}
-
 .tech__table th {
   width: 30%;
   color: var(--text-2);
   font-weight: 600;
-  background: var(--surface-1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .tech__table th {
+  background: rgba(15, 23, 42, 0.02);
 }
 
 .tech__table td {
@@ -850,9 +1055,6 @@ button {
   gap: var(--space-6);
   margin-top: var(--space-8);
   padding: var(--space-6);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
   text-align: center;
 }
 
@@ -864,31 +1066,36 @@ button {
 
 .tech__size b {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.6rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .tech__size span {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 0.82rem;
 }
 
-/* "5 MB" vs the struck-through "80 MB+" — the winner is marked with the brand
-   accent rather than a colour that means up or down on a quote screen. */
+/* 「5 MB」对「80 MB+」：赢的那边用品牌色，不用红/绿 —— 那两色在行情
+   界面里意味着涨和跌。 */
 .tech__size--win b {
   color: var(--accent);
+  text-shadow: 0 0 28px var(--glow-accent);
 }
 
 .tech__size--lose b {
-  color: var(--text-3);
+  color: var(--text-2);
   text-decoration: line-through;
   text-decoration-thickness: 2px;
 }
 
 .tech__vs {
-  color: var(--text-3);
-  font-size: 0.9rem;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 /* ── Download ── */
@@ -902,20 +1109,19 @@ button {
   display: flex;
   flex-direction: column;
   padding: var(--space-6);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  background: var(--surface-0);
-  transition: border-color var(--transition), transform var(--transition);
+  transition: border-color var(--transition), transform var(--transition),
+    background var(--transition);
 }
 
 .dl__card:hover {
-  border-color: var(--border-1);
+  border-color: var(--hairline-strong);
+  background: var(--card-fill-hover);
   transform: translateY(-2px);
 }
 
 .dl__card--featured {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-0));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--hairline));
+  box-shadow: var(--sheen), 0 0 40px -12px var(--glow-accent);
 }
 
 .dl__os {
@@ -936,14 +1142,15 @@ button {
   margin-top: var(--space-4);
   font-family: var(--font-mono);
   font-size: 0.86rem;
-  color: var(--text-2);
+  color: var(--accent);
   word-break: break-all;
 }
 
 .dl__size {
   margin-top: var(--space-2);
-  color: var(--text-3);
-  font-size: 0.84rem;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
 }
 
 .dl__note {
@@ -966,9 +1173,6 @@ button {
   gap: var(--space-5);
   margin-top: var(--space-6);
   padding: var(--space-6);
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-lg);
-  background: var(--surface-1);
 }
 
 .dl__store-text h3 {
@@ -992,28 +1196,25 @@ button {
 
 .dl__step {
   position: relative;
-  padding: var(--space-5) var(--space-5) var(--space-5) 62px;
-  border: 1px solid var(--border-0);
+  padding: var(--space-5) var(--space-5) var(--space-5) 64px;
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: var(--surface-0);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
 }
 
 .dl__step::before {
   counter-increment: step;
-  content: counter(step);
+  content: "0" counter(step);
   position: absolute;
   left: var(--space-5);
   top: var(--space-5);
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-full);
-  background: var(--accent-dim);
-  color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.95rem;
   font-weight: 700;
+  color: var(--accent);
+  opacity: 0.85;
 }
 
 .dl__step h4 {
@@ -1036,10 +1237,12 @@ button {
 }
 
 .faq__item {
-  border: 1px solid var(--border-0);
-  border-radius: var(--radius-md);
-  background: var(--surface-0);
   overflow: hidden;
+  transition: border-color var(--transition);
+}
+
+.faq__item[open] {
+  border-color: var(--hairline-strong);
 }
 
 .faq__item summary {
@@ -1052,7 +1255,7 @@ button {
   font-size: 0.98rem;
   cursor: pointer;
   list-style: none;
-  transition: background-color var(--transition);
+  transition: background var(--transition);
 }
 
 .faq__item summary::-webkit-details-marker {
@@ -1060,15 +1263,19 @@ button {
 }
 
 .faq__item summary:hover {
-  background: var(--surface-1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .faq__item summary:hover {
+  background: rgba(15, 23, 42, 0.03);
 }
 
 .faq__item summary::after {
   content: "";
   width: 9px;
   height: 9px;
-  border-right: 2px solid var(--text-3);
-  border-bottom: 2px solid var(--text-3);
+  border-right: 2px solid var(--text-2);
+  border-bottom: 2px solid var(--text-2);
   transform: rotate(45deg) translate(-2px, -2px);
   transition: transform var(--transition);
   flex-shrink: 0;
@@ -1076,6 +1283,7 @@ button {
 
 .faq__item[open] summary::after {
   transform: rotate(-135deg) translate(-2px, -2px);
+  border-color: var(--accent);
 }
 
 .faq__body {
@@ -1090,9 +1298,23 @@ button {
 
 /* ── Footer ── */
 .footer {
-  border-top: 1px solid var(--border-0);
-  background: var(--surface-1);
+  position: relative;
+  border-top: 1px solid var(--hairline);
+  background: rgba(0, 0, 0, 0.22);
   padding: clamp(48px, 6vw, 72px) 0 var(--space-8);
+}
+
+[data-theme="light"] .footer {
+  background: rgba(15, 23, 42, 0.025);
+}
+
+/* 页脚顶边一道渐变线收尾 */
+.footer::before {
+  content: "";
+  position: absolute;
+  inset: -1px 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hairline-strong), transparent);
 }
 
 .footer__grid {
@@ -1113,6 +1335,7 @@ button {
   width: 30px;
   height: 30px;
   border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 
 .footer__slogan {
@@ -1123,11 +1346,12 @@ button {
 }
 
 .footer h4 {
-  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-bottom: var(--space-4);
 }
 
@@ -1143,40 +1367,40 @@ button {
 }
 
 .footer__links a:hover {
-  color: var(--text-1);
+  color: var(--accent);
 }
 
+/* 源图是一张竖版海报（上方群名、下方有效期），二维码只占约 60% 宽度 ——
+   160px 时码本身只剩约 95px，屏幕上不好扫。 */
 .footer__qr {
   text-align: center;
 }
 
-/* The source qrcode.png is a tall poster (caption above, expiry note below), so
-   the QR itself is only ~60% of its width — at 160px that left the code around
-   95px, which is small for scanning off a screen. */
 .footer__qr img {
   width: 180px;
   margin: 0 auto;
   border-radius: var(--radius-md);
   background: #fff;
   padding: 6px;
+  box-shadow: 0 0 0 1px var(--hairline);
 }
 
 .footer__qr span {
   display: block;
   margin-top: 10px;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 0.82rem;
 }
 
 .footer__bottom {
   margin-top: clamp(40px, 5vw, 56px);
   padding-top: var(--space-6);
-  border-top: 1px solid var(--border-0);
+  border-top: 1px solid var(--hairline);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4);
   justify-content: space-between;
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 0.84rem;
 }
 
@@ -1184,11 +1408,11 @@ button {
   max-width: 640px;
 }
 
-/* ── Scroll reveal (opt-in: app.js adds .js to <html>) ── */
+/* ── 入场（需要 app.js 给 <html> 加 .js） ── */
 .js .reveal {
   opacity: 0;
-  transform: translateY(18px);
-  transition: opacity 600ms ease, transform 600ms ease;
+  transform: translateY(20px);
+  transition: opacity 700ms var(--ease-out-expo), transform 700ms var(--ease-out-expo);
 }
 
 .js .reveal.is-visible {
@@ -1229,8 +1453,8 @@ button {
     gap: 2px;
     padding: var(--space-3);
     margin: 0;
-    background: var(--surface-0);
-    border-bottom: 1px solid var(--border-0);
+    background: var(--page-top);
+    border-bottom: 1px solid var(--hairline);
     box-shadow: var(--shadow-md);
   }
 
@@ -1249,10 +1473,10 @@ button {
 
   .feature,
   .feature--reverse {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  /* On one column the copy always leads, whichever side the image sat on. */
+  /* 单列时文案始终在上，不论图片原本在哪一侧 */
   .feature--reverse .feature__media {
     order: 0;
   }
@@ -1267,10 +1491,8 @@ button {
     padding: 0 18px;
   }
 
-  /* Brands at the top get tight well before the rest of the page does: the
-     wordmark, "GitHub", the theme toggle, 下载 and the burger together need
-     ~400px, which a 360–390px phone does not have. Drop the GitHub label and
-     pull in the gaps; the icon still reads. */
+  /* 顶栏比页面其余部分更早挤满：品牌名 + GitHub + 主题 + 下载 + 汉堡合计
+     要 ~400px，360–390px 的手机没有。去掉 GitHub 文案、收紧间距，图标仍在。 */
   .nav__inner {
     gap: var(--space-3);
   }
@@ -1291,7 +1513,7 @@ button {
   .highlights__grid,
   .underside__grid,
   .dl__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .poll th:nth-child(3),
@@ -1304,7 +1526,7 @@ button {
   }
 
   .feature__media--pair {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dl__store {
@@ -1335,6 +1557,7 @@ button {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 
@@ -1347,5 +1570,10 @@ button {
   .highlight:hover,
   .dl__card:hover {
     transform: none;
+  }
+
+  /* 漂移的光斑对前庭敏感的人不友好，直接停住 */
+  .hero::before {
+    animation: none;
   }
 }
