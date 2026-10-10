@@ -33,9 +33,10 @@
   --card-fill-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.022));
   --band: rgba(255, 255, 255, 0.016);
 
-  /* Text — 与应用同值。--text-3 只留给纯装饰（卡片角标、分隔符）：
-     #6e7681 在 #0d1117 上只有 4.06:1，#8b949e 在纯白上只有 2.85:1，
-     都够不上小字号要求的 4.5:1，正文级的灰一律用 --text-2。 */
+  /* Text — 与应用同值。--text-3 只用于纯装饰与非文本图形（卡片角标、
+     轮播未选中的圆点）：#6e7681 在 #0d1117 上 4.12:1、#8b949e 在纯白上
+     3.08:1 —— 够 WCAG 对图形要求的 3:1，但够不上小字号的 4.5:1，
+     所以正文级的灰一律用 --text-2。 */
   --text-1: #e6edf3;
   --text-2: #8b949e;
   --text-3: #6e7681;
@@ -658,34 +659,181 @@ button {
   opacity: 0.9;
 }
 
-.hero__shot {
+/* ── Hero 轮播 ──
+   一次显示一张，靠 transform 平移。五张截图都是 2057×1466，宽高比一致，
+   轨道高度因此在任何一页都相同 —— 切换不会推着下面的内容跳。 */
+.carousel {
   position: relative;
   margin-top: clamp(48px, 6vw, 72px);
 }
 
 /* 截图下面压一层品牌色的辉光，让「终端窗口」像是亮着的。用渐变本身做柔化，
    不加 filter: blur —— 大面积模糊很贵，而这个光斑是静态的。 */
-.hero__shot::after {
+.carousel::after {
   content: "";
   position: absolute;
-  inset: 4% -5% -14%;
+  inset: 4% -5% 14%;
   border-radius: 50%;
-  background: radial-gradient(ellipse 58% 52% at 50% 62%, var(--glow-accent), transparent 72%);
+  background: radial-gradient(ellipse 58% 52% at 50% 56%, var(--glow-accent), transparent 72%);
   z-index: -1;
   pointer-events: none;
 }
 
-.hero__shot img {
-  width: 100%;
+.carousel__viewport {
+  position: relative;
+  overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--hairline-strong);
   box-shadow: var(--shadow-lg);
+  background: var(--surface-1);
 }
 
-.hero__caption {
-  margin-top: var(--space-4);
+.carousel__track {
+  display: flex;
+  transition: transform 420ms var(--ease-out-expo);
+}
+
+.carousel__slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* height:auto 不是可选项：<img> 上的 height 属性会作为定值生效（CSS 里只
+   覆盖了 width），漏掉它图片会被拉成原始像素高 —— 1070×1466 而不是
+   1070×763。属性本身要留着，它给出宽高比、防切换时的 CLS。 */
+.carousel__slide img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* 左右切换按钮。三条决定：
+   1. **始终可见**，不做成 hover 才出现 —— 触摸设备根本没有 hover，而
+      「看不出可以点」是轮播最常见的失败。
+   2. **跟着主题走。** 早先这里是写死的深色实心圆，理由是「它压的是截图、
+      不是页面底色」；那个理由在浅色主题下不成立 —— 一颗黑圆钉在白页面上。
+      改用 --surface-1 + --text-1，并保持 92% 不透明度，于是它既属于当前
+      主题，又压得住任何一张截图（浅色主题的按钮遇到深色截图也照样读得出）。
+   3. **方的，不是圆的。** 全站控件语言是圆角矩形（.btn、各种 chip），
+      圆形箭头是这里唯一的例外，也正是它显得突兀的原因。 */
+.carousel__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  box-shadow: var(--sheen), var(--shadow-md);
+  color: var(--text-1);
+  font-size: 22px;
+  transition: background var(--transition), border-color var(--transition),
+    color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.carousel__nav:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--sheen), var(--shadow-md), 0 0 22px -6px var(--glow-accent);
+}
+
+.carousel__nav:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+.carousel__nav--prev {
+  left: 14px;
+}
+
+.carousel__nav--next {
+  right: 14px;
+}
+
+.carousel__bar {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+  margin-top: var(--space-5);
+}
+
+.carousel__caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
   color: var(--text-2);
   font-size: 0.875rem;
+  text-align: center;
+}
+
+.carousel__counter {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--text-2);
+}
+
+.carousel__counter b {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.carousel__dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 相邻触控目标之间至少留 8px */
+  gap: var(--space-2);
+}
+
+/* 命中区 44×44（触控最小目标），视觉上只是一个 8px 的点 —— 两者分开做，
+   才能同时满足「点得到」和「不要一排大圆钮」。选中态拉成胶囊，不靠颜色
+   一个维度表意。 */
+.carousel__dot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.carousel__dot::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: var(--radius-full);
+  /* 不是纯装饰：这排点要让人看出「共几张、现在第几张」，属于 UI 组件的
+     状态信息，按 WCAG 1.4.11 得够 3:1。#6e7681 在 #0d1117 上 4.12:1、
+     在纯白上 3.08:1，两边都过；用 --hairline-strong 只有 1.43:1。 */
+  background: var(--text-3);
+  transition: width var(--transition), margin var(--transition),
+    background var(--transition);
+}
+
+.carousel__dot:hover::before {
+  background: var(--text-1);
+}
+
+.carousel__dot[aria-current="true"]::before {
+  width: 24px;
+  margin-left: -12px;
+  background: var(--accent);
 }
 
 /* ── 卡片通用外观 ──
@@ -897,6 +1045,9 @@ button {
 
 .feature__media img {
   width: 100%;
+  /* 预留宽高比：这些图是 lazy 的，不预留的话每张加载完都会把下面的内容
+     顶下去一次（CLS）。五张功能截图都是 2057×1466。 */
+  aspect-ratio: 2057 / 1466;
   border-radius: var(--radius-md);
   border: 1px solid var(--hairline);
   box-shadow: var(--shadow-md);
@@ -940,6 +1091,8 @@ button {
 .ticker-runway img {
   width: auto;
   max-width: 100%;
+  /* 行情条截图是 344×59，不是上面那条 2057:1466 —— 必须关掉继承来的比例 */
+  aspect-ratio: auto;
   border: none;
   box-shadow: var(--shadow-md);
   border-radius: 8px;
@@ -1301,7 +1454,10 @@ button {
   position: relative;
   border-top: 1px solid var(--hairline);
   background: rgba(0, 0, 0, 0.22);
-  padding: clamp(48px, 6vw, 72px) 0 var(--space-8);
+  /* 底部多留 48px：右下角的回到顶部按钮是 fixed 的，滚到页尾时会压住
+     版权行（按钮占据视口底部 24–70px 那一段）。与其在各个断点算容器
+     右缘和按钮左缘谁先撞上谁，不如在页脚底部一次性让开。 */
+  padding: clamp(48px, 6vw, 72px) 0 calc(var(--space-8) + 48px);
 }
 
 [data-theme="light"] .footer {
@@ -1378,6 +1534,9 @@ button {
 
 .footer__qr img {
   width: 180px;
+  /* 预留比例的理由不只是 CLS：回到顶部的进度环按 scrollHeight 算，页面高度
+     必须在加载前后一致，否则分母会在图片加载完时突然变大。 */
+  aspect-ratio: 1146 / 1661;
   margin: 0 auto;
   border-radius: var(--radius-md);
   background: #fff;
@@ -1406,6 +1565,147 @@ button {
 
 .footer__bottom p {
   max-width: 640px;
+}
+
+/* ── 回到顶部 ──
+   fixed 在右下角，滚过 3/4 屏后淡入，外圈一圈滚动进度环。做成
+   <a href="#top"> 而不是 <button>：滚动交给片段导航与
+   html{scroll-behavior:smooth}，禁用 JS 时它照样能用。顺带避开一个坑 ——
+   若它是按钮，「滚到顶就隐藏」意味着点击后按钮在持有焦点时被藏起来，
+   焦点会掉到 body；锚点导航则把顺序焦点起点移到目标处。
+
+   形状与轮播箭头一致（圆角矩形），所以右下角这两个悬浮控件是同一套东西。 */
+.to-top {
+  --lift: 0px;
+  --press: 1;
+  position: fixed;
+  right: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: 90;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  /* 位移/缩放/按压合成在一条 transform 上，靠变量切换状态 —— 否则
+     .is-visible 的特异性会盖掉 :active 的缩放，按下去没有反馈。 */
+  transform: translateY(var(--lift)) scale(var(--press));
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+  -webkit-backdrop-filter: saturate(160%) blur(12px);
+  box-shadow: var(--sheen), var(--shadow-md);
+  color: var(--text-1);
+  font-size: 17px;
+  transition: opacity var(--transition), transform var(--transition),
+    visibility var(--transition), color var(--transition),
+    border-color var(--transition), box-shadow var(--transition);
+}
+
+.to-top:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--sheen), var(--shadow-md), 0 0 24px -6px var(--glow-accent);
+}
+
+.to-top:active {
+  --press: 0.96;
+}
+
+/* 悬浮提示。读 aria-label，所以可见文案与无障碍名称是同一个字符串，不会
+   分家；不是 title 属性 —— title 有约 1 秒延迟、样式不可控、触摸设备上根本
+   不出现。这里 hover 与键盘 focus 都会出，且零 JS。放在按钮左侧：它在屏幕
+   右缘，往右会出界。 */
+.to-top::after {
+  content: attr(aria-label);
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  box-shadow: var(--shadow-md);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+/* 指向按钮的小尖角 */
+.to-top::before {
+  content: "";
+  position: absolute;
+  right: calc(100% + 7px);
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%) rotate(45deg);
+  border-top: 1px solid var(--hairline);
+  border-right: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--surface-2) 96%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition);
+}
+
+.to-top:hover::after,
+.to-top:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.to-top:hover::before,
+.to-top:focus-visible::before {
+  opacity: 1;
+}
+
+/* 进度环。从 12 点方向起画，所以要整体转 -90°。 */
+.to-top__ring {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.to-top__track,
+.to-top__bar {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.to-top__track {
+  stroke: var(--hairline-strong);
+}
+
+/* dasharray / dashoffset 由 app.js 按真实周长设置；这里给一个「进度为 0」
+   的初值，禁用 JS 时环就是空的，不会画出一段假的进度。 */
+.to-top__bar {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-dasharray: 100.53;
+  stroke-dashoffset: 100.53;
+}
+
+/* 与 .reveal 同一套门控：<head> 的内联脚本给 <html> 加 .js，只有 JS 真在跑
+   时才做「随滚动淡入」；脚本没跑就常显，不会变成一个永远点不到的按钮。 */
+.js .to-top {
+  --lift: 10px;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.js .to-top.is-visible {
+  --lift: 0px;
+  opacity: 1;
+  visibility: visible;
 }
 
 /* ── 入场（需要 app.js 给 <html> 加 .js） ── */

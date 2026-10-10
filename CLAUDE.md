@@ -238,6 +238,31 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 - **`--text-3` 只许用在装饰上**（目前只有亮点卡片角上那个序号）。实测对比度：`#6e7681` 在 `#0d1117` 上是 4.12:1，`#8b949e` 在纯白上是 3.08:1 —— 两个都够不上小字号要求的 4.5:1。正文级的灰一律 `--text-2`（深色 6.15:1 / 浅色 5.25:1）。「深色底上一片灰」正是这一点没守住的样子。
 - **主按钮的标签色必须跟着主题走**（`--on-accent`）。深色主题的强调色是亮蓝，标签用近黑；浅色主题是深蓝，标签用白 —— 写死深色标签压在浅色主题的 `#0969da` 上只有 3.68:1。同理浅色主题下 hover 要**变深**而不是变亮。全量配色对有一份实测清单，改动后按它复核（深浅两套 × 各背景 × 按钮四个状态）。
 
+Hero 的截图是一组五张的轮播（`.carousel`），首张是**日间主题** —— 深色站点上先给一张亮色截图，应用有两套主题这件事才在第一眼说清楚。**不自动播放**是刻意的：会动的 Hero 抢走正文注意力，而且正是 `prefers-reduced-motion` 想拦掉的那类动效。四条别丢的约束：
+
+- **左右按钮常显，不做成 hover 才出现，并且跟着主题走。** 触摸设备没有 hover，而「看不出可以点」是轮播最常见的失败。按钮用 `--surface-1` + `--text-1` 并保持 92% 不透明度 —— 于是它既属于当前主题，又压得住任何一张截图。**早先这里是写死的深色实心圆，理由是「它压的是截图、不是页面底色」；那个理由在浅色主题下不成立**，一颗黑圆钉在白页面上。形状是圆角矩形而非圆形，与全站 `.btn` 的控件语言一致。
+- **非当前页要设 `aria-hidden`。** 其余几页只是被 transform 移出视野，仍在无障碍树里；不标记的话读屏会把五张截图一口气全念出来。
+- **方向键只在焦点进入轮播时才接管。** 监听挂在 `.carousel` 上而不是 document 上，否则会劫持页面本身的上下键滚动。触摸滑动只是加分项（按钮和圆点始终可见），判定条件卡得很严（横向位移 >45px 且大于纵向 3 倍）且**不调 preventDefault** —— 竖向拖动仍然是滚动页面。
+- **`<img>` 上的 `height` 属性是定值，CSS 里必须配 `height: auto`。** 轮播图带 `width`/`height` 属性是为了防 CLS，但只覆盖 `width` 的话图会被拉成原始像素高（实测 1070×1466 而不是 1070×763）。功能图那边同理，用 `aspect-ratio: 2057 / 1466` 预留比例，而行情条那两张 344×59 的要 `aspect-ratio: auto` 把继承来的比例关掉。
+
+右下角的回到顶部做成 `<a href="#top">` 而不是 `<button>`：滚动本身交给片段导航与 `html{scroll-behavior:smooth}`，禁用 JS 时照样能用（显隐由 `.js` 类门控），JS 只负责决定「滚过 3/4 屏才值得显示」。用锚点还顺手避开一个坑 —— 按钮版本在「滚到顶就隐藏」时若正持有焦点，会把焦点丢给 body；锚点导航则把顺序焦点起点移到目标处。页脚底部因此多留了 48px：那个按钮是 fixed 的，滚到页尾会压住版权行。
+
+它外圈还有一道**滚动进度环**（`stroke-dashoffset` 由 JS 按 `scrollY / maxScroll` 改写）、以及 hover/focus 时出现的等宽字体气泡提示。三处值得留意：
+
+- 提示用 `::after { content: attr(aria-label) }` 而不是 `title` 属性 —— title 有约 1 秒延迟、样式不可控、触摸设备上根本不出现；这个版本 hover 与键盘 `focus-visible` 都会出，且零 JS，可见文案与无障碍名称还是同一个字符串，不会分家。
+- 进度环的**分母 `scrollHeight` 只在 load/resize 时量一次**，不在 scroll 里读 —— 那是会触发 layout 的属性。之所以敢这么缓存，是因为页面上每张图现在都预留了宽高比（`aspect-ratio`），文档高度在加载完成后不再变。**给图片加尺寸时别忘了这一层依赖。**
+- 位移、悬浮位移与按压缩放**合成在同一条 `transform` 上、靠 CSS 变量切换**（`--lift` / `--press`）。分开写的话 `.js .to-top.is-visible` 的 (0,3,0) 特异性会盖掉 `.to-top:active` 的 (0,2,0)，按下去没有反馈。
+
+SEO 与 GEO（生成式引擎优化）都落在 `<head>` 与 `website/` 根下的几个文件里，没有构建步骤：
+
+- **`application/ld+json` 是 GEO 的主要抓手。** 一个 `@graph` 装三个节点：`SoftwareApplication`（14 条 `featureList`、5 张 `screenshot`、`offers` 价格 0、`operatingSystem`、`license`）、`FAQPage`（页面上那四条问答）、`WebSite`。两条纪律：字段写**事实**不写形容词；`FAQPage` 的答案必须与**页面上看得见的正文**逐字对得上（结构化数据描述的内容页面没有，属于违规）。`scripts/` 之外有一个校验脚本会同时检查 JSON 能否解析、以及答案是否真的出现在正文里。
+- **有意不写 `softwareVersion`。** 页面上没有任何静态版本号（顶栏那枚徽章是运行时拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。
+- **`og:image` 用 `main-light.png` 而不是 `main-dark.png`。** 缩略图尺寸下深色截图糊成一团，亮色的还能看清界面；同时要声明 `og:image:width/height`，宽高对不上会被判为无效图。
+- **`robots.txt` 把 AI 检索类爬虫（GPTBot / ClaudeBot / PerplexityBot / Google-Extended …）显式放行。** 不写也不会被默认拦（`User-agent: *` 已放行），显式列出的价值是这份文件同时是一份意图声明，将来要收紧只改这一处。`privacy.html` 带 `noindex`，因此**刻意不写进 sitemap**。
+- **`llms.txt`** 是给 AI 检索用的精简事实页（平台、体积、价格、许可、数据来源、功能清单、常见问答）。写它的时候注意把「商业使用需获授权」这条写清楚 —— PolyForm Noncommercial 不是 MIT，答案引擎漏掉这个限制会误导人。
+
+改文案时记得回头看这几处：`<title>`、`meta description`、OG/Twitter 三件套、JSON-LD 里的 `description` 与 `featureList`、以及 `llms.txt`。它们不在一个文件里，最容易只改了一处。
+
 注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
 
 工作流的 `paths` 过滤器里带着 `public/screenshots/**` 与 `docs/privacy.html`：换一张截图、改一次隐私政策，同样应该重新发布，否则站点上还是旧的，而「只改了 public/」看起来与官网无关。

@@ -5,17 +5,138 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>QuantDesktop —— 免费开源的 A 股桌面看盘工具</title>
 <meta name="description" content="QuantDesktop 是一款免费、开源、零打扰的桌面级 A 股实时行情工具。安装包不到 5 MB，常驻桌面的悬浮行情条让上班族余光就能看盘。支持 Windows / macOS / Linux。" />
+<!-- max-image-preview:large 让搜索结果能出大图；没有它 Google 只给缩略图 -->
+<meta name="robots" content="index, follow, max-image-preview:large" />
 <meta name="theme-color" content="#0d1117" />
 <link rel="canonical" href="https://leaderxin.github.io/quant-desktop/" />
 <link rel="icon" href="assets/icon.png" />
 <link rel="apple-touch-icon" href="assets/icon.png" />
 
 <meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuantDesktop" />
+<meta property="og:locale" content="zh_CN" />
 <meta property="og:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
 <meta property="og:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
 <meta property="og:url" content="https://leaderxin.github.io/quant-desktop/" />
-<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
+<!-- 声明真实尺寸，抓取方才知道该按什么比例取景；宽高对不上会被判为无效图 -->
+<meta property="og:image:width" content="2057" />
+<meta property="og:image:height" content="1466" />
+<meta property="og:image:alt" content="QuantDesktop 主界面：顶部指数栏、市场涨跌概览与自选股列表" />
 <meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="QuantDesktop —— 免费开源的 A 股桌面看盘工具" />
+<meta name="twitter:description" content="让看盘更安静一点。安装包不到 5 MB，悬浮行情条常驻桌面角落，免费开源、无广告、无需注册。" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png" />
+
+<!-- 结构化数据。这一段同时服务两件事：SEO 的富结果，以及 GEO —— 让 AI 检索
+     问答直接拿到「这是什么、多少钱、支持哪些平台、这些问题的答案是什么」，
+     而不是去猜正文。所以字段要写事实、不写形容词；下面的 featureList 与 FAQ
+     都必须与页面上看得见的内容一致（答案全部来自本页 FAQ 与功能清单）。
+
+     有意不写 softwareVersion：页面上没有任何静态版本号（顶栏那枚徽章是运行时
+     拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。 -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://leaderxin.github.io/quant-desktop/#app",
+      "name": "QuantDesktop",
+      "applicationCategory": "FinanceApplication",
+      "applicationSubCategory": "股票行情看盘工具",
+      "operatingSystem": "Windows 10, Windows 11, macOS, Linux",
+      "inLanguage": "zh-CN",
+      "description": "免费的桌面级 A 股实时行情工具。安装包不到 5 MB，提供实时行情、分时走势、多周期 K 线、五档盘口、板块涨跌排行，以及一枚常驻桌面的悬浮行情条。数据全部保存在本机，无需注册。",
+      "url": "https://leaderxin.github.io/quant-desktop/",
+      "downloadUrl": "https://github.com/Leaderxin/quant-desktop/releases/latest",
+      "installUrl": "https://apps.microsoft.com/detail/9P46MZZDTTZ0",
+      "softwareHelp": "https://github.com/Leaderxin/quant-desktop/issues",
+      "license": "https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "CNY"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Leaderxin",
+        "url": "https://github.com/Leaderxin"
+      },
+      "screenshot": [
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-light.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/main-dark.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/market-overview.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/detail-minute-depth.png",
+        "https://leaderxin.github.io/quant-desktop/assets/screenshots/index-kline.png"
+      ],
+      "featureList": [
+        "14 个主流指数候选池，自由勾选与拖拽排序",
+        "全市场涨跌分布、两市成交额、行业与概念板块排行",
+        "1 分钟分时走势，含均价线与量能副图",
+        "日 / 周 / 月 / 1 / 5 / 15 / 30 / 60 分钟 K 线，主图 MA / BOLL、副图成交量 / MACD 可切换",
+        "五档盘口，3 秒静默刷新",
+        "悬浮行情条：始终置顶、每 3 秒轮播、每屏 1–10 只可调、可设透明背景、位置自动记忆",
+        "自选分组：同一只股票可同时属于多个分组，各分组内顺序独立",
+        "自选表列显示与顺序、默认排序、涨跌配色均可配置",
+        "深色 / 浅色主题，主窗口与行情条实时同步",
+        "红涨绿跌与绿涨红跌两套配色方案",
+        "双数据源（腾讯证券 / 新浪财经）互备，接口异常自动回退",
+        "按交易时段自适应轮询，节假日自动休眠",
+        "行情写入本地 SQLite，重启立即恢复上次报价",
+        "系统托盘常驻与开机自启"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://leaderxin.github.io/quant-desktop/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 的行情数据从哪里来？可靠吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成任何投资建议。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 真的完全免费吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "个人使用完全免费。项目采用 PolyForm Noncommercial 非商业开源许可，可以自由使用、学习和修改；商业使用需获得作者授权。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "使用 QuantDesktop 需要注册账号吗？会收集用户数据吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "不需要任何账号，也没有任何统计埋点。自选与配置只存储在本机 SQLite 数据库，不采集、不上传任何个人信息。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "QuantDesktop 支持哪些操作系统？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Windows 10 / 11、macOS（Intel 与 Apple Silicon）以及 Linux（Ubuntu 22.04+ / glibc 2.35+ 基线）。"
+          }
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://leaderxin.github.io/quant-desktop/#website",
+      "url": "https://leaderxin.github.io/quant-desktop/",
+      "name": "QuantDesktop",
+      "inLanguage": "zh-CN",
+      "about": { "@id": "https://leaderxin.github.io/quant-desktop/#app" }
+    }
+  ]
+}
+</script>
 
 <link rel="stylesheet" href="styles.css" />
 <script>
@@ -112,10 +233,65 @@
       <img src="https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square&amp;label=downloads" alt="累计下载量" loading="lazy" />
     </div>
 
-    <figure class="hero__shot reveal">
-      <img src="assets/screenshots/main-dark.png" alt="QuantDesktop 主界面夜间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
-      <figcaption class="hero__caption">主界面 · 夜间主题 —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</figcaption>
-    </figure>
+    <!-- 产品导览轮播。首张是日间主题：深色站点上先给一张亮色截图，应用有
+         两套主题这件事才在第一眼就说清楚。不自动播放 —— 会动的 Hero 抢走
+         正文的注意力，而且对前庭敏感的人是干扰。 -->
+    <div class="carousel reveal" id="heroCarousel" role="region" aria-roledescription="轮播"
+         aria-label="QuantDesktop 界面导览">
+      <div class="carousel__viewport">
+        <div class="carousel__track" id="carouselTrack">
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="1 / 5">
+            <img src="assets/screenshots/main-light.png" width="2057" height="1466" fetchpriority="high"
+                 alt="QuantDesktop 主界面日间主题：顶部指数栏、市场涨跌概览、下方自选股列表" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="2 / 5"
+               data-caption="主界面 · 夜间主题 —— 同一套界面，暗光环境下更省眼">
+            <img src="assets/screenshots/main-dark.png" width="2057" height="1466" loading="lazy"
+                 alt="QuantDesktop 主界面夜间主题" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="3 / 5"
+               data-caption="市场概览 —— 涨跌分布 · 两市成交额 · 行业与概念板块排行">
+            <img src="assets/screenshots/market-overview.png" width="2057" height="1466" loading="lazy"
+                 alt="市场概览面板：涨跌分布直方图、两市成交额与行业板块涨跌排行" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="4 / 5"
+               data-caption="个股详情 —— 分时走势 + 五档盘口，盘口每 3 秒静默刷新">
+            <img src="assets/screenshots/detail-minute-depth.png" width="2057" height="1466" loading="lazy"
+                 alt="个股分时图与五档盘口" />
+          </div>
+          <div class="carousel__slide" role="group" aria-roledescription="幻灯片" aria-label="5 / 5"
+               data-caption="指数详情 —— 上证指数日 K，均线与量能一应俱全">
+            <img src="assets/screenshots/index-kline.png" width="2057" height="1466" loading="lazy"
+                 alt="上证指数日 K 线图，含均线与成交量" />
+          </div>
+        </div>
+
+        <!-- 放在 viewport 里面，绝对定位才能直接以「截图框」为参照垂直居中；
+             overflow:hidden 不会裁到它们（left/right 都在框内）。 -->
+        <button class="carousel__nav carousel__nav--prev" id="carouselPrev" type="button" aria-label="上一张界面截图">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button class="carousel__nav carousel__nav--next" id="carouselNext" type="button" aria-label="下一张界面截图">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="carousel__bar">
+        <!-- aria-live 放在标题上：换页时读屏会念出「03 / 05 市场概览 —— …」，
+             用户才知道内容变了（图片本身的变化读屏是不报的）。 -->
+        <p class="carousel__caption" aria-live="polite">
+          <span class="carousel__counter"><b id="carouselIndex">01</b> / 05</span>
+          <span id="carouselText">主界面 · 日间主题 —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</span>
+        </p>
+        <div class="carousel__dots" id="carouselDots">
+          <button class="carousel__dot" type="button" aria-label="第 1 张：主界面（日间主题）" aria-current="true"></button>
+          <button class="carousel__dot" type="button" aria-label="第 2 张：主界面（夜间主题）"></button>
+          <button class="carousel__dot" type="button" aria-label="第 3 张：市场概览面板"></button>
+          <button class="carousel__dot" type="button" aria-label="第 4 张：分时走势与五档盘口"></button>
+          <button class="carousel__dot" type="button" aria-label="第 5 张：指数 K 线详情"></button>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -625,6 +801,21 @@
     </div>
   </div>
 </footer>
+
+<!-- 回到顶部。做成 <a href="#top"> 而不是 <button>：滚动本身交给
+     html{scroll-behavior:smooth} 与片段导航，禁用 JS 时它照样能用，
+     只是不会随滚动淡入淡出（那种隐藏由 .js 类门控）。
+
+     里面那个进度环不是装饰：它把「离页尾还有多远」一并表达了，而这是这个
+     位置本来就该回答的问题。禁用 JS 时进度停在 0，环不可见，剩下的仍是一个
+     能用的回到顶部按钮。 -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
+  <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <circle class="to-top__track" cx="20" cy="20" r="16" />
+    <circle class="to-top__bar" id="toTopBar" cx="20" cy="20" r="16" />
+  </svg>
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+</a>
 
 <script src="app.js" defer></script>
 </body>
