@@ -3,7 +3,7 @@
 //
 // Why assemble at all: website/ is published to GitHub Pages as a self-contained
 // directory, so its images must live inside it. Those images are already tracked
-// under public/screenshots/ (the README uses them), and a second committed copy
+// under screenshots/ (the README uses them), and a second committed copy
 // would drift the moment either side is updated. So they are copied here into
 // website/assets/ — a build product, gitignored like dist/.
 //
@@ -37,7 +37,7 @@ const FILES = [
 // the single source and this is a copy, so the two can never disagree.
 const ROOT_FILES = [['docs/privacy.html', 'privacy.html']];
 
-const SCREENSHOT_SRC = 'public/screenshots';
+const SCREENSHOT_SRC = 'screenshots';
 const ENTRY = 'index.html';
 
 async function assemble(missing) {
