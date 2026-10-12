@@ -466,6 +466,7 @@ button {
 }
 
 .nav__link {
+  position: relative;
   padding: 8px 12px;
   border-radius: var(--radius-xs);
   color: var(--text-2);
@@ -481,6 +482,35 @@ button {
 
 [data-theme="light"] .nav__link:hover {
   background: rgba(15, 23, 42, 0.05);
+}
+
+/* 当前页指示器。所有导航项都带这一条，默认靠 --current 隐掉。 */
+.nav__link::after {
+  content: "";
+  position: absolute;
+  /* 左右 12px 正是 .nav__link 的内边距 —— 于是线宽**等于文字宽**。
+     按内边距外沿算的话线会比文字宽一截，那看着像一颗带下边框的按钮。 */
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 1px;
+  /* 两端渐隐。全站只有两处用渐变线，另一处是顶栏滚动后那条 ::after 发丝线
+     （.nav.is-scrolled::after），于是这两条线互相解释。 */
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 24%,
+    var(--accent) 76%,
+    transparent
+  );
+  /* 用 drop-shadow 而不是 box-shadow：它跟着渐变渲染后的 alpha 走，于是辉光
+     只裹在可见的那段线上；box-shadow 会按元素框发一圈方形的光。
+     这一下是为了与站点已有的辉光语言对齐 —— 主按钮和回到顶部的进度环都亮着，
+     指示器不亮会显得是贴上去的。 */
+  filter: drop-shadow(0 0 5px var(--glow-accent));
+  opacity: var(--current, 0);
+  transition: opacity var(--transition);
 }
 
 .nav__actions {
@@ -1949,23 +1979,27 @@ a.card:hover {
 }
 
 /* ── 当前页高亮 ──
-   **刻意不写进顶栏那段**：它必须在所有页面逐字节相同，由 site-assets.mjs
-   校验。所以状态挂在 <body data-page="…"> 上。
-   选择器用 href$= 后缀匹配，这样 guide/* 里的 ../ 前缀不影响命中。
-   加新页面时给它一个 data-page 值即可 —— 值对不上任何一条选择器时，
-   那一页的导航里不会有任何项被选中，看起来就像「这页不在导航里」。
+   **刻意不做「淡色底块 + 通栏下划线」那一套。** 那是模板与生成式工具的默认
+   答案；而且两个信号互相打架 —— 底块已经说了「就是这里」，再压一条粗线是
+   重复，合起来还会被读成一颗带下边框的按钮。技能库里那条规则的原话也只是
+   「Highlight active nav item with color/underline」，没有底块。这里只留
+   一个信号：标签提亮 + 一条与文字等宽的渐隐短横。
 
-   download 没有对应条目是有意的：它的入口是顶栏那颗按钮（一个常驻 CTA），
-   不是导航项。要给它加高亮，得先把「下载」也做成导航链接。 */
+   状态收进一个 `--current` 变量，颜色与指示器都从它派生 —— 于是「哪个
+   data-page 对应哪个导航项」这份清单**只写一遍**。拆成两个选择器块的话，
+   两份清单迟早对不上，而症状只是某一页的指示器没出现，没人会发现。
+
+   **不能写进顶栏那段 HTML**：它必须在所有页面逐字节相同，由
+   site-assets.mjs 校验。所以状态挂在 <body data-page> 上。
+
+   加新页面时给它一个 data-page 值并在下面登记一行。这里没有 download：
+   它的入口是顶栏那颗常驻 CTA 按钮，不是导航项，硬凑一个选择器只会是死代码。 */
 body[data-page="home"] .nav__link[href$="index.html#features"],
-body[data-page="download"] .nav__link[href$="download.html"],
 body[data-page="faq"] .nav__link[href$="faq.html"],
 body[data-page="changelog"] .nav__link[href$="changelog.html"],
 body[data-page="guide"] .nav__link[href$="guide/"] {
+  --current: 1;
   color: var(--text-1);
-  background: color-mix(in srgb, var(--text-1) 9%, transparent);
-  /* 底边那道强调色是形状不是颜色 —— 只靠颜色区分当前项，色觉障碍用户读不出来 */
-  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 /* ── 入场（需要 app.js 给 <html> 加 .js） ── */
@@ -2025,6 +2059,21 @@ body[data-page="guide"] .nav__link[href$="guide/"] {
   .nav__link {
     padding: 12px 14px;
     font-size: 1rem;
+  }
+
+  /* 手机菜单是竖排列表，横向下划线在这里既没有方向感、又会因为
+     align-items: stretch 被拉成通栏。改成左侧竖条 —— 竖排列表里用竖条，
+     横排里用横线，这是同一个「方向跟着布局走」的规则。 */
+  .nav__link::after {
+    left: 0;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: 2px;
+    height: 18px;
+    margin-top: -9px;
+    border-radius: 0 1px 1px 0;
+    background: var(--accent);
   }
 
   .nav__burger {
