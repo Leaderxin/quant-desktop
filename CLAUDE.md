@@ -228,9 +228,18 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 三处刻意的设计：
 
-- **素材不复制。** `public/screenshots/` 是唯一来源（README 也在用），`website/assets/` 由 [scripts/site-assets.mjs](scripts/site-assets.mjs) 复制生成，并加进 `.gitignore` —— 与 `dist/` 同级，都是产物。之所以要走脚本而不是直接放两份图：两份副本必然漂移，README 换了截图而官网上还是旧的。脚本在 CI 与本地是**同一条命令**（`npm run site:assets`），所以本地过了 CI 就会过。它顺带做一件 CI 才有意义的事：扫描 `index.html` 里每个本地 `src`/`href` 并断言文件存在 —— 截图名写错在浏览器里只是一张破图，评审时看不出来。
+- **素材不复制，而且不在 `public/` 下。** 截图住在仓库根的 `screenshots/`（README 也在用），`website/assets/` 由 [scripts/site-assets.mjs](scripts/site-assets.mjs) 复制生成，并加进 `.gitignore` —— 与 `dist/` 同级，都是产物。**位置这件事有个坑**：`public/` 是 Vite 的静态目录，会被整份复制进 `dist/`，而 `tauri.conf.json` 的 `frontendDist` 就是 `../dist` —— 截图原本放在 `public/screenshots/` 时，那 1.9MB 一直在被打进桌面安装包，而应用代码一处都没引用（`StatusBar.vue` 只引用了 `public/qrcode.png`，那是二维码的远程地址与兜底，**不能跟着搬**）。搬到仓库根之后 `dist/` 从约 3.3MB 降到 1.4MB。**改位置时必须同一个提交里改 README** —— 它由 github.com 按仓库相对路径渲染，文件一挪就全变破图。
+  脚本在 CI 与本地是**同一条命令**（`npm run site:assets`），所以本地过了 CI 就会过。它顺带做几件 CI 才有意义的事：扫描**每个**页面（不只 `index.html`）的 `src`/`href`/`srcset` 并断言文件存在 —— 截图名写错在浏览器里只是一张破图，评审时看不出来；以及**生成 `sitemap.xml`**（见下）。
 - **配色与 `variables.css` 同源，且是仓库里唯一一处有意重复。** 站点没有构建步骤，就拿不到 `variables.css`；把调色板搬一份进 `website/styles.css` 是唯一的办法。所以**改那边的 surface / text / accent token 时，这里要跟着改**。站点在其上追加了一组**页面级氛围 token**（`--page-*` / `--grid-line` / `--hairline` / `--sheen` / `--glow-*` / `--btn-accent-*`），那批是站点自己的，应用里没有对应物：风格取向是深色金融终端 —— 有纵深的渐变底 + 蓝图网格、发丝描边 + 顶边 1px 高光、主按钮辉光。
 - **主题契约与应用一致**：`<html data-theme>`，`<head>` 里那段内联脚本在首帧前定好主题（否则深色访问者会先看到一帧白闪），`app.js` 只做增强 —— 禁用 JS 时页面依然完整可读，`.reveal` 的隐藏也由内联脚本加的 `.js` 类门控，不是无条件写死。`app.js` 里没有网络请求。
+
+**图片管线（`scripts/optimize-images.mjs`，`npm run site:images`）。** 截图原图是 2057px 的 PNG，一张 200–330KB；站点按 `<picture>` + WebP + `srcset` 三档（600 / 1100 / 2057）出，落地的通常是 44–68KB，降约 75–80%。同时出 favicon 32/180、品牌图标 128（原先 28px 的位置挂着 512px 的 203KB 原图）、以及 1200×630 的社交卡片。产物**提交进仓库**，所以 CI 不需要浏览器 —— 为十几张营销图给每次 `npm ci` 拉一个 `sharp` 那样的原生依赖不划算。代价是脚本本身依赖本机 Chrome（`CHROME_PATH` 可覆盖），**只有换截图时才需要手动跑**。三条实测得到的坑：
+
+- **`canvas.toDataURL` 在 `file://` 下会因 canvas 被 taint 而抛 SecurityError**，必须给 Chrome 加 `--allow-file-access-from-files`。
+- **目标宽 > 源宽时必须整个跳过，不能 `Math.min` 后仍按目标宽命名。** `settings-index.png` 只有 1298px 宽，早期实现产出的是 1298px 的图却叫 `-2057.webp`，而 HTML 里写着 `2057w` —— 描述符撒谎会让浏览器算出错误的密度。现在的规则是"文件名永远等于真实宽度"，源图比所有目标都小的（行情条那两张 344×59）就不出 WebP，直接用 PNG。脚本每次运行会先清掉上一轮的 `.webp`，否则改了规则会留下没人引用却照样被发布的残留。
+- **`background-clip: text` 会静默吃掉溢出元素框的字形**（`scripts/og-card.html` 的字标就是被它截断的）：渐变只画在框内，溢出部分没有背景可裁，于是 `color: transparent` 生效、字直接消失。配 `width: max-content` 让框包住文字。
+
+功能图的 `<picture>` 外面套了一层壳，所以给 `picture` 加了 `display: contents` —— 否则它会成为 grid/flex 的子项，把 `.ticker-runway` 的 `place-items` 和功能图栅格的列宽都算错一层。
 
 三条踩过坑的约束，改样式时别破坏：
 
@@ -258,14 +267,14 @@ SEO 与 GEO（生成式引擎优化）都落在 `<head>` 与 `website/` 根下�
 - **`application/ld+json` 是 GEO 的主要抓手。** 一个 `@graph` 装三个节点：`SoftwareApplication`（14 条 `featureList`、5 张 `screenshot`、`offers` 价格 0、`operatingSystem`、`license`）、`FAQPage`（页面上那四条问答）、`WebSite`。两条纪律：字段写**事实**不写形容词；`FAQPage` 的答案必须与**页面上看得见的正文**逐字对得上（结构化数据描述的内容页面没有，属于违规）。`scripts/` 之外有一个校验脚本会同时检查 JSON 能否解析、以及答案是否真的出现在正文里。
 - **有意不写 `softwareVersion`。** 页面上没有任何静态版本号（顶栏那枚徽章是运行时拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。
 - **`og:image` 用 `main-light.png` 而不是 `main-dark.png`。** 缩略图尺寸下深色截图糊成一团，亮色的还能看清界面；同时要声明 `og:image:width/height`，宽高对不上会被判为无效图。
-- **`robots.txt` 把 AI 检索类爬虫（GPTBot / ClaudeBot / PerplexityBot / Google-Extended …）显式放行。** 不写也不会被默认拦（`User-agent: *` 已放行），显式列出的价值是这份文件同时是一份意图声明，将来要收紧只改这一处。`privacy.html` 带 `noindex`，因此**刻意不写进 sitemap**。
-- **`llms.txt`** 是给 AI 检索用的精简事实页（平台、体积、价格、许可、数据来源、功能清单、常见问答）。写它的时候注意把「商业使用需获授权」这条写清楚 —— PolyForm Noncommercial 不是 MIT，答案引擎漏掉这个限制会误导人。
+- **`robots.txt` 与 `llms.txt` 都不在本仓库里，唯一一份在 [Leaderxin/leaderxin.github.io](https://github.com/Leaderxin/leaderxin.github.io)。** 原因是协议层面的：robots 规定爬虫只读 `scheme://host/robots.txt`，llms.txt 的约定同理 —— 而项目站挂在 `/quant-desktop/` 下，放在那里的这两份文件**一次都不会被访问**（实测 `https://leaderxin.github.io/robots.txt` 曾是 404）。2026-10 建了用户站仓库把域名根补上，顺带也解决了根域名 404。那个仓库同时放 `index.html`（跳转到项目站，刻意 noindex）与根域的 `404.html`。**所以本站不再有这两份文件** —— 曾经有过，删掉是为了不出现两份必然漂移的副本。改 AI 爬虫放行名单、或改那些事实（平台/体积/价格/许可）时，去那个仓库改。
+- **`sitemap.xml` 由 `site-assets.mjs` 生成，不是手写的。** 它扫描 `website/*.html`、排除 `SITEMAP_SKIP`（`404.html` 是错误页、`privacy.html` 带 `noindex` —— 把 noindex 页列进 sitemap 会被 Search Console 报成错误），`lastmod` 取自 `git log` 而不是「现在」：每次部署都变的日期对爬虫是噪音。之所以要生成：手维护的 sitemap 在加页面时必然漏登记，而且**失败是静默的** —— 没有人类链接指向 sitemap 去看它。
 
 改文案时记得回头看这几处：`<title>`、`meta description`、OG/Twitter 三件套、JSON-LD 里的 `description` 与 `featureList`、以及 `llms.txt`。它们不在一个文件里，最容易只改了一处。
 
 注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
 
-工作流的 `paths` 过滤器里带着 `public/screenshots/**` 与 `docs/privacy.html`：换一张截图、改一次隐私政策，同样应该重新发布，否则站点上还是旧的，而「只改了 public/」看起来与官网无关。
+Pages 现在已经跑在 GitHub Actions 上（2026-10 从 `master:/docs` 迁过来的，见下）。工作流的 `paths` 过滤器里带着 `screenshots/**` 与 `docs/privacy.html`：换一张截图、改一次隐私政策，同样应该重新发布，否则站点上还是旧的，而「只改了 screenshots/」看起来与官网无关。
 
 **从 `docs/` 迁过来这件事本身有个坑，别踩。** 迁之前 Pages 的源是 `master:/docs`（`build_type: legacy`），为的是 Microsoft Store 上架需要的隐私政策页（见 `183bba7 docs: 新增隐私政策页面(Microsoft Store 上架用)`）—— 也就是说 `https://leaderxin.github.io/quant-desktop/privacy.html` 是**商店登记过的地址**；同一个源顺带把 `docs/superpowers/` 下 20 份内部规划稿也公开了。而切到 GitHub Actions 后站点根变成 `website/`，那个地址会 404。所以 `scripts/site-assets.mjs` 会把 `docs/privacy.html` 复制到**站点根**（`website/privacy.html`，已 gitignore），与截图同一套「单一来源 + 脚本复制」的做法，两份不可能分家 —— **改隐私政策只改 `docs/privacy.html` 一处**。
 

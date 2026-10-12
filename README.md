@@ -19,7 +19,7 @@
 [![Microsoft Store](https://img.shields.io/badge/Microsoft_Store-%E4%B8%8B%E8%BD%BD-00A4EF?style=for-the-badge)](https://apps.microsoft.com/detail/9P46MZZDTTZ0)
 [![加入交流群](https://img.shields.io/badge/%E5%8A%A0%E5%85%A5%E4%BA%A4%E6%B5%81%E7%BE%A4-%E5%BE%AE%E4%BF%A1-07c160?style=for-the-badge)](#-贡献与交流)
 
-<img src="public/screenshots/main-dark.png" width="880" alt="QuantDesktop 主界面（夜间主题）" />
+<img src="screenshots/main-dark.png" width="880" alt="QuantDesktop 主界面（夜间主题）" />
 
 <sub><b>主界面 · 夜间主题</b> —— 指数栏 · 涨跌概览 · 自选列表，一屏尽览</sub>
 
@@ -57,7 +57,7 @@
 - **涨跌速览** —— 上涨 / 下跌 / 平盘、涨停 / 跌停家数常驻主界面，市场情绪一眼看清
 - **市场概览面板** —— 两市成交额、全市场涨跌分布直方图、行业与概念板块涨跌排行，热点在哪里一目了然
 
-<img src="public/screenshots/market-overview.png" width="880" alt="市场涨跌概览与板块排名" />
+<img src="screenshots/market-overview.png" width="880" alt="市场涨跌概览与板块排名" />
 
 <sub><b>市场概览面板</b> —— 涨跌分布 · 两市成交额 · 行业 / 概念板块排行</sub>
 
@@ -75,14 +75,14 @@
 <tr>
 <td width="50%">
 
-<img src="public/screenshots/detail-minute-depth.png" alt="个股分时图与五档盘口" />
+<img src="screenshots/detail-minute-depth.png" alt="个股分时图与五档盘口" />
 
 <sub><b>分时走势 + 五档盘口</b><br/>盘口每 3 秒静默刷新，附带开 / 高 / 低 / 量 / 额 / 换手率概要</sub>
 
 </td>
 <td width="50%">
 
-<img src="public/screenshots/detail-kline-sub.png" alt="个股分钟 K 线与副图指标" />
+<img src="screenshots/detail-kline-sub.png" alt="个股分钟 K 线与副图指标" />
 
 <sub><b>分钟 K 线 + 副图指标</b><br/>主图 MA / BOLL 切换，副图成交量 / MACD 切换</sub>
 
@@ -90,7 +90,7 @@
 </tr>
 </table>
 
-<img src="public/screenshots/index-kline.png" width="880" alt="指数 K 线详情" />
+<img src="screenshots/index-kline.png" width="880" alt="指数 K 线详情" />
 
 <sub><b>指数详情</b> —— 上证指数日 K，均线与量能一应俱全</sub>
 
@@ -103,7 +103,7 @@
 - 置顶 / 上移 / 下移 / 删除，右键菜单快捷操作
 - 跨数据源智能回退：一个源搜不到，自动换源再试
 
-<img src="public/screenshots/add-stock.png" width="880" alt="添加自选" />
+<img src="screenshots/add-stock.png" width="880" alt="添加自选" />
 
 <sub><b>添加自选</b> —— 代码搜索 + 市场标签，同码指数与个股不再混淆</sub>
 
@@ -124,14 +124,14 @@
 <tr>
 <td align="center" width="50%">
 
-<img src="public/screenshots/ticker-dark.png" alt="悬浮行情条（夜间主题）" />
+<img src="screenshots/ticker-dark.png" alt="悬浮行情条（夜间主题）" />
 
 <sub><b>夜间主题</b></sub>
 
 </td>
 <td align="center" width="50%">
 
-<img src="public/screenshots/ticker-light.png" alt="悬浮行情条（日间主题）" />
+<img src="screenshots/ticker-light.png" alt="悬浮行情条（日间主题）" />
 
 <sub><b>日间主题</b></sub>
 
@@ -160,14 +160,14 @@
 <tr>
 <td width="50%">
 
-<img src="public/screenshots/settings-index.png" alt="设置页 · 指数区" />
+<img src="screenshots/settings-index.png" alt="设置页 · 指数区" />
 
 <sub><b>指数区</b><br/>候选池勾选 + 拖拽排序，列表顺序就是顶栏从左到右的顺序</sub>
 
 </td>
 <td width="50%">
 
-<img src="public/screenshots/settings-ticker.png" alt="设置页 · 行情条" />
+<img src="screenshots/settings-ticker.png" alt="设置页 · 行情条" />
 
 <sub><b>行情条</b><br/>显隐 / 透明背景 / 单次条数 / 轮播范围，改动即时预览</sub>
 
@@ -185,14 +185,14 @@
 <tr>
 <td width="50%">
 
-<img src="public/screenshots/main-dark.png" alt="主界面夜间主题" />
+<img src="screenshots/main-dark.png" alt="主界面夜间主题" />
 
 <sub><b>夜间主题</b> —— 默认</sub>
 
 </td>
 <td width="50%">
 
-<img src="public/screenshots/main-light.png" alt="主界面日间主题" />
+<img src="screenshots/main-light.png" alt="主界面日间主题" />
 
 <sub><b>日间主题</b></sub>
 

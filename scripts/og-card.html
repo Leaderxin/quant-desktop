@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>QuantDesktop 社交卡片</title>
+<!--
+  1200×630 的分享卡片，由 scripts/optimize-images.mjs 用无头 Chrome 渲染成
+  website/og-cover.png。它不是缩放出来的 —— 截图直接当社交卡会被平台按
+  1.91:1 居中裁切，顶部那排指数正好被切掉。
+
+  这里刻意与官网同源（同一套深色金融终端配色 + 蓝图网格），只是排成一张
+  在缩略图尺寸下也看得清的版式：左边文字、右边亮色截图出血。
+  改完重新跑一次 node scripts/optimize-images.mjs。
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: linear-gradient(135deg, #0d1117 0%, #060a10 100%);
+    color: #e6edf3; position: relative;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center;
+  }
+  /* 蓝图网格，与官网首页同一套 */
+  body::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 80% at 22% 45%, #000 20%, transparent 78%);
+    mask-image: radial-gradient(ellipse 90% 80% at 22% 45%, #000 20%, transparent 78%);
+  }
+  /* 品牌色辉光 */
+  body::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 42% 52% at 16% 30%, rgba(88,166,255,.30), transparent 68%),
+      radial-gradient(ellipse 34% 44% at 40% 78%, rgba(248,81,73,.18), transparent 70%);
+  }
+
+  .text { position: relative; z-index: 2; width: 440px; padding-left: 72px; }
+
+  .icon {
+    width: 92px; height: 92px; border-radius: 21px; display: block;
+    margin-bottom: 26px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08),
+                0 0 60px rgba(88,166,255,.30);
+  }
+  /* width: max-content 不是为了排版，是必须的：h1 用了 background-clip: text
+     配 color: transparent，渐变只画在元素框内 —— 字形一旦溢出框，那部分就
+     没有背景可裁，直接变透明消失。父级 .text 把它限成 440px 时，
+     「QuantDesktop」末尾就被静默吃掉了。
+     54px 是实测上限：再大一档就会顶到右侧截图（左缘 540）。 */
+  h1 {
+    width: max-content;
+    font-size: 54px; font-weight: 800; letter-spacing: -.035em; line-height: 1.05;
+    background: linear-gradient(180deg, #e6edf3 34%, #b9cfe8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { font-size: 27px; font-weight: 500; margin-top: 12px; color: #e6edf3; }
+  .tagline b { color: #58a6ff; font-weight: 600; }
+  .spec {
+    margin-top: 24px; font-size: 13px; font-weight: 600; letter-spacing: .12em;
+    text-transform: uppercase; color: #8b949e; white-space: nowrap;
+    font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  }
+  .spec i { font-style: normal; color: rgba(255,255,255,.22); }
+  .spec em { font-style: normal; color: #58a6ff; }
+
+  /* 亮色截图出血到右下角：深色卡片上放亮色界面，缩略图尺寸下才看得清。
+     左缘 540，比文字列右缘（512）留出 28px 余量 —— 两者重叠过一次，
+     品牌名就是那样被截断的。 */
+  .shot {
+    position: absolute; z-index: 1;
+    right: -40px; top: 50%; transform: translateY(-50%);
+    width: 700px; border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 40px 90px rgba(0,0,0,.7);
+  }
+</style>
+</head>
+<body>
+  <div class="text">
+    <img class="icon" src="../src-tauri/icons/icon.png" alt="" />
+    <h1>QuantDesktop</h1>
+    <p class="tagline">让看盘更<b>安静</b>一点</p>
+    <p class="spec">A-SHARE <i>/</i> REAL-TIME <i>/</i> NATIVE DESKTOP <i>/</i> <em>&lt;5 MB</em></p>
+  </div>
+  <img class="shot" src="../screenshots/main-light.png" alt="" />
+</body>
+</html>
