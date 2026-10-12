@@ -324,6 +324,14 @@ button {
   font-size: 1rem;
 }
 
+/* 区块末尾的「查看更多」。首页只放每条内容的摘要，完整版在各自的页面里，
+   这个链接就是那条路径。 */
+.section__more {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-weight: 600;
+}
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -1735,6 +1743,229 @@ button {
   --lift: 0px;
   opacity: 1;
   visibility: visible;
+}
+
+/* ================================================================
+   内容页（faq / download / changelog / guide/*）
+
+   这些页面共用首页那套 token 与顶栏页脚，只是版式换成阅读型：一个标题区、
+   一条正文列、必要时加卡片网格。顶栏是 fixed 的，而内容页没有 hero 撑高度，
+   所以 .page-head 自己让出 nav 的空间。
+   ================================================================ */
+
+.page-head {
+  padding: calc(var(--nav-height) + clamp(40px, 6vw, 64px)) 0 clamp(28px, 4vw, 40px);
+}
+
+.page-head__title {
+  font-size: clamp(1.7rem, 3.6vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-head__lede {
+  margin-top: var(--space-4);
+  max-width: 46em;
+  color: var(--text-2);
+  font-size: 1.02rem;
+}
+
+/* 面包屑只出现在 guide/*：那是全站唯一的三级路径。平铺的页面用不到，
+   硬加反而是噪音（见 ux 规则的 breadcrumb-web：3+ 层才用）。 */
+.crumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.crumb a { color: var(--text-2); }
+.crumb a:hover { color: var(--accent); }
+.crumb i { font-style: normal; color: var(--hairline-strong); }
+
+/* 正文列。中文每行 35–45 字最省眼，680px 在 17px 下正好落在这一带 ——
+   比首页那种 1072px 的通栏窄得多，那宽度读长文会来回找行首。 */
+.prose {
+  max-width: 680px;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--text-2);
+}
+
+.prose > * + * { margin-top: var(--space-5); }
+
+.prose h2 {
+  margin-top: clamp(36px, 5vw, 52px);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 1.22rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.prose h3 {
+  margin-top: var(--space-6);
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.prose strong { color: var(--text-1); font-weight: 600; }
+.prose a { border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.prose ul { padding-left: 1.25em; list-style: disc; }
+.prose ol { padding-left: 1.5em; list-style: decimal; }
+.prose li { margin-top: 8px; }
+.prose li::marker { color: var(--text-2); }
+
+.prose code {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  /* 用 color-mix 而不是写死的白色叠加：浅色主题下 rgba(255,255,255,.04)
+     在白底上等于没有 */
+  background: color-mix(in srgb, var(--text-1) 7%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  /* 正文色而不是强调色：强调色在这段正文里是**链接**的颜色，代码再用它就
+     分不清哪个能点了。而且强调色压在这层 7% 底色上，浅色主题只有 4.51:1，
+     贴着 4.5 的线；正文色是 14:1。等宽字体本身已经把代码和正文分开了。 */
+  color: var(--text-1);
+  /* 命令不能在中间断行 —— 断成两行的 `chmod` / `+x` 复制出去是错的 */
+  white-space: nowrap;
+}
+
+/* 提示块。左侧那道竖条是形状不是颜色，去掉颜色也还读得出来。 */
+.note {
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
+  font-size: 0.94rem;
+}
+
+/* 卡片网格：下载页的平台卡、指南索引都用它 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  display: block;
+  padding: var(--space-6);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
+  color: inherit;
+  transition: border-color var(--transition), background var(--transition),
+    transform var(--transition);
+}
+
+a.card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--card-fill-hover);
+  transform: translateY(-2px);
+}
+
+.card h3 { font-size: 1.02rem; font-weight: 700; color: var(--text-1); }
+.card p { margin-top: 8px; color: var(--text-2); font-size: 0.92rem; }
+
+.card__meta {
+  display: block;
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* ── 更新日志（由 site-assets.mjs 从 CHANGELOG.md 生成） ── */
+.release + .release { margin-top: clamp(36px, 4vw, 52px); }
+
+.release__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.release__version {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.release__date { color: var(--text-2); font-size: 0.85rem; }
+.release__section { margin-top: var(--space-5); }
+
+/* 版本号是 h2（层级上对），但分隔线画在 .release__head 上，这里要撤掉
+   .prose h2 自带的那条，否则同一条线画两遍 */
+.prose .release__version {
+  margin-top: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.release__kind {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.release ul { margin-top: 10px; padding-left: 0; list-style: none; }
+
+.release li {
+  position: relative;
+  padding-left: 18px;
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 0.94rem;
+}
+
+/* 等宽短横代替默认圆点：与终端的视觉语言一致，也不依赖字体画不画得出圆点 */
+.release li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+/* ── 当前页高亮 ──
+   **刻意不写进顶栏那段**：它必须在所有页面逐字节相同，由 site-assets.mjs
+   校验。所以状态挂在 <body data-page="…"> 上。
+   选择器用 href$= 后缀匹配，这样 guide/* 里的 ../ 前缀不影响命中。
+   加新页面时给它一个 data-page 值即可 —— 值对不上任何一条选择器时，
+   那一页的导航里不会有任何项被选中，看起来就像「这页不在导航里」。
+
+   download 没有对应条目是有意的：它的入口是顶栏那颗按钮（一个常驻 CTA），
+   不是导航项。要给它加高亮，得先把「下载」也做成导航链接。 */
+body[data-page="home"] .nav__link[href$="index.html#features"],
+body[data-page="download"] .nav__link[href$="download.html"],
+body[data-page="faq"] .nav__link[href$="faq.html"],
+body[data-page="changelog"] .nav__link[href$="changelog.html"],
+body[data-page="guide"] .nav__link[href$="guide/"] {
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--text-1) 9%, transparent);
+  /* 底边那道强调色是形状不是颜色 —— 只靠颜色区分当前项，色觉障碍用户读不出来 */
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 /* ── 入场（需要 app.js 给 <html> 加 .js） ── */
