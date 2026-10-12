@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QuantDesktop 常见问题 —— 免费吗、要注册吗、数据从哪来</title>
+<meta name="description" content="关于 QuantDesktop 的常见问题：是否需要注册、会不会收集数据、行情数据来源、许可与商业使用、支持的系统，以及安装与升级。" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="canonical" href="https://leaderxin.github.io/quant-desktop/faq.html" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="favicon-180.png" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuantDesktop" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="QuantDesktop 常见问题 —— 免费吗、要注册吗、数据从哪来" />
+<meta property="og:description" content="关于 QuantDesktop 的常见问题：是否需要注册、会不会收集数据、行情数据来源、许可与商业使用、支持的系统，以及安装与升级。" />
+<meta property="og:url" content="https://leaderxin.github.io/quant-desktop/faq.html" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="QuantDesktop —— 免费的 A 股桌面看盘工具，安装包不到 5 MB" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="QuantDesktop 常见问题 —— 免费吗、要注册吗、数据从哪来" />
+<meta name="twitter:description" content="关于 QuantDesktop 的常见问题：是否需要注册、会不会收集数据、行情数据来源、许可与商业使用、支持的系统，以及安装与升级。" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "@id": "https://leaderxin.github.io/quant-desktop/faq.html#faq",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "使用 QuantDesktop 需要注册账号吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不需要。应用没有账号系统，下载装完直接就能用，也没有任何统计埋点。" }
+    },
+    {
+      "@type": "Question",
+      "name": "QuantDesktop 会收集我的数据吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不会。自选股、界面偏好、窗口位置全部保存在本机 SQLite 数据库，不上传任何服务器，卸载应用后随之删除。" }
+    },
+    {
+      "@type": "Question",
+      "name": "行情数据从哪里来？可靠吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "来自腾讯证券与新浪财经的公开行情接口，两个数据源互为备份，其中一个异常时自动回退到另一个。数据仅供参考，不构成投资建议。" }
+    },
+    {
+      "@type": "Question",
+      "name": "卸载 QuantDesktop 后本地数据会残留吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "Windows 下数据在 %APPDATA%\\quant-desktop，便携版在程序目录的 data 子目录下；卸载应用不会自动删除这些文件，手动删掉该目录即可彻底清除。" }
+    },
+    {
+      "@type": "Question",
+      "name": "QuantDesktop 真的完全免费吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "个人使用完全免费，没有内购、没有会员、没有功能墙。项目采用 PolyForm Noncommercial 非商业开源许可，商业使用需要获得作者授权。" }
+    },
+    {
+      "@type": "Question",
+      "name": "可以用在公司或商业环境里吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不可以直接商用。许可是 PolyForm Noncommercial 1.0.0，个人使用、学习、修改、分发免费，商业使用需先取得作者授权。它不是 MIT。" }
+    },
+    {
+      "@type": "Question",
+      "name": "有广告或弹窗推广吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "没有。应用不含任何广告、推送或第三方分析 SDK，不会推销理财产品，也没有需要关闭的启动页。" }
+    },
+    {
+      "@type": "Question",
+      "name": "QuantDesktop 支持哪些操作系统？",
+      "acceptedAnswer": { "@type": "Answer", "text": "Windows 10 与 11、macOS（Intel 与 Apple Silicon），以及 Linux（glibc 2.35 及以上，Ubuntu 22.04 基线）。" }
+    },
+    {
+      "@type": "Question",
+      "name": "支持哪些市场？港股美股能看吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "目前覆盖沪深京三市的个股、指数与 ETF。港股与美股在规划中，尚未支持。" }
+    },
+    {
+      "@type": "Question",
+      "name": "刷新频率是多少？可以自己调吗？",
+      "acceptedAnswer": { "@type": "Answer", "text": "按交易时段自动调节，不需要手动设置：开盘探测每 2 秒、正常交易 2 秒、盘前与午休 5 到 10 秒、连续无变化或节假日降到 30 秒。" }
+    },
+    {
+      "@type": "Question",
+      "name": "Windows 提示「已保护你的电脑」是怎么回事？",
+      "acceptedAnswer": { "@type": "Answer", "text": "这是 SmartScreen 对未购买代码签名证书的独立软件的统一提示，不是报毒。点「更多信息」再点「仍要运行」即可；也可以改从 Microsoft Store 安装。" }
+    },
+    {
+      "@type": "Question",
+      "name": "关闭窗口后应用去哪里了？",
+      "acceptedAnswer": { "@type": "Answer", "text": "点关闭只是收进系统托盘，行情条和后台轮询继续运行。要彻底退出，右键托盘图标选「退出」。" }
+    }
+  ]
+}
+</script>
+
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // 与首页同一段：首帧前定好主题，否则深色访问者会先看到一帧白闪。
+  (function () {
+    var root = document.documentElement;
+    root.classList.add('js');
+    var saved = null;
+    try { saved = localStorage.getItem('qd-theme'); } catch (e) { /* private mode */ }
+    var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    root.setAttribute('data-theme', saved || (prefersLight ? 'light' : 'dark'));
+  })();
+</script>
+</head>
+
+<body data-page="faq">
+
+<!-- chrome:nav:start -->
+<header class="nav" id="nav">
+  <div class="container nav__inner">
+    <a class="nav__brand" href="index.html">
+      <img src="icon-128.png" alt="" width="28" height="28" />
+      <span>QuantDesktop</span>
+    </a>
+
+    <nav class="nav__links" id="navLinks">
+      <a class="nav__link" href="index.html#features">功能亮点</a>
+      <a class="nav__link" href="guide/">使用指南</a>
+      <a class="nav__link" href="faq.html">常见问题</a>
+      <a class="nav__link" href="changelog.html">更新日志</a>
+    </nav>
+
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm nav__gh" href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="nav__gh-label">GitHub</span>
+      </a>
+
+      <button class="icon-btn theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a class="btn btn--primary btn--sm" href="download.html">下载</a>
+
+      <button class="icon-btn nav__burger" id="navBurger" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="navLinks">
+        <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg class="icon icon-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- chrome:nav:end -->
+
+<main id="top">
+  <header class="page-head container">
+    <h1 class="page-head__title">常见问题</h1>
+    <p class="page-head__lede">
+      关于数据来源、隐私、许可与安装的常见疑问。没找到答案的话，欢迎到
+      <a href="https://github.com/Leaderxin/quant-desktop/issues">GitHub Issues</a> 提问。
+    </p>
+  </header>
+
+  <div class="container" style="padding-bottom: clamp(56px, 7vw, 88px)">
+    <div class="prose" style="max-width: 760px">
+
+      <h2>数据与隐私</h2>
+
+      <h3>使用 QuantDesktop 需要注册账号吗？</h3>
+      <p>不需要。应用没有账号系统，下载装完直接就能用，也没有任何统计埋点。</p>
+
+      <h3>会收集我的数据吗？</h3>
+      <p>不会。自选股、界面偏好、窗口位置全部保存在本机 SQLite 数据库，不上传任何服务器，卸载应用后随之删除。</p>
+
+      <h3>行情数据从哪里来？可靠吗？</h3>
+      <p>来自腾讯证券与新浪财经的公开行情接口，两个数据源互为备份，其中一个异常时自动回退到另一个。数据仅供参考，不构成投资建议。</p>
+
+      <h3>卸载后本地数据会残留吗？</h3>
+      <p>Windows 下数据在 <code>%APPDATA%\quant-desktop</code>，便携版在程序目录的 <code>data</code> 子目录下；卸载应用不会自动删除这些文件，手动删掉该目录即可彻底清除。</p>
+
+      <h2>费用与许可</h2>
+
+      <h3>真的完全免费吗？</h3>
+      <p>个人使用完全免费，没有内购、没有会员、没有功能墙。项目采用 PolyForm Noncommercial 非商业开源许可，商业使用需要获得作者授权。</p>
+
+      <h3>可以用在公司或商业环境里吗？</h3>
+      <p>不可以直接商用。许可是 PolyForm Noncommercial 1.0.0，个人使用、学习、修改、分发免费，商业使用需先取得作者授权。<strong>它不是 MIT。</strong></p>
+
+      <h3>有广告或弹窗推广吗？</h3>
+      <p>没有。应用不含任何广告、推送或第三方分析 SDK，不会推销理财产品，也没有需要关闭的启动页。</p>
+
+      <h2>系统与使用</h2>
+
+      <h3>支持哪些操作系统？</h3>
+      <p>Windows 10 与 11、macOS（Intel 与 Apple Silicon），以及 Linux（glibc 2.35 及以上，Ubuntu 22.04 基线）。</p>
+
+      <h3>支持哪些市场？港股美股能看吗？</h3>
+      <p>目前覆盖沪深京三市的个股、指数与 ETF。港股与美股在规划中，尚未支持。</p>
+
+      <h3>刷新频率是多少？可以自己调吗？</h3>
+      <p>按交易时段自动调节，不需要手动设置：开盘探测每 2 秒、正常交易 2 秒、盘前与午休 5 到 10 秒、连续无变化或节假日降到 30 秒。</p>
+
+      <h3>Windows 提示「已保护你的电脑」是怎么回事？</h3>
+      <p>这是 SmartScreen 对未购买代码签名证书的独立软件的统一提示，不是报毒。点「更多信息」再点「仍要运行」即可；也可以改从 Microsoft Store 安装。</p>
+
+      <h3>关闭窗口后应用去哪里了？</h3>
+      <p>点关闭只是收进系统托盘，行情条和后台轮询继续运行。要彻底退出，右键托盘图标选「退出」。</p>
+
+      <div class="note" style="margin-top: 44px">
+        还有别的问题？到
+        <a href="https://github.com/Leaderxin/quant-desktop/issues">GitHub Issues</a>
+        提一个，或者看看 <a href="guide/">使用指南</a>。
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- chrome:footer:start -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__grid">
+      <div>
+        <div class="footer__brand">
+          <img src="icon-128.png" alt="" width="30" height="30" />
+          <span>QuantDesktop</span>
+        </div>
+        <p class="footer__slogan">免费 · 开源 · 零打扰的桌面级 A 股实时行情工具。让看盘更安静一点。</p>
+      </div>
+
+      <div>
+        <h4>项目</h4>
+        <div class="footer__links">
+          <a href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">GitHub 仓库</a>
+          <a href="download.html">下载安装</a>
+          <a href="changelog.html">更新日志</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">开源许可</a>
+        </div>
+      </div>
+
+      <div>
+        <h4>支持</h4>
+        <div class="footer__links">
+          <a href="guide/">使用指南</a>
+          <a href="faq.html">常见问题</a>
+          <a href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">Microsoft Store</a>
+          <a href="privacy.html">隐私说明</a>
+        </div>
+      </div>
+
+      <div class="footer__qr">
+        <img src="assets/qrcode.png" alt="QuantDesktop 微信用户交流群二维码" loading="lazy" />
+        <span>扫码加入用户交流群</span>
+      </div>
+    </div>
+
+    <div class="footer__bottom">
+      <p>
+        行情数据来自第三方公开接口，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+      </p>
+      <p>© 2026 Leaderxin · 基于 PolyForm Noncommercial License 1.0.0 开源</p>
+    </div>
+  </div>
+</footer>
+<!-- chrome:footer:end -->
+
+<!-- chrome:totop:start -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
+  <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <circle class="to-top__track" cx="20" cy="20" r="16" />
+    <circle class="to-top__bar" id="toTopBar" cx="20" cy="20" r="16" />
+  </svg>
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+</a>
+<!-- chrome:totop:end -->
+
+<script src="app.js" defer></script>
+</body>
+</html>

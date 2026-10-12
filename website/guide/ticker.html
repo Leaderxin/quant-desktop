@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>悬浮行情条怎么设置 —— QuantDesktop 使用指南</title>
+<meta name="description" content="QuantDesktop 悬浮行情条的完整用法：拖到哪儿、每屏显示几只、轮播哪些自选、怎么设成透明背景只留数字。" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="canonical" href="https://leaderxin.github.io/quant-desktop/guide/ticker.html" />
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="../favicon-180.png" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuantDesktop" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="悬浮行情条怎么设置 —— QuantDesktop 使用指南" />
+<meta property="og:description" content="QuantDesktop 悬浮行情条的完整用法：拖到哪儿、每屏显示几只、轮播哪些自选、怎么设成透明背景只留数字。" />
+<meta property="og:url" content="https://leaderxin.github.io/quant-desktop/guide/ticker.html" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="QuantDesktop —— 免费的 A 股桌面看盘工具，安装包不到 5 MB" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="悬浮行情条怎么设置 —— QuantDesktop 使用指南" />
+<meta name="twitter:description" content="QuantDesktop 悬浮行情条的完整用法：拖到哪儿、每屏显示几只、轮播哪些自选、怎么设成透明背景只留数字。" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+
+<link rel="stylesheet" href="../styles.css" />
+<script>
+  // 与首页同一段：首帧前定好主题，否则深色访问者会先看到一帧白闪。
+  (function () {
+    var root = document.documentElement;
+    root.classList.add('js');
+    var saved = null;
+    try { saved = localStorage.getItem('qd-theme'); } catch (e) { /* private mode */ }
+    var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    root.setAttribute('data-theme', saved || (prefersLight ? 'light' : 'dark'));
+  })();
+</script>
+</head>
+
+<body data-page="guide">
+
+<!-- chrome:nav:start -->
+<header class="nav" id="nav">
+  <div class="container nav__inner">
+    <a class="nav__brand" href="../index.html">
+      <img src="../icon-128.png" alt="" width="28" height="28" />
+      <span>QuantDesktop</span>
+    </a>
+
+    <nav class="nav__links" id="navLinks">
+      <a class="nav__link" href="../index.html#features">功能亮点</a>
+      <a class="nav__link" href="../guide/">使用指南</a>
+      <a class="nav__link" href="../faq.html">常见问题</a>
+      <a class="nav__link" href="../changelog.html">更新日志</a>
+    </nav>
+
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm nav__gh" href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="nav__gh-label">GitHub</span>
+      </a>
+
+      <button class="icon-btn theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a class="btn btn--primary btn--sm" href="../download.html">下载</a>
+
+      <button class="icon-btn nav__burger" id="navBurger" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="navLinks">
+        <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg class="icon icon-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- chrome:nav:end -->
+
+<main id="top">
+  <div class="page-head container">
+    <nav class="crumb" aria-label="面包屑">
+      <a href="../index.html">官网</a><i>/</i><a href="./">使用指南</a><i>/</i><span>悬浮行情条</span>
+    </nav>
+    <h1 class="page-head__title">摆好那枚悬浮行情条</h1>
+    <p class="page-head__lede">
+      它是这个工具最受欢迎的部分：一枚常驻桌面、始终置顶的迷你报价条。
+      这里讲怎么把它调成适合你工位的样子。
+    </p>
+  </div>
+
+  <div class="container" style="padding-bottom: clamp(56px, 7vw, 88px)">
+    <div class="prose" style="max-width: 720px">
+
+      <h2>它默认长什么样</h2>
+      <p>
+        首次启动后，行情条出现在屏幕右下角，无边框、不占任务栏、始终浮在其他窗口之上。
+        每 3 秒自动翻一页，默认一页显示 2 只自选，显示名称、现价和涨跌幅。
+      </p>
+      <p>鼠标移上去它会暂停轮播，方便你停下来看清楚；移开继续。</p>
+
+      <h2>把它拖到顺手的位置</h2>
+      <p>
+        直接拖动行情条本体即可。位置会自动记住，下次启动还在原地。
+        如果换了显示器、或把窗口拖到了已经拔掉的屏幕上，启动时会自动拉回可见区域，不会出现「窗口不见了」的情况。
+      </p>
+      <p>单击行情条会立刻把主窗口叫回来 —— 这也是主窗口收进托盘之后最快的恢复方式。</p>
+
+      <h2>决定播报哪几只、每屏几只</h2>
+      <p>
+        打开设置页的「行情条」分区，两件事都在这里：
+      </p>
+      <ul>
+        <li><strong>每屏条数</strong> —— 预设 1 到 4，也可以用「自定义」填到 10。窗口高度会跟着内容走。</li>
+        <li><strong>轮播范围</strong> —— 跨分组挑选要播报的股票，还能拖拽调整播报顺序。不需要的逐只关掉即可。</li>
+      </ul>
+      <p>
+        轮播范围是一条<strong>跨分组的扁平列表</strong>，与你把股票放在哪个分组无关。
+        所以「只播报持仓那几只」这种需求，不需要为此单独建一个分组。
+      </p>
+
+      <h2>设成透明背景，只留数字</h2>
+      <p>
+        在「行情条」分区里打开「透明背景」。底板、圆角与阴影会<strong>一起</strong>去掉，
+        只剩数字浮在桌面上，看起来就像桌面本身的一部分。
+      </p>
+      <p>
+        浅色桌面上用浅色主题的数字，或者干脆配一张纯色壁纸，读起来最舒服。
+      </p>
+
+      <h2>不要它了呢</h2>
+      <p>
+        设置页「行情条」分区里关掉「显示行情条」，或者右键托盘图标选「切换行情条」。
+        两种方式效果一样，都会记住你的选择，下次启动照旧。
+      </p>
+
+      <div class="note" style="margin-top: 44px">
+        下一步可以看 <a href="groups.html">用分组把自选理清楚</a>，
+        或者回到 <a href="./">使用指南</a>。
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- chrome:footer:start -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__grid">
+      <div>
+        <div class="footer__brand">
+          <img src="../icon-128.png" alt="" width="30" height="30" />
+          <span>QuantDesktop</span>
+        </div>
+        <p class="footer__slogan">免费 · 开源 · 零打扰的桌面级 A 股实时行情工具。让看盘更安静一点。</p>
+      </div>
+
+      <div>
+        <h4>项目</h4>
+        <div class="footer__links">
+          <a href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">GitHub 仓库</a>
+          <a href="../download.html">下载安装</a>
+          <a href="../changelog.html">更新日志</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">开源许可</a>
+        </div>
+      </div>
+
+      <div>
+        <h4>支持</h4>
+        <div class="footer__links">
+          <a href="../guide/">使用指南</a>
+          <a href="../faq.html">常见问题</a>
+          <a href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">Microsoft Store</a>
+          <a href="../privacy.html">隐私说明</a>
+        </div>
+      </div>
+
+      <div class="footer__qr">
+        <img src="../assets/qrcode.png" alt="QuantDesktop 微信用户交流群二维码" loading="lazy" />
+        <span>扫码加入用户交流群</span>
+      </div>
+    </div>
+
+    <div class="footer__bottom">
+      <p>
+        行情数据来自第三方公开接口，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+      </p>
+      <p>© 2026 Leaderxin · 基于 PolyForm Noncommercial License 1.0.0 开源</p>
+    </div>
+  </div>
+</footer>
+<!-- chrome:footer:end -->
+
+<!-- chrome:totop:start -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
+  <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <circle class="to-top__track" cx="20" cy="20" r="16" />
+    <circle class="to-top__bar" id="toTopBar" cx="20" cy="20" r="16" />
+  </svg>
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+</a>
+<!-- chrome:totop:end -->
+
+<script src="../app.js" defer></script>
+</body>
+</html>

@@ -324,6 +324,14 @@ button {
   font-size: 1rem;
 }
 
+/* 区块末尾的「查看更多」。首页只放每条内容的摘要，完整版在各自的页面里，
+   这个链接就是那条路径。 */
+.section__more {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-weight: 600;
+}
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -458,6 +466,7 @@ button {
 }
 
 .nav__link {
+  position: relative;
   padding: 8px 12px;
   border-radius: var(--radius-xs);
   color: var(--text-2);
@@ -473,6 +482,35 @@ button {
 
 [data-theme="light"] .nav__link:hover {
   background: rgba(15, 23, 42, 0.05);
+}
+
+/* 当前页指示器。所有导航项都带这一条，默认靠 --current 隐掉。 */
+.nav__link::after {
+  content: "";
+  position: absolute;
+  /* 左右 12px 正是 .nav__link 的内边距 —— 于是线宽**等于文字宽**。
+     按内边距外沿算的话线会比文字宽一截，那看着像一颗带下边框的按钮。 */
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 2px;
+  border-radius: 1px;
+  /* 两端渐隐。全站只有两处用渐变线，另一处是顶栏滚动后那条 ::after 发丝线
+     （.nav.is-scrolled::after），于是这两条线互相解释。 */
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 24%,
+    var(--accent) 76%,
+    transparent
+  );
+  /* 用 drop-shadow 而不是 box-shadow：它跟着渐变渲染后的 alpha 走，于是辉光
+     只裹在可见的那段线上；box-shadow 会按元素框发一圈方形的光。
+     这一下是为了与站点已有的辉光语言对齐 —— 主按钮和回到顶部的进度环都亮着，
+     指示器不亮会显得是贴上去的。 */
+  filter: drop-shadow(0 0 5px var(--glow-accent));
+  opacity: var(--current, 0);
+  transition: opacity var(--transition);
 }
 
 .nav__actions {
@@ -1737,6 +1775,233 @@ button {
   visibility: visible;
 }
 
+/* ================================================================
+   内容页（faq / download / changelog / guide/*）
+
+   这些页面共用首页那套 token 与顶栏页脚，只是版式换成阅读型：一个标题区、
+   一条正文列、必要时加卡片网格。顶栏是 fixed 的，而内容页没有 hero 撑高度，
+   所以 .page-head 自己让出 nav 的空间。
+   ================================================================ */
+
+.page-head {
+  padding: calc(var(--nav-height) + clamp(40px, 6vw, 64px)) 0 clamp(28px, 4vw, 40px);
+}
+
+.page-head__title {
+  font-size: clamp(1.7rem, 3.6vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.page-head__lede {
+  margin-top: var(--space-4);
+  max-width: 46em;
+  color: var(--text-2);
+  font-size: 1.02rem;
+}
+
+/* 面包屑只出现在 guide/*：那是全站唯一的三级路径。平铺的页面用不到，
+   硬加反而是噪音（见 ux 规则的 breadcrumb-web：3+ 层才用）。 */
+.crumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.crumb a { color: var(--text-2); }
+.crumb a:hover { color: var(--accent); }
+.crumb i { font-style: normal; color: var(--hairline-strong); }
+
+/* 正文列。中文每行 35–45 字最省眼，680px 在 17px 下正好落在这一带 ——
+   比首页那种 1072px 的通栏窄得多，那宽度读长文会来回找行首。 */
+.prose {
+  max-width: 680px;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--text-2);
+}
+
+.prose > * + * { margin-top: var(--space-5); }
+
+.prose h2 {
+  margin-top: clamp(36px, 5vw, 52px);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 1.22rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.prose h3 {
+  margin-top: var(--space-6);
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.prose strong { color: var(--text-1); font-weight: 600; }
+.prose a { border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.prose ul { padding-left: 1.25em; list-style: disc; }
+.prose ol { padding-left: 1.5em; list-style: decimal; }
+.prose li { margin-top: 8px; }
+.prose li::marker { color: var(--text-2); }
+
+.prose code {
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  /* 用 color-mix 而不是写死的白色叠加：浅色主题下 rgba(255,255,255,.04)
+     在白底上等于没有 */
+  background: color-mix(in srgb, var(--text-1) 7%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  /* 正文色而不是强调色：强调色在这段正文里是**链接**的颜色，代码再用它就
+     分不清哪个能点了。而且强调色压在这层 7% 底色上，浅色主题只有 4.51:1，
+     贴着 4.5 的线；正文色是 14:1。等宽字体本身已经把代码和正文分开了。 */
+  color: var(--text-1);
+  /* 命令不能在中间断行 —— 断成两行的 `chmod` / `+x` 复制出去是错的 */
+  white-space: nowrap;
+}
+
+/* 提示块。左侧那道竖条是形状不是颜色，去掉颜色也还读得出来。 */
+.note {
+  padding: var(--space-5);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
+  font-size: 0.94rem;
+}
+
+/* 卡片网格：下载页的平台卡、指南索引都用它 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: var(--space-4);
+}
+
+.card {
+  display: block;
+  padding: var(--space-6);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--card-fill);
+  box-shadow: var(--sheen);
+  color: inherit;
+  transition: border-color var(--transition), background var(--transition),
+    transform var(--transition);
+}
+
+a.card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--card-fill-hover);
+  transform: translateY(-2px);
+}
+
+.card h3 { font-size: 1.02rem; font-weight: 700; color: var(--text-1); }
+.card p { margin-top: 8px; color: var(--text-2); font-size: 0.92rem; }
+
+.card__meta {
+  display: block;
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+/* ── 更新日志（由 site-assets.mjs 从 CHANGELOG.md 生成） ── */
+.release + .release { margin-top: clamp(36px, 4vw, 52px); }
+
+.release__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.release__version {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.release__date { color: var(--text-2); font-size: 0.85rem; }
+.release__section { margin-top: var(--space-5); }
+
+/* 版本号是 h2（层级上对），但分隔线画在 .release__head 上，这里要撤掉
+   .prose h2 自带的那条，否则同一条线画两遍 */
+.prose .release__version {
+  margin-top: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.release__kind {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.release ul { margin-top: 10px; padding-left: 0; list-style: none; }
+
+.release li {
+  position: relative;
+  padding-left: 18px;
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 0.94rem;
+}
+
+/* 等宽短横代替默认圆点：与终端的视觉语言一致，也不依赖字体画不画得出圆点 */
+.release li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+/* ── 当前页高亮 ──
+   **刻意不做「淡色底块 + 通栏下划线」那一套。** 那是模板与生成式工具的默认
+   答案；而且两个信号互相打架 —— 底块已经说了「就是这里」，再压一条粗线是
+   重复，合起来还会被读成一颗带下边框的按钮。技能库里那条规则的原话也只是
+   「Highlight active nav item with color/underline」，没有底块。这里只留
+   一个信号：标签提亮 + 一条与文字等宽的渐隐短横。
+
+   状态收进一个 `--current` 变量，颜色与指示器都从它派生 —— 于是「哪个
+   data-page 对应哪个导航项」这份清单**只写一遍**。拆成两个选择器块的话，
+   两份清单迟早对不上，而症状只是某一页的指示器没出现，没人会发现。
+
+   **不能写进顶栏那段 HTML**：它必须在所有页面逐字节相同，由
+   site-assets.mjs 校验。所以状态挂在 <body data-page> 上。
+
+   加新页面时给它一个 data-page 值并在下面登记一行。这里没有 download：
+   它的入口是顶栏那颗常驻 CTA 按钮，不是导航项，硬凑一个选择器只会是死代码。 */
+body[data-page="home"] .nav__link[href$="index.html#features"],
+body[data-page="faq"] .nav__link[href$="faq.html"],
+body[data-page="changelog"] .nav__link[href$="changelog.html"],
+body[data-page="guide"] .nav__link[href$="guide/"] {
+  --current: 1;
+  color: var(--text-1);
+}
+
 /* ── 入场（需要 app.js 给 <html> 加 .js） ── */
 .js .reveal {
   opacity: 0;
@@ -1794,6 +2059,21 @@ button {
   .nav__link {
     padding: 12px 14px;
     font-size: 1rem;
+  }
+
+  /* 手机菜单是竖排列表，横向下划线在这里既没有方向感、又会因为
+     align-items: stretch 被拉成通栏。改成左侧竖条 —— 竖排列表里用竖条，
+     横排里用横线，这是同一个「方向跟着布局走」的规则。 */
+  .nav__link::after {
+    left: 0;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: 2px;
+    height: 18px;
+    margin-top: -9px;
+    border-radius: 0 1px 1px 0;
+    background: var(--accent);
   }
 
   .nav__burger {

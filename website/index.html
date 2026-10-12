@@ -161,21 +161,29 @@
 </script>
 </head>
 
-<body>
+<body data-page="home">
 
-<!-- ── Nav ─────────────────────────────────────────────────────── -->
+<!-- ── Nav ───────────────────────────────────────────────────────
+     chrome:nav 包起来的这一段，在所有页面里必须一致 ——
+     scripts/site-assets.mjs 会逐字节比对（比对前剥掉 ../，因为子目录页面
+     的深度不是漂移），不一致就让 CI 失败。
+     所以**当前页高亮不能靠改这里**：走 <body data-page="…"> 加 CSS，
+     块本身因此保持原样。想加导航项就改这一处再同步到其他页面，
+     漏了哪一页校验会直接点名。
+     ────────────────────────────────────────────────────────────── -->
+<!-- chrome:nav:start -->
 <header class="nav" id="nav">
   <div class="container nav__inner">
-    <a class="nav__brand" href="#top">
+    <a class="nav__brand" href="index.html">
       <img src="icon-128.png" alt="" width="28" height="28" />
       <span>QuantDesktop</span>
     </a>
 
     <nav class="nav__links" id="navLinks">
-      <a class="nav__link" href="#features">功能亮点</a>
-      <a class="nav__link" href="#screens">界面截图</a>
-      <a class="nav__link" href="#download">下载安装</a>
-      <a class="nav__link" href="#faq">常见问题</a>
+      <a class="nav__link" href="index.html#features">功能亮点</a>
+      <a class="nav__link" href="guide/">使用指南</a>
+      <a class="nav__link" href="faq.html">常见问题</a>
+      <a class="nav__link" href="changelog.html">更新日志</a>
     </nav>
 
     <div class="nav__actions">
@@ -189,7 +197,7 @@
         <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       </button>
 
-      <a class="btn btn--primary btn--sm" href="#download">下载</a>
+      <a class="btn btn--primary btn--sm" href="download.html">下载</a>
 
       <button class="icon-btn nav__burger" id="navBurger" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="navLinks">
         <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
@@ -198,6 +206,7 @@
     </div>
   </div>
 </header>
+<!-- chrome:nav:end -->
 
 <main id="top">
 
@@ -729,6 +738,7 @@
       <p class="section__desc">
         全部安装包都在 <a href="https://github.com/Leaderxin/quant-desktop/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>，
         也可以从 Microsoft Store 安装（随商店自动更新）。
+        不确定选哪个？<a href="download.html">看各平台文件说明</a>。
       </p>
     </div>
 
@@ -836,12 +846,18 @@
         </div>
       </details>
     </div>
+
+    <!-- 首页只放最常见的四条；完整版在 /faq，那份同时带 FAQPage 结构化数据 -->
+    <p class="section__more reveal">
+      <a href="faq.html">查看全部常见问题 →</a>
+    </p>
   </div>
 </section>
 
 </main>
 
 <!-- ── Footer ──────────────────────────────────────────────────── -->
+<!-- chrome:footer:start -->
 <footer class="footer">
   <div class="container">
     <div class="footer__grid">
@@ -857,8 +873,8 @@
         <h4>项目</h4>
         <div class="footer__links">
           <a href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">GitHub 仓库</a>
-          <a href="https://github.com/Leaderxin/quant-desktop/releases" target="_blank" rel="noopener">下载与更新日志</a>
-          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>
+          <a href="download.html">下载安装</a>
+          <a href="changelog.html">更新日志</a>
           <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">开源许可</a>
         </div>
       </div>
@@ -866,8 +882,8 @@
       <div>
         <h4>支持</h4>
         <div class="footer__links">
-          <a href="https://github.com/Leaderxin/quant-desktop/issues" target="_blank" rel="noopener">反馈问题</a>
-          <a href="https://github.com/Leaderxin/quant-desktop/issues" target="_blank" rel="noopener">功能建议</a>
+          <a href="guide/">使用指南</a>
+          <a href="faq.html">常见问题</a>
           <a href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">Microsoft Store</a>
           <a href="privacy.html">隐私说明</a>
         </div>
@@ -887,6 +903,7 @@
     </div>
   </div>
 </footer>
+<!-- chrome:footer:end -->
 
 <!-- 回到顶部。做成 <a href="#top"> 而不是 <button>：滚动本身交给
      html{scroll-behavior:smooth} 与片段导航，禁用 JS 时它照样能用，
@@ -895,6 +912,7 @@
      里面那个进度环不是装饰：它把「离页尾还有多远」一并表达了，而这是这个
      位置本来就该回答的问题。禁用 JS 时进度停在 0，环不可见，剩下的仍是一个
      能用的回到顶部按钮。 -->
+<!-- chrome:totop:start -->
 <a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
   <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
     <circle class="to-top__track" cx="20" cy="20" r="16" />
@@ -902,6 +920,7 @@
   </svg>
   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
 </a>
+<!-- chrome:totop:end -->
 
 <script src="app.js" defer></script>
 </body>

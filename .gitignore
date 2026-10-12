@@ -43,3 +43,5 @@ website/sitemap.xml
 
 # Python bytecode cache (ui-ux-pro-max skill scripts)
 __pycache__/
+# 从 CHANGELOG.md 生成（scripts/site-assets.mjs），手写的那份下次发版就过期了
+website/changelog.html

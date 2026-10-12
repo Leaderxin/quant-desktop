@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>老板键怎么设 —— QuantDesktop 使用指南</title>
+<meta name="description" content="给 QuantDesktop 配一个全局快捷键，按下立刻隐藏主窗口，行情条不受影响。默认不启用，任何组合键都能录。" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="canonical" href="https://leaderxin.github.io/quant-desktop/guide/boss-key.html" />
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="../favicon-180.png" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="QuantDesktop" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="老板键怎么设 —— QuantDesktop 使用指南" />
+<meta property="og:description" content="给 QuantDesktop 配一个全局快捷键，按下立刻隐藏主窗口，行情条不受影响。默认不启用，任何组合键都能录。" />
+<meta property="og:url" content="https://leaderxin.github.io/quant-desktop/guide/boss-key.html" />
+<meta property="og:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="QuantDesktop —— 免费的 A 股桌面看盘工具，安装包不到 5 MB" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="老板键怎么设 —— QuantDesktop 使用指南" />
+<meta name="twitter:description" content="给 QuantDesktop 配一个全局快捷键，按下立刻隐藏主窗口，行情条不受影响。默认不启用，任何组合键都能录。" />
+<meta name="twitter:image" content="https://leaderxin.github.io/quant-desktop/og-cover.png" />
+
+<link rel="stylesheet" href="../styles.css" />
+<script>
+  // 与首页同一段：首帧前定好主题，否则深色访问者会先看到一帧白闪。
+  (function () {
+    var root = document.documentElement;
+    root.classList.add('js');
+    var saved = null;
+    try { saved = localStorage.getItem('qd-theme'); } catch (e) { /* private mode */ }
+    var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    root.setAttribute('data-theme', saved || (prefersLight ? 'light' : 'dark'));
+  })();
+</script>
+</head>
+
+<body data-page="guide">
+
+<!-- chrome:nav:start -->
+<header class="nav" id="nav">
+  <div class="container nav__inner">
+    <a class="nav__brand" href="../index.html">
+      <img src="../icon-128.png" alt="" width="28" height="28" />
+      <span>QuantDesktop</span>
+    </a>
+
+    <nav class="nav__links" id="navLinks">
+      <a class="nav__link" href="../index.html#features">功能亮点</a>
+      <a class="nav__link" href="../guide/">使用指南</a>
+      <a class="nav__link" href="../faq.html">常见问题</a>
+      <a class="nav__link" href="../changelog.html">更新日志</a>
+    </nav>
+
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm nav__gh" href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span class="nav__gh-label">GitHub</span>
+      </a>
+
+      <button class="icon-btn theme-toggle" id="themeToggle" type="button" aria-label="切换深浅主题" title="切换深浅主题">
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a class="btn btn--primary btn--sm" href="../download.html">下载</a>
+
+      <button class="icon-btn nav__burger" id="navBurger" type="button" aria-label="展开导航" aria-expanded="false" aria-controls="navLinks">
+        <svg class="icon icon-menu" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg class="icon icon-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<!-- chrome:nav:end -->
+
+<main id="top">
+  <div class="page-head container">
+    <nav class="crumb" aria-label="面包屑">
+      <a href="../index.html">官网</a><i>/</i><a href="./">使用指南</a><i>/</i><span>老板键</span>
+    </nav>
+    <h1 class="page-head__title">设一个老板键</h1>
+    <p class="page-head__lede">
+      按一下，主窗口立刻消失。行情条不受影响，配置也不会被改掉 ——
+      这是一次临时躲避，不是把设置动过。
+    </p>
+  </div>
+
+  <div class="container" style="padding-bottom: clamp(56px, 7vw, 88px)">
+    <div class="prose" style="max-width: 720px">
+
+      <h2>怎么设</h2>
+      <p>
+        打开「设置 → 通用」，找到「老板键」一行，点录制框，直接按下你想要的组合键。
+        录完立刻生效，不用重启。
+      </p>
+      <p>
+        <strong>默认是不设置的</strong> —— 应用不占用任何全局快捷键，除非你自己选一个。
+        想取消，把录制框清空即可，旧键会同时被注销。
+      </p>
+
+      <h2>它能按什么键</h2>
+      <p>
+        任意组合键都可以，比如 <code>Ctrl+Shift+H</code>、<code>Ctrl+Alt+Q</code>、<code>F9</code>。
+        但有一个限制：<strong>裸键，或只带 Shift 的组合，不会被接受</strong>。
+      </p>
+      <p>
+        原因是这类按键会从整个系统把字符抢走：把 <code>H</code> 设成老板键之后，
+        在任何程序里打字都打不出 h 了。带上 Ctrl 或 Alt 就不会有这个问题。
+      </p>
+
+      <h2>按下之后</h2>
+      <p>
+        主窗口隐藏，<strong>行情条照常显示</strong>，后台轮询也照常跑。
+        这是刻意的：如果你正靠行情条盯盘，老板键不该把它一起收走。
+      </p>
+      <p>
+        怎么回来？点一下托盘图标，或者单击行情条 —— 两条路都会把主窗口叫回来并置于前台。
+      </p>
+
+      <h2>如果录了没反应</h2>
+      <p>多半是这个组合已经被别的程序占用了。换一个再试。</p>
+      <p>
+        设置页会在这个键注册失败时给出提示，并且<strong>回滚到你原来那个键</strong> ——
+        不会出现「新的用不了、旧的也丢了」的情况。
+      </p>
+
+      <div class="note" style="margin-top: 44px">
+        回到 <a href="./">使用指南</a>，或者看看
+        <a href="ticker.html">悬浮行情条</a> 怎么摆。
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- chrome:footer:start -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer__grid">
+      <div>
+        <div class="footer__brand">
+          <img src="../icon-128.png" alt="" width="30" height="30" />
+          <span>QuantDesktop</span>
+        </div>
+        <p class="footer__slogan">免费 · 开源 · 零打扰的桌面级 A 股实时行情工具。让看盘更安静一点。</p>
+      </div>
+
+      <div>
+        <h4>项目</h4>
+        <div class="footer__links">
+          <a href="https://github.com/Leaderxin/quant-desktop" target="_blank" rel="noopener">GitHub 仓库</a>
+          <a href="../download.html">下载安装</a>
+          <a href="../changelog.html">更新日志</a>
+          <a href="https://github.com/Leaderxin/quant-desktop/blob/master/LICENSE" target="_blank" rel="noopener">开源许可</a>
+        </div>
+      </div>
+
+      <div>
+        <h4>支持</h4>
+        <div class="footer__links">
+          <a href="../guide/">使用指南</a>
+          <a href="../faq.html">常见问题</a>
+          <a href="https://apps.microsoft.com/detail/9P46MZZDTTZ0" target="_blank" rel="noopener">Microsoft Store</a>
+          <a href="../privacy.html">隐私说明</a>
+        </div>
+      </div>
+
+      <div class="footer__qr">
+        <img src="../assets/qrcode.png" alt="QuantDesktop 微信用户交流群二维码" loading="lazy" />
+        <span>扫码加入用户交流群</span>
+      </div>
+    </div>
+
+    <div class="footer__bottom">
+      <p>
+        行情数据来自第三方公开接口，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+      </p>
+      <p>© 2026 Leaderxin · 基于 PolyForm Noncommercial License 1.0.0 开源</p>
+    </div>
+  </div>
+</footer>
+<!-- chrome:footer:end -->
+
+<!-- chrome:totop:start -->
+<a class="to-top" id="toTop" href="#top" aria-label="回到顶部">
+  <svg class="to-top__ring" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <circle class="to-top__track" cx="20" cy="20" r="16" />
+    <circle class="to-top__bar" id="toTopBar" cx="20" cy="20" r="16" />
+  </svg>
+  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+</a>
+<!-- chrome:totop:end -->
+
+<script src="../app.js" defer></script>
+</body>
+</html>
