@@ -9,6 +9,7 @@
 //    行情条之间就会无限往返（两边互相通知对方"设置变了"）。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { nextTick } from 'vue';
 
 const { invokeMock, emitMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -36,11 +37,40 @@ function mockBackend(settings: Record<string, string>) {
         return false;
       case 'is_store_build':
         return false;
+      // 主题模式落定后 store 会把模式同步给原生层（见 settings.ts 的模式 watch）。
+      // 它属于启动流程的一部分，不算「只读用例里冒出来的写操作」。
+      case 'set_window_theme':
+        return undefined;
       default:
         // 任何写操作都不该在只读用例里发生 —— 让它显式失败而不是静默通过
         throw new Error(`unexpected command: ${cmd}`);
     }
   });
+}
+
+type Listener = (e: { matches: boolean }) => void;
+
+/**
+ * 假的 matchMedia。happy-dom 的实现只按宽度判定媒体查询，深浅要自己造；
+ * 而主题解析正是靠它取「系统现在是不是深色」。
+ */
+function stubSystemTheme(initialDark: boolean) {
+  const listeners = new Set<Listener>();
+  const mql = {
+    matches: initialDark,
+    media: '(prefers-color-scheme: dark)',
+    addEventListener: (_type: string, cb: Listener) => { listeners.add(cb); },
+    removeEventListener: (_type: string, cb: Listener) => { listeners.delete(cb); },
+  };
+  window.matchMedia = (() => mql) as unknown as typeof window.matchMedia;
+  return {
+    mql,
+    /** 系统换了深浅：改值并通知订阅者（Rust 侧解 pin 之后是走这条）。 */
+    change(dark: boolean) {
+      mql.matches = dark;
+      for (const cb of listeners) cb({ matches: dark });
+    },
+  };
 }
 
 /**
@@ -61,6 +91,10 @@ async function load(settings: Record<string, string> = {}) {
 beforeEach(() => {
   invokeMock.mockReset();
   emitMock.mockClear();
+  // 每个用例都从「系统浅色 + 干净的 <html>」开始：主题解析要读 matchMedia，
+  // 而 data-theme 是上一个用例留在 DOM 上的
+  stubSystemTheme(false);
+  document.documentElement.removeAttribute('data-theme');
 });
 
 describe('派生配置的解析与兜底', () => {
@@ -189,40 +223,124 @@ describe('写入与跨窗口同步', () => {
     });
   });
 
-  it('toggleTheme 翻转主题、写库，并把标题栏一并同步（set_window_theme）', async () => {
-    const store = await load({ theme: 'light' });
-    invokeMock.mockClear();
-    emitMock.mockClear();
-    invokeMock.mockResolvedValue(undefined); // set_setting / set_window_theme
-
-    await store.toggleTheme();
-
-    expect(store.theme).toBe('dark');
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    // 标题栏是**操作系统**画的，<html data-theme> 管不到它。漏掉这个 IPC 的症状是
-    // 「内容变暗了、顶上那一条还是白的」—— 光看界面看不出是这里少调了一次
-    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'dark' });
-    expect(invokeMock).toHaveBeenCalledWith('set_setting', { key: 'theme', value: 'dark' });
-    expect(emitMock).toHaveBeenCalledWith('theme-changed', { theme: 'dark' });
-  });
-
-  it('applyTheme 也同步标题栏 —— 它是所有「应用主题」路径的唯一挂载点', async () => {
-    const store = await load({});
-    invokeMock.mockClear();
-    invokeMock.mockResolvedValue(undefined);
-
-    // 主窗口启动恢复、以及行情条收到 theme-changed 后走的都是这一条，
-    // 所以同步挂在这里，而不是只挂在 toggleTheme 上
-    store.applyTheme('dark');
-
-    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'dark' });
-  });
-
   it('applyColorScheme 落到 <html data-color-scheme> 上', async () => {
     const store = await load({});
     store.applyColorScheme('us');
     expect(document.documentElement.getAttribute('data-color-scheme')).toBe('us');
     store.applyColorScheme('cn');
     expect(document.documentElement.getAttribute('data-color-scheme')).toBe('cn');
+  });
+});
+
+describe('主题：三态与跟随系统', () => {
+  it('store 一建立就按解析出的主题落 data-theme（早于首屏渲染）', () => {
+    stubSystemTheme(true);
+    setActivePinia(createPinia());
+    mockBackend({});
+
+    // 还没 fetchSettings，设置表是空的 —— 模式取兜底的「跟随系统」，
+    // 于是首帧就按系统深浅渲染。原先要等 fetchSettings 跑完才落属性，
+    // 跟随系统下那会先闪一帧相反的底色。
+    useSettingsStore();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('显式模式就是设置值本身，不看系统深浅', async () => {
+    stubSystemTheme(true); // 系统是深色
+    const store = await load({ theme: 'light' });
+
+    expect(store.themeMode).toBe('light');
+    expect(store.theme).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('跟随系统按系统深浅解析；缺键也归「跟随系统」', async () => {
+    stubSystemTheme(true);
+    expect((await load({ theme: 'system' })).theme).toBe('dark');
+    expect((await load({})).themeMode).toBe('system');
+    expect((await load({})).theme).toBe('dark');
+
+    stubSystemTheme(false);
+    expect((await load({ theme: 'system' })).theme).toBe('light');
+  });
+
+  it('系统主题变化：跟随时实时跟随，显式模式下不采纳', async () => {
+    const sys = stubSystemTheme(true);
+
+    const following = await load({ theme: 'system' });
+    expect(following.theme).toBe('dark');
+    sys.change(false);
+    await nextTick();
+    expect(following.theme).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    // 显式模式下窗口主题是被钉住的，这个事件里的值可能只是应用自己 pin 出来的结果
+    const explicit = await load({ theme: 'dark' });
+    sys.change(true);
+    await nextTick();
+    expect(explicit.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('setThemeMode 写库、把**模式**交给原生层，并广播 settings-changed', async () => {
+    const store = await load({ theme: 'light' });
+    invokeMock.mockClear();
+    emitMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+
+    await store.setThemeMode('dark');
+    await nextTick();
+
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', { key: 'theme', value: 'dark' });
+    // 传的必须是模式：传解析好的 light/dark 会把窗口主题钉住，而钉住会连
+    // WebView 的 prefers-color-scheme 一起冻住 —— 「跟随系统」就再也不生效了
+    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'dark' });
+    expect(store.themeMode).toBe('dark');
+    expect(store.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    // 行情条靠这一条跟着切（写入成功后 setSetting 自己发）
+    expect(emitMock).toHaveBeenCalledWith('settings-changed', { key: 'theme', value: 'dark' });
+    // 顺手钉住「不再有第二条通道」：theme-changed 是两态时代的产物，留着只会多一份
+    // 两边说法不一致的机会（实际主题现在由各窗口自己从 matchMedia 解析）
+    expect(emitMock).not.toHaveBeenCalledWith('theme-changed', expect.anything());
+  });
+
+  it('切到「跟随系统」时，读的是原生层解 pin **之后**的系统值', async () => {
+    const sys = stubSystemTheme(false); // 此刻被钉成亮色，值不可信
+    const store = await load({ theme: 'light' });
+    invokeMock.mockClear();
+
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'set_window_theme') {
+        // 模拟 Rust 侧 set_theme(None)：窗口交还给系统之后 matchMedia 才变成真值。
+        // 刻意**不通知**监听者 —— 只有这样才分辨得出读的是解 pin 之后的值，
+        // 还是切模式之前就存下来的旧值（后者会让界面停在亮色）。
+        sys.mql.matches = true;
+      }
+      return undefined;
+    });
+
+    await store.setThemeMode('system');
+    await nextTick();
+
+    expect(store.theme).toBe('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('applyRemoteSetting 收到 theme：只作用于本窗口，不回写库、不回广播', async () => {
+    const store = await load({ theme: 'dark' });
+    invokeMock.mockClear();
+    emitMock.mockClear();
+
+    store.applyRemoteSetting('theme', 'light');
+    await nextTick();
+
+    expect(store.theme).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    // 本窗口的窗口主题要跟着走（行情条没有标题栏，这一趟对 main 是同值空转）
+    expect(invokeMock).toHaveBeenCalledWith('set_window_theme', { theme: 'light' });
+    // 回写或回广播会让两个窗口互相通知，形成无限往返
+    expect(invokeMock).not.toHaveBeenCalledWith('set_setting', expect.anything());
+    expect(emitMock).not.toHaveBeenCalled();
   });
 });

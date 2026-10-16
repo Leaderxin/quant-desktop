@@ -113,9 +113,10 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
 onMounted(async () => {
   try {
     await settings.fetchSettings();
-    settings.applyTheme(settings.theme);
     // 涨跌配色必须在首屏渲染前落到 <html> 上，否则会先按默认的红涨绿跌画一帧，
     // 选绿涨红跌的用户能看到明显闪变。
+    // 主题不用在这里应用：fetchSettings 一填好设置表，`<html data-theme>` 与窗口
+    // 标题栏就跟着走了（见 stores/settings.ts 的三条 watch）。
     settings.applyColorScheme(settings.colorScheme);
     await watchlist.fetchWatchlist();
     await quote.startListening();

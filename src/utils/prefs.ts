@@ -136,6 +136,26 @@ export function parseCount(raw: string | undefined, fallback: number, clamp: (n:
 }
 
 /**
+ * 主题模式。三态而不是两态：「跟随系统」要表达的**不是一种颜色，而是
+ * 「谁来决定」**，而这件事只有原生层能表达（Rust 侧拿到 "system" 会把窗口
+ * 交还给系统，见 lib.rs 的 set_app_theme）。所以库里存模式，界面上用的才是
+ * 解析出来的实际主题 —— 两态存库时「系统是深色」这个事实没地方待。
+ */
+export const THEME_MODES = ['system', 'dark', 'light'] as const;
+export type ThemeMode = (typeof THEME_MODES)[number];
+
+/**
+ * 主题模式解析。缺键与手工改坏的值一律按「跟随系统」——与后端
+ * `DEFAULT_SETTINGS` 里 theme 的默认值、以及 Rust 侧 `set_app_theme` 对未知值的
+ * 归类（同样交给系统）三处一致。老库里存着的 "light"/"dark" 不受影响。
+ */
+export function parseThemeMode(raw: string | undefined): ThemeMode {
+  return (THEME_MODES as readonly string[]).includes(raw ?? '')
+    ? (raw as ThemeMode)
+    : 'system';
+}
+
+/**
  * 老板键。空串和坏值都归为「未设置」。
  *
  * 与其它解析器不同，这里不能退回某个 fallback 值 —— 退回一个具体的组合键，

@@ -338,7 +338,10 @@ impl Database {
     /// 兜底值对应，由 `default_settings_keys_are_pinned` 守住键名。
     pub const DEFAULT_SETTINGS: &[(&str, &str)] = &[
         (keys::ACTIVE_DATASOURCE, "tencent"),
-        (keys::THEME, "light"),
+        // 三态：dark / light / system。"system" = 跟随系统（Windows 的「默认应用模式」），
+        // 是首启默认 —— 系统深色下默认给亮色，透明行情条上的文字会落在深色桌面上
+        // 看不清（issue #27）。只在键不存在时写入，所以老用户库里的 light/dark 不受影响。
+        (keys::THEME, "system"),
         (keys::TICKER_VISIBLE, "1"),
         (keys::AUTO_LAUNCH, "false"),
         // 指数区:默认显示原有的 7 个,顺序即此处的顺序

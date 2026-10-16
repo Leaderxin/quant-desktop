@@ -19,6 +19,7 @@ import {
   parseCount,
   parseDefaultSort,
   parseJsonArray,
+  parseThemeMode,
 } from './prefs';
 
 describe('parseJsonArray', () => {
@@ -145,6 +146,26 @@ describe('parseBool / parseCount', () => {
     expect(parseCount(undefined, 5, clampTopN)).toBe(5);
     expect(parseCount('abc', 5, clampTopN)).toBe(5);
     expect(parseCount('999', 5, clampTopN)).toBe(50);
+  });
+});
+
+describe('parseThemeMode', () => {
+  it('三个合法值原样返回', () => {
+    expect(parseThemeMode('system')).toBe('system');
+    expect(parseThemeMode('dark')).toBe('dark');
+    expect(parseThemeMode('light')).toBe('light');
+  });
+
+  /**
+   * 缺键与坏值都归「跟随系统」，而不是某个具体主题：这条与后端
+   * `DEFAULT_SETTINGS` 的默认值、以及 Rust 侧 `set_app_theme` 对未知值的处理是
+   * 同一个归类。三处要是分家，症状是「库里是跟随系统、界面上按亮色渲染」。
+   */
+  it('缺键与坏值退回「跟随系统」', () => {
+    expect(parseThemeMode(undefined)).toBe('system');
+    expect(parseThemeMode('')).toBe('system');
+    expect(parseThemeMode('Dark')).toBe('system');
+    expect(parseThemeMode('auto')).toBe('system');
   });
 });
 

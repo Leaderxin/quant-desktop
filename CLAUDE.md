@@ -33,15 +33,16 @@ cargo build --manifest-path src-tauri/Cargo.toml
 Frontend tests run with `vitest` (`npm test`, or `npm run test:watch`). Two conventions worth keeping:
 
 - **Only the Tauri boundary is mocked** — `invoke`/`listen`/`emit` from `@tauri-apps/api/*`. Pinia and the stores under test are real, because the behaviour being pinned *is* the store's own. Specs that need `document` opt in per file with `// @vitest-environment happy-dom` rather than switching the global environment.
-- **Pure logic that a component can't be tested on gets extracted into `src/utils/`.** That is why `dragSort.ts`, `paging.ts`, `watchGroups.ts`, `minuteBars.ts`, and `minuteAxis.ts` exist: the drop-index arithmetic, the carousel windowing, the delete-dialog counts, and the 分时图's session split / axis geometry all live inside components otherwise, where no test can reach them.
+- **Pure logic that a component can't be tested on gets extracted into `src/utils/`.** That is why `dragSort.ts`, `paging.ts`, `watchGroups.ts`, `minuteBars.ts`, `minuteAxis.ts`, and `theme.ts` exist: the drop-index arithmetic, the carousel windowing, the delete-dialog counts, the 分时图's session split / axis geometry, and 三态主题的解析（模式 + 系统深浅 → 实际主题）all live inside components otherwise, where no test can reach them.
 
 Coverage by area:
 
 | File | What it pins |
 |------|--------------|
-| [src/stores/market.spec.ts](src/stores/market.spec.ts) | Refresh-scheduler concurrency: stale responses not landing, in-flight + session-switch interleaving |
+| [src/stores/market.spec.ts](src/stores/market.spec.ts) | Refresh-scheduler concurrency: stale responses not landing, in-flight + session-switch interleaving（这个文件跑在 happy-dom 下不是因为它自己看 DOM，而是它构造的 market store 会顺带构造 settings store，而后者一建立就要落 `<html data-theme>`） |
 | [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
-| [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts |
+| [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts. 主题那一组钉的是三态：首帧前就落 `data-theme`、显式模式不看系统深浅、系统主题变化只在跟随时被采纳、切到跟随系统时读的是**解 pin 之后**的系统值（用一个「IPC 里改值但不通知监听者」的假 matchMedia 分辨这两种读法），以及传给原生层的始终是模式而不是解析好的主题 |
+| [src/utils/theme.spec.ts](src/utils/theme.spec.ts) | 「跟随系统」的窗口侧解析：显式模式不看系统深浅、结果里永远不出现 `system`、没有 `matchMedia` 时按浅色而不抛错（它跑在 store 的建立路径上，抛了就是白屏）、订阅与取消订阅 |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
 | [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及不在打字路径上的组合才许当热键 —— 裸键与只带 Shift 的组合都会把字符从全系统抢走（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」） |
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
@@ -77,13 +78,15 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 
 Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
 
-Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command.
+Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command. It takes a **mode** (`dark`/`light`/`system`), not a resolved theme.
+
+**「跟随系统」是这个函数里唯一不平凡的分支**：`"system"`（以及缺键、手改坏的值）要传 `None` 给 tao，表示「这个窗口不表态、由系统定」。不能图省事传解析后的 light/dark —— tao 一旦被显式设过主题（`preferred_theme.is_some()`）就会**忽略系统主题的变化**（见 tao 的 `event_loop::update_theme`，来自系统设置变更时直接 `return`），tauri-runtime-wry 于是不再往 WebView 转发，WebView2 的 `PreferredColorScheme` 就停在应用自己的主题上；而 `prefers-color-scheme` 正是由它决定的。合起来：**显式主题会把 webview 的深浅判定一起钉死** —— 前端读 `matchMedia` 读到的是应用自己的主题，系统切换时那个媒体查询也不动，「跟随系统」于是要么锁死在上一次显式主题、要么在行情条（它的窗口从没被钉过）与主窗口之间表现出不一致。所以那条 `matchMedia` 订阅只在 `None` 之下才有意义。
 
 Also home to `show_main_window(app)` — the single implementation of "把主窗口显示出来并聚焦", shared by the three entries that need it: the ticker bar's click, the tray menu's 「显示主界面」and 「设置」, and the tray icon's left-click. The step that matters is `unminimize()`: `show()` 在 Windows 上走 `SW_SHOW`，对最小化的窗口只是「在当前大小和位置显示」，窗口照旧缩在任务栏里 —— 用户看到任务栏图标闪一下、界面不出来。漏掉这一处的症状是「点了没反应」，而另外两处照旧正常，改哪一处都看不出来。托盘左键还要额外判一次 `is_minimized()`：最小化的窗口在 Win32 眼里**仍然是 visible**（`WS_VISIBLE` 还在），只判 `is_visible()` 会落进「隐藏」分支，把用户想叫回来的窗口反倒藏起来。
 
 托盘菜单的「设置」不只是一次 `show_main_window` —— 它随后 `emit("open-settings")`，由主窗口 `AppLayout` 的监听把 `showSettings` 置真。主窗口的 webview 是常驻的（隐藏不等于卸载），所以窗口处于隐藏或最小化状态时这个事件也收得到。
 
-**标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在前端的 `applyTheme` 上而不是只挂 `toggleTheme`，因为主窗口启动恢复和行情条收到 `theme-changed` 走的都是它 —— 行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画。
+**标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在 store 里那条**模式 watch** 上（`themeMode` 变 → `set_window_theme`，见下面的 `settings.ts`）—— 它是所有改主题路径的唯一汇合点，行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画；它的窗口也从没被钉过，所以行情条那边读到的 `prefers-color-scheme` 永远是系统真值。
 
 **`domain/mod.rs`** — Shared data types serialized across the IPC boundary to TypeScript types in [src/types/index.ts](src/types/index.ts):
 - `Market` enum (CN/HK/US)
@@ -168,7 +171,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 **Stores (Pinia)** — Four stores mirroring the backend state:
 - `quote.ts` — Listens to `quotes-updated` and `indices-updated` Tauri events. Quotes stored in a `Map<"market:code", Quote>` for O(1) lookup. `indices` holds the whole 14-index candidate pool; `IndexBar` filters/orders it by `settings.indexCodes`.
 - `watchlist.ts` — Holds the `WatchlistSnapshot` and derives everything else locally: `activeGroup` (the selected tab), `visibleItems` (active group's members in in-group order), `tickerItems` (cross-group, sorted by `ticker_order`). Mutations are one IPC followed by a snapshot refetch — no optimistic updates, because group membership, in-group order, and orphan handling all live in the backend and guessing them locally drifts. The single exception is `setTickerEnabled`, which flips the switch locally first so the toggle feels instant.
-- `settings.ts` — Key-value settings map plus a **derived** config layer (`indexCodes`, `sectorTopN`, `tickerTransparent`, `watchlistColumns`, `colorScheme`, …). Every config value is a `computed` over the string map rather than its own `ref`, so the map is the single source of truth and there is no window where local state and the DB disagree. Manages theme (`<html data-theme>` **and** the OS title bar, via `set_window_theme`), colour scheme (`<html data-color-scheme>`), data source switching, auto-launch, and the ticker window toggle. `toggleTheme` delegates to `applyTheme` instead of setting `data-theme` itself — the title-bar sync hangs off `applyTheme`, so a second copy of "flip the theme" would be a copy that forgets it. `setSetting` broadcasts `settings-changed` for the ticker window; the ticker applies the payload via `applyRemoteSetting` (no refetch — that would cost 5 extra IPC calls per toggle).
+- `settings.ts` — Key-value settings map plus a **derived** config layer (`indexCodes`, `sectorTopN`, `tickerTransparent`, `watchlistColumns`, `colorScheme`, …). Every config value is a `computed` over the string map rather than its own `ref`, so the map is the single source of truth and there is no window where local state and the DB disagree. **主题这一项是三态**：库里存的是**模式**（`themeMode`，`theme` 键 ∈ `system`/`dark`/`light`），窗口上用的才是解析后的 `theme`（也是 `computed`，只会是 `dark`/`light`）—— 两态存库时「系统现在是不是深色」没有地方待，而且模式一旦被解析掉就没法交给原生层，那个「谁来决定」的信息就丢了。三条 watch 走完这条链：`theme` 变 → 落 `<html data-theme>`（`immediate`，所以 store 一建立、**首屏渲染之前**就定好属性，跟随系统下首帧就是对的）；`themeMode` 变 → 先把**模式**交给原生层（`set_window_theme`），**再**重读 `matchMedia`（顺序不能反：解 pin 之前读回来的是应用自己钉的值）；`watchSystemTheme` 只在其值是 `system` 时采纳系统主题变化（显式模式下那个事件可能只是自己 pin 出来的结果）。原来的 `theme-changed` 专线已删 —— 它带的「解析好的实际主题」现在每个窗口都能自己从本窗口的 `matchMedia` 解析出来，多一条通道只会多一份两边说法不一致的机会。Manages colour scheme (`<html data-color-scheme>`), data source switching, auto-launch, and the ticker window toggle. `setSetting` broadcasts `settings-changed` for the ticker window; the ticker applies the payload via `applyRemoteSetting` (no refetch — that would cost 5 extra IPC calls per toggle; for `theme` it also triggers that same mode watch, which is exactly how the ticker follows along).
 - `updater.ts` — Update state (checking/available/downloading/installing). Watches backend update events.
 
 **`utils/prefs.ts`** — Settings value domains and parsers. Settings are strings in SQLite, so structured values are JSON; every parser (`parseColumns`, `parseDefaultSort`, `parseJsonArray`, `parseBool`, `parseCount`) falls back to a usable default instead of throwing. A single corrupted key must not blank the UI. `ALL_COLUMNS` is the canonical column list (key + label + `required`); `parseColumns` honours the user's order but re-inserts `code`/`name` if a bad config dropped them.
@@ -197,18 +200,18 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
             │         ├─ KLineChart.vue (daily/weekly/monthly K-line, auto-refresh 30s/60s)
             │         ├─ DepthPanel.vue (5-level bid/ask, auto-refresh 3s)
             │         └─ StockSummary.vue (open/high/low/volume/turnover/turnover_rate)
-            └─ StatusBar.vue (版本、检查更新、设置入口、主题、开机自启、联系)
+            └─ StatusBar.vue (版本、检查更新、官网、设置入口、开机自启、联系)
 ```
 
 **设置页（`src/components/settings/`）** — 覆盖式整页，入口在状态栏的齿轮按钮。用 `KeepAlive` 切换分区，保住各分区的本地 UI 状态（正在输入的自定义条数、轮播范围的分组筛选）。`AppLayout` 用 `v-if` 而非 `v-show` 承载它，两个后果都是要的：设置期间看盘界面的轮询全部停掉；返回时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新设置重新应用（否则改完默认排序要重启应用才看得到）。
 
-共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
+共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉；选项可带 `icon`，主题三态就是这么用的 —— 图标与文字同色，随选中态一起变，`aria-hidden` 掉，读屏只念文字）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
 
 **分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 上移 / 下移）、＋新建。删除确认框在本地算出影响面（快照里已有每组的有序成员 id）：`orphans` 是「只属于这一个分组」的股票，会并入默认分组；其余不受影响；并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
 
 **Ticker bar** ([TickerBar.vue](src/components/ticker/TickerBar.vue)) — Standalone mini Vue app. Cycles through `watchlist.tickerItems` (cross-group, sorted by `ticker_order`) taking `ticker_items_per_page` at a time with 3-second auto-scroll. Pauses on hover. Clicking restores the main window. Reloads the watchlist on the `watchlist-changed` event, which is why every ticker-range mutation emits it. 只播报 `ticker_enabled` 为开的自选；该开关与轮播顺序统一在设置页的「行情条 → 轮播范围」维护（原先自选表里的逐行开关列已移除）。
 
-设置同步走 `settings-changed` 事件（主窗口 `setSetting` 时广播），ticker 用 `applyRemoteSetting` 就地更新 —— 它读不到主窗口的 store，而重拉整份设置要 5 次 IPC，为一个开关付这个代价不值得。**透明背景**由 `document.body` 的 `ticker-transparent` class 控制（底板画在 [ticker.html](ticker.html) 的 body 上，不在组件里）：底板、圆角、阴影必须**一起**去掉，只把 background 改成 transparent 会留下一圈阴影脏边；窗口本身在 `tauri.conf.json` 里开了 `transparent: true`，否则 webview 会先画一层不透明底，CSS 怎么改都透不过去。
+设置同步走 `settings-changed` 事件（主窗口 `setSetting` 时广播），ticker 用 `applyRemoteSetting` 就地更新 —— 它读不到主窗口的 store，而重拉整份设置要 5 次 IPC，为一个开关付这个代价不值得。主题也在这条通道上：模式落到设置表后，ticker 的 store 用**本窗口自己的** `matchMedia` 解析（它的窗口从没被钉过，读到的是系统真值），所以两个窗口各算各的、不需要主窗口把结果送过来。**透明背景**由 `document.body` 的 `ticker-transparent` class 控制（底板画在 [ticker.html](ticker.html) 的 body 上，不在组件里）：底板、圆角、阴影必须**一起**去掉，只把 background 改成 transparent 会留下一圈阴影脏边；窗口本身在 `tauri.conf.json` 里开了 `transparent: true`，否则 webview 会先画一层不透明底，CSS 怎么改都透不过去。
 
 **Composables**:
 - `useTauriEvent.ts` — Vue lifecycle wrapper for `listen()` (auto-cleanup on unmount)
@@ -225,6 +228,8 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 ### 官网（`website/`）
 
 对外落地页，发布在 <https://leaderxin.github.io/quant-desktop/>，由 [pages.yml](.github/workflows/pages.yml) 部署到 GitHub Pages。**它与 Tauri 应用没有任何代码关系** —— 不在 `vite.config.ts` 的两个 Rollup 入口里，不参与 `npm run build`，也不依赖任何 npm 包。三个文件（`index.html` / `styles.css` / `app.js`）就是全部，改完刷新即见。
+
+应用里唯一的入口是状态栏那颗「官网」链接（`SITE_URL`，在 [src/components/layout/StatusBar.vue](src/components/layout/StatusBar.vue)）：域名或子路径变了要跟着改这一处。
 
 三处刻意的设计：
 
@@ -321,7 +326,7 @@ User mutations (add/remove/reorder watchlist) go through `invoke()` → Rust com
 
 DataSource switching triggers a `Notify` wakeup → Scheduler immediately refreshes with the new adapter.
 
-Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-changed` with `{key, value}`. The ticker window applies it directly via `applyRemoteSetting` and must **not** re-broadcast — doing so would ping-pong between the two windows. (`theme-changed` and `datasource-changed` remain separate because they have additional per-window side effects.)
+Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-changed` with `{key, value}`. The ticker window applies it directly via `applyRemoteSetting` and must **not** re-broadcast — doing so would ping-pong between the two windows. (`theme-changed` used to be a third, separate channel; it is gone — the ticker follows `settings-changed('theme')` like any other setting and resolves the actual theme in its own window, which is the only place that can do it correctly: its `prefers-color-scheme` was never pinned. `datasource-changed` remains separate because it has an additional per-window side effect.)
 
 ### K-line chart styling
 
@@ -341,7 +346,7 @@ Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/setti
 | Key | Default | Description |
 |-----|---------|-------------|
 | `active_datasource` | `tencent` | Active market data provider |
-| `theme` | `light` | UI theme (dark/light) |
+| `theme` | `system` | `system` = 跟随系统（Windows 的「默认应用模式」），`dark`/`light` 为显式主题。首启默认跟随系统 —— 系统深色下默认给亮色，透明行情条上的文字会落在深色桌面上看不清 |
 | `ticker_visible` | `1` | Ticker bar visibility (persisted on tray toggle **and** settings-page toggle) |
 | `auto_launch` | `false` | OS-level autostart |
 | `index_codes` | the original 7 | JSON array; order = left-to-right order on the index bar |

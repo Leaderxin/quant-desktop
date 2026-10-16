@@ -1,6 +1,6 @@
 // src/stores/settings.ts
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
@@ -10,11 +10,14 @@ import {
   parseCount,
   parseDefaultSort,
   parseJsonArray,
+  parseThemeMode,
   clampTopN,
   clampTickerItems,
   type ColumnKey,
   type DefaultSort,
+  type ThemeMode,
 } from '@/utils/prefs';
+import { resolveTheme, systemPrefersDark, watchSystemTheme, type ResolvedTheme } from '@/utils/theme';
 
 /** 设置项默认值（前端侧兜底）。后端 `init_defaults()` 会在首启时写入同名的键，
  *  这里的值只在键缺失（旧库、手工删键）时生效。 */
@@ -36,7 +39,20 @@ export const useSettingsStore = defineStore('settings', () => {
   /** 指数候选池 (代码, 名称)。名字由后端提供，见 datasource::INDEX_POOL_NAMES。 */
   const indexPool = ref<[string, string][]>([]);
   const activeDatasource = ref('tencent');
-  const theme = ref<'dark' | 'light'>('light');
+  // ── 主题 ──
+  //
+  // 库里存的是**模式**（亮色 / 暗色 / 跟随系统），窗口上用的才是解析后的实际主题。
+  // 两态存库做不到这件事：「系统现在是不是深色」没有地方待，而且模式一旦被解析掉，
+  // 就没法把它交给原生层 —— 而「跟随系统」在原生层是一件事（窗口主题交给系统），
+  // 不是一个色值（见 lib.rs 的 set_app_theme）。
+  /** 模式：设置页选的那个，唯一真源是设置表。 */
+  const themeMode = computed<ThemeMode>(() => parseThemeMode(settings.value['theme']));
+  /** 系统深浅。**只在跟随系统下可信** —— 显式主题会把窗口主题钉住，而钉住会连
+   *  WebView 的 `prefers-color-scheme` 一起冻在应用自己的主题上（见 utils/theme.ts）。 */
+  const systemDark = ref(systemPrefersDark());
+  /** 实际生效的主题。所有渲染判断（naive-ui 主题、图表配色、图标）读的都是它 ——
+   *  「system」是个模式不是一种颜色，谁把它当颜色用，谁就静默落到亮色分支。 */
+  const theme = computed<ResolvedTheme>(() => resolveTheme(themeMode.value, systemDark.value));
   const autoLaunch = ref(false);
   const isPortable = ref(false);
   const isStoreBuild = ref(false);
@@ -96,7 +112,6 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       settings.value = await invoke<Record<string, string>>('get_settings');
       activeDatasource.value = settings.value['active_datasource'] || 'tencent';
-      theme.value = (settings.value['theme'] as 'dark' | 'light') || 'light';
       datasources.value = await invoke<[string, string][]>('list_datasources');
       indexPool.value = await invoke<[string, string][]>('list_index_pool');
       autoLaunch.value = await invoke<boolean>('get_autostart');
@@ -228,7 +243,12 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * 把主题同步到窗口的标题栏。
+   * 把主题模式交给原生层 —— 标题栏 + 「窗口主题是否钉住」。
+   *
+   * 传下去的必须是**模式**而不是解析后的主题：`"system"` 会让 Rust 调
+   * `window.set_theme(None)`，把窗口交还给系统；传 light/dark 则是把窗口钉住，
+   * 而钉住会连 WebView 的 `prefers-color-scheme` 一起冻在应用主题上 —— 那正是
+   * 「跟随系统」不生效的成因（详见 src-tauri/src/lib.rs 的 set_app_theme）。
    *
    * `<html data-theme>` 只影响网页内容 —— **标题栏是操作系统画的**，不告诉窗口的话
    * 暗色主题下会照旧是白的。命令只作用于 main 窗口，所以行情条调它只是白跑一次 IPC
@@ -236,32 +256,52 @@ export const useSettingsStore = defineStore('settings', () => {
    *
    * 启动时那一次不靠这里，在 Rust 侧（`set_app_theme`，且在 `main.show()` 之前）——
    * 窗口是先 show 出来、webview 才加载完的，只靠这里会先闪一帧白色标题栏。
-   *
-   * 不 await：它只影响标题栏，主题切换没必要等一次 IPC 往返；失败只记日志。
    */
-  function applyWindowTheme(t: 'dark' | 'light') {
-    invoke('set_window_theme', { theme: t }).catch((e) => {
+  function applyWindowTheme(mode: ThemeMode): Promise<void> {
+    return invoke<void>('set_window_theme', { theme: mode }).catch((e) => {
       console.error('[settings] set_window_theme failed:', e);
     });
   }
 
-  async function toggleTheme() {
-    // 复用 applyTheme 而不是自己写一遍置位：标题栏同步挂在 applyTheme 上，
-    // 这里再抄一遍就是两份「切主题」的实现，迟早有一份忘了带标题栏。
-    applyTheme(theme.value === 'dark' ? 'light' : 'dark');
-    await setSetting('theme', theme.value);
-    emit('theme-changed', { theme: theme.value }).catch((e) => {
-      console.error('[settings] Failed to emit theme-changed:', e);
-    });
-  }
-
-  function applyTheme(t: 'dark' | 'light') {
-    theme.value = t;
+  // 主题的三条同步链。所有改主题的路径最后都汇到这里，谁都不许自己抄一份 ——
+  // 抄的那份迟早漏掉「解 pin」或「重读系统值」中的一步，而漏了在界面上看不出来。
+  //
+  // 1) 解析出的主题变了 → 落 `<html data-theme>`。
+  //    immediate：store 一建立就定好属性。App.vue 在 setup 里就取 store，早于首屏
+  //    渲染，所以跟随系统下首帧就是对的（原先要等 fetchSettings 跑完）。
+  watch(theme, (t) => {
     document.documentElement.setAttribute('data-theme', t);
-    applyWindowTheme(t);
-    // NOTE: does NOT emit 'theme-changed' — only toggleTheme() broadcasts.
-    // If applyTheme emitted, the ticker's theme-changed listener would call
-    // applyTheme again, creating an infinite event loop between windows.
+  }, { immediate: true });
+
+  // 2) 模式变了 → 交给原生层，然后**重新**读一次系统深浅。
+  //    顺序不能反：解 pin 之前 matchMedia 读回来的是应用自己钉的值，先读就会把
+  //    「刚从显式切到跟随系统」解析成旧主题（下一帧会自愈，但那一下是闪变）。
+  //    不用 immediate：store 刚建立时设置表还空着，那一刻发 IPC 等于拿兜底模式去
+  //    改窗口主题 —— 而启动时 Rust 已经按库里的值设过、且早于 `main.show()`。
+  watch(themeMode, async (mode) => {
+    await applyWindowTheme(mode);
+    systemDark.value = systemPrefersDark();
+  });
+
+  // 3) 系统主题变化。只在跟随系统时采纳：显式模式下窗口被钉住，这个事件里的值可能
+  //    只是我们自己 pin 出来的结果（切模式那一下就会触发一次）。
+  //    不接返回值：store 与进程同生命周期，没有要摘监听的时候。
+  watchSystemTheme((dark) => {
+    if (themeMode.value === 'system') systemDark.value = dark;
+  });
+
+  /**
+   * 改主题模式（设置页三选一）。
+   *
+   * 只写库：本窗口与行情条的实际应用都由上面那两条 watch 接手，行情条收到
+   * `settings-changed` 后走的也是同一条路（它读不到本窗口的 store）。
+   *
+   * **不再单独广播 `theme-changed`**：那是两态时代的产物 —— 它带的是解析好的实际
+   * 主题，而现在每个窗口都能自己解析（行情条窗口的主题从没被钉过，它的 matchMedia
+   * 永远是真系统值），多一条通道只会多一份「两边说法不一致」的机会。
+   */
+  async function setThemeMode(mode: ThemeMode) {
+    await setSetting('theme', mode);
   }
 
   /**
@@ -284,19 +324,23 @@ export const useSettingsStore = defineStore('settings', () => {
    * 为什么按 payload 就地更新而不是重拉整份设置：行情条是独立窗口，
    * `fetchSettings()` 会顺带拉数据源列表、指数池、自启状态等 5 个命令，
    * 为一个开关付这个代价不值得。
+   *
+   * `theme` 这一项落到设置表后还会触发上面那条模式 watch（原生同步 + 重读系统
+   * 深浅）—— 那是必须的：行情条就是靠它跟着切主题的，而它读的是本窗口自己的
+   * matchMedia，不是主窗口解析好的结果。
    */
   function applyRemoteSetting(key: string, value: string) {
     settings.value[key] = value;
   }
 
   return {
-    settings, datasources, indexPool, activeDatasource, theme, autoLaunch,
+    settings, datasources, indexPool, activeDatasource, theme, themeMode, autoLaunch,
     isPortable, isStoreBuild, loaded, updaterAvailable, error, bossKeyError,
     // 派生配置
     indexCodes, marketOverviewVisible, sectorTopN, tickerVisible, tickerTransparent,
     tickerItemsPerPage, watchlistColumns, watchlistDefaultSort, colorScheme, bossKey,
     // 动作
-    fetchSettings, setSetting, switchDatasource, toggleTheme, toggleAutoLaunch, applyTheme,
+    fetchSettings, setSetting, switchDatasource, setThemeMode, toggleAutoLaunch,
     applyColorScheme, applyRemoteSetting,
     setIndexCodes, setMarketOverviewVisible, setSectorTopN, setTickerVisible,
     setTickerTransparent, setTickerItemsPerPage, setWatchlistColumns,
