@@ -455,12 +455,15 @@ impl Database {
         )
     }
 
-    /// 把股票加进池子(已在池中则复用),并加入指定分组。
+    /// 新增自选:股票入池(已在池中则复用) + 加入给定的每个分组。
     ///
-    /// 多归属语义:已在其它分组也能直接加入本组,不做任何移动。重复加入同一分组
-    /// 是空操作(`INSERT OR IGNORE`),不会把它从原位置挪到队尾。
+    /// 多归属是常态,添加时勾多个分组就是一次入库。已在其它分组也能直接加入,不做
+    /// 任何移动;重复加入同一分组是空操作(`INSERT OR IGNORE`),不会把它从原位置
+    /// 挪到队尾。
     ///
-    /// `group_id` 不存在时落到默认分组,而不是照单写入。SQLite 默认不启用外键约束,
+    /// 空切片、或所有 id 都已不存在时落到默认分组 —— 与 `set_watch_groups` 拒绝
+    /// 空集合不同:这里是在建一只新自选,总得给它一个落点,而默认分组是界面上永远
+    /// 存在的那个。不存在的 id 逐个剔除,而不是照单写入:SQLite 默认不启用外键约束,
     /// 写进去就是一条指向虚空分组的关联 —— 那只股票在池子里、却不在任何分组里，
     /// 界面上没有任何入口能再看到或删掉它。
     pub fn add_watch(
@@ -468,18 +471,21 @@ impl Database {
         code: &str,
         market: &str,
         name: &str,
-        group_id: i64,
+        group_ids: &[i64],
     ) -> SqliteResult<()> {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let gid = if Self::all_group_ids(&conn)?.contains(&group_id) {
-            group_id
-        } else {
-            log::warn!(
-                "add_watch: group {} does not exist, falling back to the default group",
-                group_id
-            );
-            Self::default_group_id(&conn)?
-        };
+        let alive = Self::all_group_ids(&conn)?;
+        let mut gids: Vec<i64> = Vec::new();
+        for id in group_ids {
+            if !alive.contains(id) {
+                log::warn!("add_watch: group {} does not exist, skipping it", id);
+            } else if !gids.contains(id) {
+                gids.push(*id);
+            }
+        }
+        if gids.is_empty() {
+            gids.push(Self::default_group_id(&conn)?);
+        }
         let now = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
         let tx = conn.unchecked_transaction()?;
         tx.execute(
@@ -494,16 +500,18 @@ impl Database {
             params![code, market],
             |row| row.get(0),
         )?;
-        let next_sort: i32 = tx.query_row(
-            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM watch_group_members WHERE group_id = ?1",
-            params![gid],
-            |row| row.get(0),
-        )?;
-        tx.execute(
-            "INSERT OR IGNORE INTO watch_group_members (group_id, watch_id, sort_order)
-             VALUES (?1, ?2, ?3)",
-            params![gid, watch_id, next_sort],
-        )?;
+        for gid in &gids {
+            let next_sort: i32 = tx.query_row(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM watch_group_members WHERE group_id = ?1",
+                params![gid],
+                |row| row.get(0),
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO watch_group_members (group_id, watch_id, sort_order)
+                 VALUES (?1, ?2, ?3)",
+                params![gid, watch_id, next_sort],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -1100,7 +1108,7 @@ mod tests {
         let dir = temp_app_dir("fresh");
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-        db.add_watch("sh600519", "CN", "贵州茅台", gid).unwrap();
+        db.add_watch("sh600519", "CN", "贵州茅台", &[gid]).unwrap();
 
         let items = db.get_watchlist().unwrap();
         assert_eq!(items.len(), 1);
@@ -1201,7 +1209,7 @@ mod tests {
         let gid = {
             let db = Database::open(dir.clone()).unwrap();
             let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-            db.add_watch("sh600519", "CN", "贵州茅台", gid).unwrap();
+            db.add_watch("sh600519", "CN", "贵州茅台", &[gid]).unwrap();
             let wid = watch_id_of(&db, "sh600519");
             // 移出唯一分组 => 整只股票被删除
             assert!(db.remove_watch_from_group(gid, wid).unwrap());
@@ -1227,7 +1235,7 @@ mod tests {
         let id = {
             let db = Database::open(dir.clone()).unwrap();
             let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-            db.add_watch("sh600519", "CN", "贵州茅台", gid).unwrap();
+            db.add_watch("sh600519", "CN", "贵州茅台", &[gid]).unwrap();
             let id = watch_id_of(&db, "sh600519");
             db.set_watch_ticker_enabled(id, false).unwrap();
             assert!(!db.get_watchlist().unwrap()[0].ticker_enabled);
@@ -1264,7 +1272,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for (code, name) in [("sh600519", "贵州茅台"), ("sz000001", "平安银行")] {
-            db.add_watch(code, "CN", name, gid).unwrap();
+            db.add_watch(code, "CN", name, &[gid]).unwrap();
         }
         let first = watch_id_of(&db, "sh600519");
         let second = watch_id_of(&db, "sz000001");
@@ -1303,7 +1311,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for code in ["sh600519", "sz000001", "sz300750"] {
-            db.add_watch(code, "CN", code, gid).unwrap();
+            db.add_watch(code, "CN", code, &[gid]).unwrap();
         }
         let ids = vec![
             watch_id_of(&db, "sz300750"),
@@ -1332,7 +1340,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         db.set_watch_groups(wid, &[g1, g2]).unwrap();
 
@@ -1352,9 +1360,9 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         // 再加一次到另一个分组:多归属下应当"两边都在"，而不是搬走
-        db.add_watch("sz300750", "CN", "宁德时代", g2).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g2]).unwrap();
 
         let wid = watch_id_of(&db, "sz300750");
         assert_eq!(group_names_of(&db, wid).len(), 2);
@@ -1369,13 +1377,13 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for code in ["sh600519", "sz000001"] {
-            db.add_watch(code, "CN", code, gid).unwrap();
+            db.add_watch(code, "CN", code, &[gid]).unwrap();
         }
         db.move_group_member_down(gid, watch_id_of(&db, "sh600519"))
             .unwrap();
         let before = db.get_watchlist_snapshot().unwrap().groups[0].watch_ids.clone();
 
-        db.add_watch("sh600519", "CN", "贵州茅台", gid).unwrap();
+        db.add_watch("sh600519", "CN", "贵州茅台", &[gid]).unwrap();
         let after = db.get_watchlist_snapshot().unwrap().groups[0].watch_ids.clone();
         assert_eq!(after, before, "重复加入同一分组不应把它挪到队尾");
 
@@ -1389,7 +1397,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         db.set_watch_groups(wid, &[g1, g2]).unwrap();
 
@@ -1407,7 +1415,7 @@ mod tests {
         let dir = temp_app_dir("orphan");
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-        db.add_watch("sz300750", "CN", "宁德时代", gid).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[gid]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
 
         let deleted = db.remove_watch_from_group(gid, wid).unwrap();
@@ -1426,7 +1434,7 @@ mod tests {
         let dir = temp_app_dir("empty-set");
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-        db.add_watch("sz300750", "CN", "宁德时代", gid).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[gid]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
 
         assert!(
@@ -1445,7 +1453,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         db.set_watch_groups(wid, &[g1, g2]).unwrap();
 
@@ -1465,8 +1473,8 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sh600519", "CN", "贵州茅台", g2).unwrap(); // 仅科技
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap(); // 自选股 + 科技
+        db.add_watch("sh600519", "CN", "贵州茅台", &[g2]).unwrap(); // 仅科技
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap(); // 自选股 + 科技
         let both = watch_id_of(&db, "sz300750");
         db.set_watch_groups(both, &[g1, g2]).unwrap();
 
@@ -1536,9 +1544,9 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sh600519", "CN", "贵州茅台", g1).unwrap();
-        db.add_watch("sz000001", "CN", "平安银行", g1).unwrap();
-        db.add_watch("sz300750", "CN", "宁德时代", g2).unwrap();
+        db.add_watch("sh600519", "CN", "贵州茅台", &[g1]).unwrap();
+        db.add_watch("sz000001", "CN", "平安银行", &[g1]).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g2]).unwrap();
         let third = watch_id_of(&db, "sz300750");
 
         // 置顶第三个分组里的股票，不应扰动 g1 的组内顺序
@@ -1565,7 +1573,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for code in ["a", "b", "c"] {
-            db.add_watch(code, "CN", code, gid).unwrap();
+            db.add_watch(code, "CN", code, &[gid]).unwrap();
         }
         let (a, b, c) = (
             watch_id_of(&db, "a"),
@@ -1629,7 +1637,7 @@ mod tests {
         let dir = temp_app_dir("badgroup");
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-        db.add_watch("sh600519", "CN", "贵州茅台", 9999).unwrap();
+        db.add_watch("sh600519", "CN", "贵州茅台", &[9999]).unwrap();
 
         let wid = watch_id_of(&db, "sh600519");
         assert_eq!(
@@ -1644,13 +1652,36 @@ mod tests {
         std::fs::remove_dir_all(&dir).expect("临时测试目录应可清理");
     }
 
+    /// 添加对话框可以一次勾多个分组：一次入库要同时写进每条关联，
+    /// 且重复/陈旧的 id 不能变成第二条关联或第二只股票。
+    #[test]
+    fn add_watch_can_join_multiple_groups_at_once() {
+        let dir = temp_app_dir("multi-group-add");
+        let db = Database::open(dir.clone()).unwrap();
+        let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
+        let g2 = db.add_watch_group("科技").unwrap().id;
+
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1, g2, g2, 9999]).unwrap();
+
+        let wid = watch_id_of(&db, "sz300750");
+        assert_eq!(
+            group_names_of(&db, wid),
+            vec!["科技".to_string(), DEFAULT_GROUP_NAME.to_string()],
+            "勾选的每个有效分组都应有归属"
+        );
+        assert_eq!(db.get_watchlist().unwrap().len(), 1, "多分组归属不应在池里留下重复行");
+
+        drop(db);
+        std::fs::remove_dir_all(&dir).expect("临时测试目录应可清理");
+    }
+
     #[test]
     fn set_watch_groups_drops_unknown_group_ids() {
         let dir = temp_app_dir("stale-groups");
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g2).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g2]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         assert_eq!(group_names_of(&db, wid), vec!["科技".to_string()]);
 
@@ -1671,7 +1702,7 @@ mod tests {
         let dir = temp_app_dir("all-stale");
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
-        db.add_watch("sz300750", "CN", "宁德时代", gid).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[gid]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
 
         assert!(
@@ -1690,7 +1721,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
 
         // 它不在 g2 里，从 g2 移除应当是空操作，且**不能**把它当孤儿删掉
@@ -1709,7 +1740,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         db.set_watch_groups(wid, &[g1, g2]).unwrap();
 
@@ -1744,7 +1775,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for code in ["sh600519", "sz000001", "sz300750"] {
-            db.add_watch(code, "CN", code, gid).unwrap();
+            db.add_watch(code, "CN", code, &[gid]).unwrap();
         }
         let items_before = db.get_watchlist().unwrap();
         let ids: Vec<i64> = items_before.iter().map(|i| i.id).collect();
@@ -1769,7 +1800,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let gid = db.get_watchlist_snapshot().unwrap().default_group_id;
         for code in ["a", "b", "c"] {
-            db.add_watch(code, "CN", code, gid).unwrap();
+            db.add_watch(code, "CN", code, &[gid]).unwrap();
         }
         let (a, b, c) = (
             watch_id_of(&db, "a"),
@@ -1791,7 +1822,7 @@ mod tests {
         let db = Database::open(dir.clone()).unwrap();
         let g1 = db.get_watchlist_snapshot().unwrap().default_group_id;
         let g2 = db.add_watch_group("科技").unwrap().id;
-        db.add_watch("sz300750", "CN", "宁德时代", g1).unwrap();
+        db.add_watch("sz300750", "CN", "宁德时代", &[g1]).unwrap();
         let wid = watch_id_of(&db, "sz300750");
         db.set_watch_groups(wid, &[g1, g2]).unwrap();
 

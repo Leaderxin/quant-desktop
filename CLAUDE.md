@@ -155,7 +155,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 - `quote.rs` — `get_quotes`, `get_indices` (read from cache), `get_depth`, `get_intraday`, `get_kline` (async via active data source)
 - `watchlist.rs` — the watchlist pool, group membership, and ticker range:
   - Snapshot: `get_watchlist` returns a `WatchlistSnapshot { items, groups, default_group_id }` in one call — `groups[].watch_ids` carries the ordered member ids, so switching groups in the tab bar is pure local filtering with no intermediate state.
-  - Pool: `add_watch` (upsert + join group), `remove_watch` (delete everywhere), `search_stocks` (cross-source fallback)
+  - Pool: `add_watch` (upsert + join the selected groups; empty/unknown ids fall back to the default group), `remove_watch` (delete everywhere), `search_stocks` (cross-source fallback)
   - Membership: `remove_watch_from_group`, `set_watch_groups` (full-overwrite, for the context menu's checkable submenu)
   - Per-group ordering: `move_group_member_top|up|down`, `reorder_group_members` — all keyed by `(group_id, watch_id)`, since the same stock sits at different positions in different groups
   - Groups: `add_watch_group`, `rename_watch_group`, `delete_watch_group`, `reorder_watch_groups`
@@ -193,7 +193,7 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
             ├─ MarketOverviewPanel.vue (受 marketOverviewVisible 控制)
             ├─ WatchlistTable.vue (NDataTable: 动态列、默认排序、右键菜单)
             │    ├─ GroupTabs.vue (分组标签栏：切换/重命名/右键菜单/新建)
-            │    ├─ AddStockDialog.vue (搜索 + 加入当前分组)
+            │    ├─ AddStockDialog.vue (搜索 + 选择目标分组)
             │    └─ StockDetail.vue (expanded row detail panel)
             │         ├─ ChartSwitcher.vue (toggle: 分时/日K/周K/月K)
             │         ├─ MinuteChart.vue (intraday chart, auto-refresh 5s)

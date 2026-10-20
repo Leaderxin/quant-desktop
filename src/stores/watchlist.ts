@@ -93,9 +93,19 @@ export const useWatchlistStore = defineStore('watchlist', () => {
     }
   }
 
-  function addStock(code: string, market: string, name: string) {
+  /**
+   * 加入自选。`groupIds` 缺省为当前分组（添加框打开时的上下文），
+   * 但对话框里用户可以勾多个分组 —— 此时表格视图不跟着切换，
+   * 所以调用方得自己把目标组名说出来。
+   */
+  function addStock(
+    code: string,
+    market: string,
+    name: string,
+    groupIds: number[] = [activeGroupId.value],
+  ) {
     return mutate(
-      () => invoke('add_watch', { code, market, name, groupId: activeGroupId.value }),
+      () => invoke('add_watch', { code, market, name, groupIds }),
       '添加失败',
     );
   }
