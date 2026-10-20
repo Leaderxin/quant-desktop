@@ -147,7 +147,7 @@ describe('IPC 参数拼写', () => {
     });
   });
 
-  it('addStock 带上当前分组 id', async () => {
+  it('addStock 默认带上当前分组 id', async () => {
     const store = await load(
       snapshot([], [group(1, '自选股', []), group(2, '科技', [])]),
     );
@@ -160,7 +160,27 @@ describe('IPC 参数拼写', () => {
       code: 'sh600519',
       market: 'CN',
       name: '贵州茅台',
-      groupId: 2,
+      groupIds: [2],
+    });
+  });
+
+  it('addStock 可一次指定多个目标分组（添加对话框的勾选）', async () => {
+    const store = await load(
+      snapshot([], [group(1, '自选股', []), group(2, '科技', []), group(3, '长线', [])]),
+    );
+    // 当前标签页在 1，但对话框里勾了 2 和 3 —— 落库的必须是勾中的那几个
+    store.activeGroupId = 1;
+    invokeMock.mockResolvedValueOnce(undefined); // add_watch
+    invokeMock.mockResolvedValueOnce(
+      snapshot([], [group(1, '自选股', []), group(2, '科技', []), group(3, '长线', [])]),
+    );
+
+    await store.addStock('sh600519', 'CN', '贵州茅台', [2, 3]);
+    expect(invokeMock).toHaveBeenCalledWith('add_watch', {
+      code: 'sh600519',
+      market: 'CN',
+      name: '贵州茅台',
+      groupIds: [2, 3],
     });
   });
 

@@ -6,7 +6,7 @@ import { useUpdaterStore } from '@/stores/updater';
 import { useUpdateCheck } from '@/composables/useUpdateCheck';
 import { openExternal } from '@/utils/external';
 import { getVersion } from '@tauri-apps/api/app';
-import { Mail, MessageCircle, Moon, Settings, Sun } from '@lucide/vue';
+import { Globe, Mail, MessageCircle, Settings } from '@lucide/vue';
 
 const settings = useSettingsStore();
 const updater = useUpdaterStore();
@@ -19,6 +19,10 @@ const QRCODE_URL = 'https://raw.githubusercontent.com/Leaderxin/quant-desktop/ma
 
 // 项目主页：状态栏的 GitHub 图标指向这里
 const GITHUB_URL = 'https://github.com/Leaderxin/quant-desktop';
+
+// 官网（下载、使用指南、常见问题、更新日志）。与仓库里的 website/ 是同一个站点，
+// 由 pages.yml 发布到 GitHub Pages。
+const SITE_URL = 'https://leaderxin.github.io/quant-desktop/';
 
 const props = withDefaults(defineProps<{
   copyright?: string;
@@ -101,6 +105,21 @@ onMounted(async () => {
           <path d="M10.226 17.284c-2.965-.36-5.054-2.493-5.054-5.256 0-1.123.404-2.336 1.078-3.144-.292-.741-.247-2.314.09-2.965.898-.112 2.111.36 2.83 1.01.853-.269 1.752-.404 2.853-.404 1.1 0 1.999.135 2.807.382.696-.629 1.932-1.1 2.83-.988.315.606.36 2.179.067 2.942.72.854 1.101 2 1.101 3.167 0 2.763-2.089 4.852-5.098 5.234.763.494 1.28 1.572 1.28 2.807v2.336c0 .674.561 1.056 1.235.786 4.066-1.55 7.255-5.615 7.255-10.646C23.5 6.188 18.334 1 11.978 1 5.62 1 .5 6.188.5 12.545c0 4.986 3.167 9.12 7.435 10.669.606.225 1.19-.18 1.19-.786V20.63a2.9 2.9 0 0 1-1.078.224c-1.483 0-2.359-.808-2.987-2.313-.247-.607-.517-.966-1.034-1.033-.27-.023-.359-.135-.359-.27 0-.27.45-.471.898-.471.652 0 1.213.404 1.797 1.235.45.651.921.943 1.483.943.561 0 .92-.202 1.437-.719.382-.381.674-.718.944-.943"/>
         </svg>
       </a>
+      <span class="sb-sep">·</span>
+      <!-- 官网入口。与上面的 GitHub 图标同属「项目相关链接」，放在同一区；
+           用 <a href> 而不是 button：链接是导航，右键「复制链接」、中键新开
+           都该照常可用，真正的打开动作仍交给系统浏览器（openExternal）。 -->
+      <a
+        class="sb-site"
+        :href="SITE_URL"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="访问官网：下载、使用指南、常见问题与更新日志"
+        @click.prevent="openExternal(SITE_URL)"
+      >
+        <Globe :size="14" aria-hidden="true" />
+        官网
+      </a>
     </div>
 
     <!-- Zone 2: Settings -->
@@ -116,19 +135,6 @@ onMounted(async () => {
       >
         <Settings class="sb-icon" :size="14" aria-hidden="true" />
         <span class="sb-settings-label">设置</span>
-      </button>
-
-      <span class="sb-sep">·</span>
-
-      <button
-        class="sb-theme"
-        :aria-label="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
-        :title="settings.theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'"
-        @click="settings.toggleTheme()"
-      >
-        <span class="sb-theme-label">主题</span>
-        <Sun v-if="settings.theme === 'dark'" class="sb-icon" :size="14" aria-hidden="true" />
-        <Moon v-else class="sb-icon" :size="14" aria-hidden="true" />
       </button>
 
       <span class="sb-sep">·</span>
@@ -317,29 +323,20 @@ onMounted(async () => {
   line-height: 1;
 }
 
-/* 主题切换：图标 + 文字标签，让用户看得出这个图标是干嘛的 */
-.sb-theme {
+/* 官网链接：图标 + 文字标签。与 .sb-github 同一套 hover（都是项目链接，
+   悬停都提亮到主文字色），只是它带文字，所以要多一个 gap。 */
+.sb-site {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--color-text-tertiary);
-  font: inherit;
+  text-decoration: none;
   line-height: 1;
+  transition: color var(--transition-fast);
   cursor: pointer;
-  user-select: none;
-  transition: color var(--transition-fast), background var(--transition-fast);
 }
-.sb-theme:hover {
+.sb-site:hover {
   color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
-}
-.sb-theme-label {
-  color: inherit;
-  line-height: 1;
 }
 .sb-icon {
   display: block;

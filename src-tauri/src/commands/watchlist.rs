@@ -13,8 +13,8 @@ pub fn get_watchlist(db: State<'_, Arc<Database>>) -> Result<WatchlistSnapshot, 
     db.get_watchlist_snapshot().map_err(|e| e.to_string())
 }
 
-/// 新增自选:股票入池(已在池中则复用) + 加入指定分组。
-/// `group_id` 为 None 时落进默认分组。多归属下已在其它分组也能直接加入本组，不做移动。
+/// 新增自选:股票入池(已在池中则复用) + 加入勾选的分组。
+/// `group_ids` 为空/None 时落进默认分组。多归属下已在其它分组也能直接加入,不做移动。
 #[tauri::command]
 pub fn add_watch(
     app_handle: tauri::AppHandle,
@@ -22,16 +22,9 @@ pub fn add_watch(
     code: String,
     market: String,
     name: String,
-    group_id: Option<i64>,
+    group_ids: Option<Vec<i64>>,
 ) -> Result<(), String> {
-    let gid = match group_id {
-        Some(id) => id,
-        None => db
-            .get_watchlist_snapshot()
-            .map_err(|e| e.to_string())?
-            .default_group_id,
-    };
-    db.add_watch(&code, &market, &name, gid)
+    db.add_watch(&code, &market, &name, group_ids.as_deref().unwrap_or(&[]))
         .map_err(|e| e.to_string())?;
     let _ = app_handle.emit("watchlist-changed", ());
     Ok(())

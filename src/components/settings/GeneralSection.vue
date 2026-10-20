@@ -2,7 +2,7 @@
 // 通用：主题、开机自启、数据源、快捷键。
 import { computed } from 'vue';
 import { NSwitch, NSelect } from 'naive-ui';
-import { CircleAlert } from '@lucide/vue';
+import { CircleAlert, Monitor, Moon, Sun } from '@lucide/vue';
 import { useSettingsStore } from '@/stores/settings';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
@@ -10,16 +10,15 @@ import HotkeyInput from './HotkeyInput.vue';
 
 const settings = useSettingsStore();
 
+// 三态。顺序把「跟随系统」放最前：它是默认值，也是多数人该选的那个 ——
+// 系统深色下选亮色，透明行情条上的股票名会落在深色桌面上看不清（见 issue #27）。
+// 图标是显示器 / 月亮 / 太阳（lucide，与 CC Switch 的三选一同款）：一列三段扫一眼
+// 就分得清「交给系统」和「钉死成哪一个」。
 const themeOptions = [
-  { value: 'dark' as const, label: '暗色' },
-  { value: 'light' as const, label: '亮色' },
+  { value: 'system' as const, label: '跟随系统', icon: Monitor },
+  { value: 'dark' as const, label: '暗色', icon: Moon },
+  { value: 'light' as const, label: '亮色', icon: Sun },
 ];
-
-// 主题切换走 store 的 toggleTheme（它会广播 theme-changed 给行情条窗口）。
-// 这里先判断当前值，避免「点已选中的那一项」把主题翻过去。
-function onThemeChange(t: 'dark' | 'light') {
-  if (t !== settings.theme) void settings.toggleTheme();
-}
 
 const dsOptions = computed(() =>
   settings.datasources.map(([id, name]) => ({ value: id, label: name })),
@@ -32,12 +31,18 @@ const dsOptions = computed(() =>
 
     <div class="card">
       <div class="card-body">
-        <SettingsRow title="主题" description="和底部状态栏里的主题按钮是同一个设置">
+        <!-- 主题模式的写入只此一处：状态栏那颗快切按钮已下线 —— 跟随系统下它
+             表达不了「切到哪儿」（点一下是固定亮色还是固定暗色？），而三态在
+             一颗只有日/月两个图标的按钮上放不下。 -->
+        <SettingsRow
+          title="主题"
+          description="「跟随系统」按 Windows 的「默认应用模式」实时切换，主窗口、标题栏与行情条一起跟随"
+        >
           <SegmentedControl
-            :model-value="settings.theme"
+            :model-value="settings.themeMode"
             :options="themeOptions"
             label="主题"
-            @update:model-value="onThemeChange"
+            @update:model-value="settings.setThemeMode"
           />
         </SettingsRow>
 

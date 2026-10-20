@@ -104,23 +104,39 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
 /// platform_impl/windows/dark_mode.rs），Windows 10 1809+ 生效；macOS 走 NSWindow
 /// 的 appearance；其余平台是空操作。所以这一个调用就是「标题栏跟随主题」的全部。
 ///
-/// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画。
+/// 传进来的 `theme` 是**模式**（"dark" / "light" / "system"），不是解析好的主题：
+/// "system" 要传 `None` 给 tao，表示「这个窗口不表态、由系统定」。这一条是
+/// 「跟随系统」整个功能的支点，不能简化成传解析后的值：
+///
+/// - tao 一旦被显式设过主题（`preferred_theme.is_some()`），就会**忽略系统主题的
+///   变化**（见 tao 的 event_loop::update_theme，来自系统设置变更时直接 return），
+///   tauri-runtime-wry 也就不会再往 WebView 转发，WebView2 的
+///   `PreferredColorScheme` 于是停在应用自己的主题上；
+/// - 而 `prefers-color-scheme` 正是由它决定的，于是前端读 `matchMedia` 读到的是
+///   **应用自己的主题**而不是系统的，系统切换时那个媒体查询也不动。
+///
+/// 合起来就是：显式主题会把 webview 的深浅判定一起钉死。所以「跟随系统」必须真的
+/// 把窗口交还给系统（`None`），前端那条 `matchMedia` 订阅才有意义。
+///
+/// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画；它也从没被
+/// 钉过，前端读到的永远是系统真值。
 ///
 /// 启动时必须在 `main.show()` **之前**调。窗口是先 show 出来、webview 才加载完的，
-/// 若等前端 `applyTheme` 跑到这里才变色，暗色主题下会先闪一帧白色标题栏。设置页与
-/// 状态栏的开关走 `commands::window::set_window_theme`，两边共用这一份实现。
+/// 若等前端跑到这里才变色，暗色主题下会先闪一帧白色标题栏。设置页的开关走
+/// `commands::window::set_window_theme`，两边共用这一份实现。
 pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "Main window not found".to_string())?;
-    // 只有 "dark" 算暗色，其余（缺键、手改坏的值）一律按亮色 —— 与 DEFAULT_SETTINGS
-    // 里 theme 的默认值一致。
-    let theme = if theme == "dark" {
-        tauri::Theme::Dark
-    } else {
-        tauri::Theme::Light
+    // 只有 "dark"/"light" 是显式的；"system" 与缺键、手改坏的值一律交给系统 ——
+    // 与 DEFAULT_SETTINGS 里 theme 的默认值、以及前端 parseThemeMode 的兜底一致。
+    // 三处分家的话症状是「库里写的是跟随系统，界面上却按亮色渲染」。
+    let theme = match theme {
+        "dark" => Some(tauri::Theme::Dark),
+        "light" => Some(tauri::Theme::Light),
+        _ => None,
     };
-    window.set_theme(Some(theme)).map_err(|e| e.to_string())
+    window.set_theme(theme).map_err(|e| e.to_string())
 }
 
 /// Runtime flag indicating whether the app is in portable mode
@@ -622,12 +638,14 @@ pub fn run() {
                     .unwrap_or(false);
 
                 // 标题栏要先于 show 上色：窗口是先 show 出来、webview 才加载完的，
-                // 等前端 applyTheme 跑起来再变色会先闪一帧白条（见 set_app_theme）。
+                // 等前端跑起来再变色会先闪一帧白条（见 set_app_theme）。
+                // 读不到键时按「跟随系统」——与 DEFAULT_SETTINGS 的默认值一致，
+                // 也是 set_app_theme 对未知值的归类。
                 let theme = db
                     .get_setting(keys::THEME)
                     .ok()
                     .flatten()
-                    .unwrap_or_else(|| "light".to_string());
+                    .unwrap_or_else(|| "system".to_string());
                 if let Err(e) = set_app_theme(app.handle(), &theme) {
                     log::warn!("Failed to apply window theme at startup: {e}");
                 }

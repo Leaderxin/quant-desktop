@@ -25,7 +25,6 @@ useTickerWindowHeight(tickerContent, { ready: heightReady });
 const paused = ref(false);
 const page = ref(0);
 let cycleTimer: ReturnType<typeof setInterval> | null = null;
-let unlistenTheme: UnlistenFn | null = null;
 let unlistenDatasource: UnlistenFn | null = null;
 let unlistenWatchlist: UnlistenFn | null = null;
 let unlistenSettings: UnlistenFn | null = null;
@@ -68,12 +67,12 @@ watch(
 onMounted(async () => {
   try {
     await settings.fetchSettings();
-    settings.applyTheme(settings.theme);
+    // 主题不在这里应用：fetchSettings 填好设置表之后，store 里的解析链会把
+    // `<html data-theme>` 与本窗口的原生同步一起带过去（见 stores/settings.ts）。
     settings.applyColorScheme(settings.colorScheme);
     await watchlist.fetchWatchlist();
     await quoteStore.startListening();
     startCycle();
-    startThemeListen();
     startDatasourceListen();
     startWatchlistListener();
     startSettingsListen();
@@ -91,7 +90,6 @@ onUnmounted(() => {
   clearOpenError();
   quoteStore.stopListening();
   if (cycleTimer) clearInterval(cycleTimer);
-  if (unlistenTheme) unlistenTheme();
   if (unlistenDatasource) unlistenDatasource();
   if (unlistenWatchlist) unlistenWatchlist();
   if (unlistenSettings) unlistenSettings();
@@ -115,6 +113,11 @@ function startWatchlistListener() {
  * 按 payload 就地更新而不是重拉整份设置：这个窗口读不到主窗口的 store，
  * 而 `fetchSettings()` 会连带拉数据源列表、指数池、自启状态等 5 个命令 ——
  * 为一个轮播条数开关付这个代价不值得。
+ *
+ * `theme` 也走这一条：store 里那条模式 watch 会就地重算本窗口的主题（并重新读一次
+ * 本窗口的 matchMedia）。原先另有一条 `theme-changed` 专线，它带的「解析好的实际
+ * 主题」现在每个窗口都能自己算出来 —— 本窗口的主题从没被原生层钉过，matchMedia
+ * 读到的永远是系统真值。
  */
 function startSettingsListen() {
   listen<{ key: string; value: string }>('settings-changed', (event) => {
@@ -123,17 +126,6 @@ function startSettingsListen() {
     unlistenSettings = unlisten;
   }).catch((e) => {
     console.error('[TickerBar] Failed to listen settings-changed:', e);
-  });
-}
-
-function startThemeListen() {
-  listen<{ theme: string }>('theme-changed', (event) => {
-    const t = event.payload.theme as 'dark' | 'light';
-    settings.applyTheme(t);
-  }).then((unlisten) => {
-    unlistenTheme = unlisten;
-  }).catch((e) => {
-    console.error('[TickerBar] Failed to listen theme-changed:', e);
   });
 }
 
@@ -275,7 +267,6 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   if (event instanceof MouseEvent && (event.button !== 0 || isDragging)) return;
   if (initFailed.value) {
     if (cycleTimer) { clearInterval(cycleTimer); cycleTimer = null; }
-    if (unlistenTheme) { unlistenTheme(); unlistenTheme = null; }
     if (unlistenDatasource) { unlistenDatasource(); unlistenDatasource = null; }
     if (unlistenWatchlist) { unlistenWatchlist(); unlistenWatchlist = null; }
     if (unlistenSettings) { unlistenSettings(); unlistenSettings = null; }
@@ -287,12 +278,10 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
     heightReady.value = false;
     try {
       await settings.fetchSettings();
-      settings.applyTheme(settings.theme);
       settings.applyColorScheme(settings.colorScheme);
       await watchlist.fetchWatchlist();
       await quoteStore.startListening();
       startCycle();
-      startThemeListen();
       startDatasourceListen();
       startWatchlistListener();
       startSettingsListen();

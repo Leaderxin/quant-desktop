@@ -1,3 +1,7 @@
+// @vitest-environment happy-dom
+//
+// 需要 document 不是因为它自己看 DOM：这个 store 建立时会构造 settings store，
+// 而后者一建立就要把主题落到 `<html data-theme>` 上（见 settings.ts 的主题链）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import type { MarketOverview } from '@/types';
