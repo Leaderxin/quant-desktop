@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::{SectorItem, AppError};
@@ -51,6 +53,14 @@ pub fn clamp_top_n(n: usize) -> usize {
 /// `top_n` 上限 50,而 200 条在最坏情况(涨停潮,被剔比例远超平日)下过滤完仍够 50。
 pub fn concept_prefetch_size(top_n: usize) -> usize {
     (clamp_top_n(top_n) * 10).clamp(50, 200)
+}
+
+/// 行业板块的预拉条数 —— 与 `concept_prefetch_size` 同一个理由:东财「行业」(`m:90+t:2`)
+/// 把同一个板块在申万两级里各列一行(白酒Ⅱ / 白酒Ⅲ),按 `top_n` 拉完再合并会缺行。
+/// 实测 496 个行业板块里有 41 组同名(占 8%),2 倍余量足够;封顶 100 是控制响应体 ——
+/// `top_n` 上限 50,合并后仍余下一半。
+pub fn industry_prefetch_size(top_n: usize) -> usize {
+    (clamp_top_n(top_n) * 2 + 10).clamp(20, 100)
 }
 
 impl MarketOverviewClient {
@@ -112,6 +122,9 @@ impl MarketOverviewClient {
 
     /// 板块排名(行业或概念)。`fs` 为东财筛选串(`m:90+t:2` 行业 / `m:90+t:3` 概念)。
     /// 按 `direction` 排序取前 `top_n` 条返回(条数由设置页配置)。
+    ///
+    /// 先按 `industry_prefetch_size` 多拉一批,再合并同名板块(见 `merge_duplicate_boards`)
+    /// 才截取 —— 直接按 `top_n` 拉,榜首那对「白酒Ⅱ / 白酒Ⅲ」就会吃掉两个名额。
     pub async fn fetch_sector_ranking(
         &self,
         fs: &str,
@@ -119,7 +132,12 @@ impl MarketOverviewClient {
         top_n: usize,
     ) -> Result<Vec<SectorItem>, AppError> {
         let n = clamp_top_n(top_n);
-        self.fetch_sector_ranking_paged(fs, direction, n).await
+        let items = self
+            .fetch_sector_ranking_paged(fs, direction, industry_prefetch_size(n))
+            .await?;
+        let mut merged = merge_duplicate_boards(items, direction);
+        merged.truncate(n);
+        Ok(merged)
     }
 
     /// 概念板块排名 —— 与 `fetch_sector_ranking` 相同,但先多拉一些再剔除
@@ -139,9 +157,12 @@ impl MarketOverviewClient {
         let mut items = self
             .fetch_sector_ranking_paged("m:90+t:3", direction, concept_prefetch_size(n))
             .await?;
-        items.retain(|s| !is_non_concept_board(&s.code));
-        items.truncate(n);
-        Ok(items)
+        items.retain(|s| !is_non_concept_board(&s.code, &s.name));
+        // 概念榜没有申万那套 Ⅱ/Ⅲ 同名板块,但接口偶尔会把同一个板块吐两遍
+        // (实测行业榜里 `BK1032 风电设备` 连出两条),合并一下省得榜上出现两行一样的。
+        let mut merged = merge_duplicate_boards(items, direction);
+        merged.truncate(n);
+        Ok(merged)
     }
 
     async fn fetch_sector_ranking_paged(
@@ -183,7 +204,11 @@ impl MarketOverviewClient {
 /// `BK1675` 历史新高),在概念排名中剔除,只保留真正的主题概念(5G/AI/芯片/新能源…)。
 ///
 /// 接口层面无法拆分:`t:1` 地域 / `t:2` 行业 / `t:3` 概念是仅有的合法筛选串,`t:4`+
-/// 均返回空。故只能用代码黑名单兜底。
+/// 均返回空。故只能用黑名单兜底。
+///
+/// 名单只覆盖**已经出现过的那几批**;业绩预告与持仓变化是每期新开一批板块、代码跟着增加
+/// (2026一季报预增 → 中报预增 → 三季报预增…),靠代码表必然每期漏掉新的几个 ——
+/// 那一半交给 `is_recurring_non_concept` 按名字认。
 mod concept_blacklist {
     /// 宽基/成分指数(HS300_、中证500、茅指数…)
     /// + 股份类别/交易机制(AB股、AH股、B股、GDR、科创板做市商/做市股…)
@@ -215,19 +240,53 @@ mod concept_blacklist {
         "BK0718", "BK0804", "BK0823",
     ];
 
-    /// 业绩预披露(预增/预减/扭亏/首亏…)
+    /// 业绩预披露(预增/预减/扭亏/首亏…) —— 历史各期。之后新开的期次(如 2026 三季报)
+    /// 代码还没进表,由 `is_recurring_non_concept` 的年份规则兜住。
     pub const EARNINGS: &[&str] = &[
         "BK1198", "BK1199", "BK1628", "BK1680", "BK1681", "BK1682", "BK1749",
         "BK1750", "BK1751", "BK1752",
     ];
 }
 
-/// 判断板块代码是否属于「非主题概念」(风格/指数/资金/业绩),应从概念排名中剔除。
-fn is_non_concept_board(code: &str) -> bool {
+/// 判断板块是否属于「非主题概念」(风格/指数/资金/业绩),应从概念排名中剔除。
+fn is_non_concept_board(code: &str, name: &str) -> bool {
     concept_blacklist::INDEX.contains(&code)
         || concept_blacklist::STYLE.contains(&code)
         || concept_blacklist::FUND.contains(&code)
         || concept_blacklist::EARNINGS.contains(&code)
+        || is_recurring_non_concept(name)
+}
+
+/// 「每期新开一批」的非主题板块 —— 代码表跟不住,按名字认。
+///
+/// 东财给每一期业绩预告、每一类持仓变化、每一种市场风格都单开板块,代码随增量发放:
+/// 2026 年内的 `一季报预增 → 中报预增 → 三季报预增` 就是三批不同的 `BK` 号,
+/// 而三季报那四个(实测 2026-10:`2026三季报预增/预减/首亏/扭亏`)当时都不在黑名单里,
+/// 业绩预告季恰好是它们最可能冲上榜首的时候。这几类名字的构词是稳定的:
+///
+/// - 业绩:四位年份开头 + 含「报」(`2026三季报预增`、`2025年报预减` …)
+/// - 持仓:以 重仓 / 新进 / 增仓 / 减仓 / 持股 结尾(`保险重仓`、`社保新进`、`大基金持股` …)
+/// - 风格:以「风格」结尾(`消费风格`、`科技风格` …)
+/// - 昨日系列:以「昨日」开头(`昨日涨停`、`昨日高换手`、`昨日炸板` …),东财隔一阵就补一种
+///
+/// 主题概念里没有以这些构词开头/结尾的(`参股券商`、`超级品牌` 之类都不沾),所以按名字剔不会误伤。
+fn is_recurring_non_concept(name: &str) -> bool {
+    const POSITION_SUFFIXES: &[&str] = &["重仓", "新进", "增仓", "减仓", "持股"];
+    const STYLE_SUFFIXES: &[&str] = &["风格"];
+
+    is_earnings_series(name)
+        || name.starts_with("昨日")
+        || POSITION_SUFFIXES.iter().any(|s| name.ends_with(s))
+        || STYLE_SUFFIXES.iter().any(|s| name.ends_with(s))
+}
+
+/// 「2026三季报预增」这类业绩预告板块:四位年份 + 含「报」。
+fn is_earnings_series(name: &str) -> bool {
+    // `get(..4)` 在第四个字节不是字符边界时返回 None(中文名几乎都如此),正好直接排除。
+    let Some(year) = name.get(..4) else {
+        return false;
+    };
+    year.bytes().all(|b| b.is_ascii_digit()) && name[4..].contains('报')
 }
 
 /// 解析新浪指数响应,累加两行(上证 + 深证)的成交额(字段索引 9)。
@@ -298,6 +357,65 @@ fn parse_clist(body: &serde_json::Value) -> Vec<SectorItem> {
             })
         })
         .collect()
+}
+
+/// 板块名称末尾的申万层级罗马数字 —— 返回 (层级, 去掉后缀的本名)。
+/// 无后缀记 0(申万一级,或该板块只出现过一层)。
+fn split_board_level(name: &str) -> (u8, &str) {
+    for (suffix, level) in [("Ⅳ", 4u8), ("Ⅲ", 3), ("Ⅱ", 2), ("Ⅰ", 1)] {
+        if let Some(base) = name.strip_suffix(suffix) {
+            return (level, base);
+        }
+    }
+    (0, name)
+}
+
+/// 合并同名板块 —— 东财的「行业」榜(`m:90+t:2`)把申万一级/二级/三级行业混在同一张榜里,
+/// 同一个板块在两级里各占一行,靠末尾的 Ⅱ/Ⅲ 区分:实测「白酒Ⅱ」与「白酒Ⅲ」的成分股
+/// 完全一致(up/down/flat 与涨跌幅逐项相同),排名靠前时就是同一行内容重复两遍。
+/// 这里按去掉后缀的本名合并,名称也还原成「白酒」—— 榜单是给人看排行,不是给人看分类层级。
+///
+/// 保留哪一只:层级更高(数字更小)的那只。二级是三级的上位集合,两者成分股偶尔并不相同
+/// (`其他电源设备Ⅱ` 36 只 / `其他电源设备Ⅲ` 30 只),取上位的那只才不会漏掉成分股。
+///
+/// 合并后重排:替换代表项会让涨跌幅微调,不重排榜单就看起来失序。
+fn merge_duplicate_boards(items: Vec<SectorItem>, direction: &str) -> Vec<SectorItem> {
+    let mut kept: Vec<(SectorItem, u8)> = Vec::with_capacity(items.len());
+    let mut index: HashMap<String, usize> = HashMap::new();
+
+    for mut item in items {
+        let (level, base) = split_board_level(&item.name);
+        let base = base.to_string();
+        item.name = base.clone();
+        match index.get(&base) {
+            Some(&pos) => {
+                if level < kept[pos].1 {
+                    kept[pos] = (item, level);
+                }
+            }
+            None => {
+                index.insert(base, kept.len());
+                kept.push((item, level));
+            }
+        }
+    }
+
+    let mut merged: Vec<SectorItem> = kept.into_iter().map(|(item, _)| item).collect();
+    sort_by_change(&mut merged, direction);
+    merged
+}
+
+/// 按涨跌幅重排。`direction` 为 `"down"` 时升序(跌得最深在前),其余降序 ——
+/// 与 `fetch_sector_ranking_paged` 里 `po` 的取值方向一致。
+fn sort_by_change(items: &mut [SectorItem], direction: &str) {
+    let descending = direction != "down";
+    items.sort_by(|a, b| {
+        let ord = a
+            .change_pct
+            .partial_cmp(&b.change_pct)
+            .unwrap_or(std::cmp::Ordering::Equal);
+        if descending { ord.reverse() } else { ord }
+    });
 }
 
 /// 解析东财的计数/家数字段 —— 兼容整数(`1313`)与浮点(`1313.0`)两种返回。
@@ -406,25 +524,139 @@ var hq_str_sz399106="深证综指,1,2,3,4,5,0,0,57760736028,951499754726.529,0";
     #[test]
     fn concept_blacklist_flags_non_concept_boards() {
         // 风格因子、指数成分、资金持仓、业绩预披露 → 剔除
-        assert!(is_non_concept_board("BK1675")); // 历史新高(风格)
-        assert!(is_non_concept_board("BK1639")); // 周期股(风格)
-        assert!(is_non_concept_board("BK0500")); // HS300_(指数)
-        assert!(is_non_concept_board("BK0999")); // 茅指数(指数)
-        assert!(is_non_concept_board("BK0536")); // 基金重仓(资金)
-        assert!(is_non_concept_board("BK0707")); // 沪股通(资金)
-        assert!(is_non_concept_board("BK1749")); // 2026中报预增(业绩)
+        assert!(is_non_concept_board("BK1675", "历史新高")); // 风格
+        assert!(is_non_concept_board("BK1639", "周期股")); // 风格
+        assert!(is_non_concept_board("BK0500", "HS300_")); // 指数
+        assert!(is_non_concept_board("BK0999", "茅指数")); // 指数
+        assert!(is_non_concept_board("BK0536", "基金重仓")); // 资金
+        assert!(is_non_concept_board("BK0707", "沪股通")); // 资金
+        assert!(is_non_concept_board("BK1749", "2026中报预增")); // 业绩
         // 股份类别 / 交易机制 → 与 AB股、B股 同类,同样剔除
-        assert!(is_non_concept_board("BK0498")); // AB股
-        assert!(is_non_concept_board("BK0868")); // GDR
-        assert!(is_non_concept_board("BK1107")); // 科创板做市商
-        assert!(is_non_concept_board("BK1108")); // 科创板做市股
+        assert!(is_non_concept_board("BK0498", "AB股"));
+        assert!(is_non_concept_board("BK0868", "GDR"));
+        assert!(is_non_concept_board("BK1107", "科创板做市商"));
+        assert!(is_non_concept_board("BK1108", "科创板做市股"));
         // 主题概念 → 保留
-        assert!(!is_non_concept_board("BK0917")); // 半导体概念
-        assert!(!is_non_concept_board("BK0800")); // 人工智能
-        assert!(!is_non_concept_board("BK0900")); // 新能源车
+        assert!(!is_non_concept_board("BK0917", "半导体概念"));
+        assert!(!is_non_concept_board("BK0800", "人工智能"));
+        assert!(!is_non_concept_board("BK0900", "新能源车"));
         // 区域/参股主题是东财口径下的概念板块,不应误剔
-        assert!(!is_non_concept_board("BK0813")); // 雄安新区
-        assert!(!is_non_concept_board("BK0514")); // 参股券商
+        assert!(!is_non_concept_board("BK0813", "雄安新区"));
+        assert!(!is_non_concept_board("BK0514", "参股券商"));
+    }
+
+    /// 代码表跟不住的那几类:东财每期新开一批板块、代码跟着变。
+    /// 下面的代码都不在黑名单里(实测 2026-10),只能靠名字认。
+    #[test]
+    fn recurring_series_are_flagged_by_name_without_being_listed() {
+        // 业绩预告:2026 三季报那四个当时一个都没在名单里
+        assert!(is_non_concept_board("BK1755", "2026三季报预增"));
+        assert!(is_non_concept_board("BK1756", "2026三季报预减"));
+        assert!(is_non_concept_board("BK1757", "2026三季报扭亏"));
+        assert!(is_non_concept_board("BK1754", "2026三季报首亏"));
+        assert!(is_non_concept_board("BK9999", "2027年报预增"), "明年那批也认得出");
+        // 持仓变化
+        assert!(is_non_concept_board("BK1685", "保险重仓"));
+        assert!(is_non_concept_board("BK1686", "保险新进"));
+        assert!(is_non_concept_board("BK1689", "基金减仓"));
+        assert!(is_non_concept_board("BK1690", "基金增仓"));
+        assert!(is_non_concept_board("BK1694", "社保新进"));
+        assert!(is_non_concept_board("BK1696", "私募新进"));
+        assert!(is_non_concept_board("BK1697", "信托重仓"));
+        assert!(is_non_concept_board("BK1688", "大基金持股"));
+        // 风格
+        assert!(is_non_concept_board("BK9998", "小盘风格"));
+        // 昨日系列:名单里有 7 个变体,东财隔一阵还会补新的
+        assert!(is_non_concept_board("BK9997", "昨日炸板"));
+    }
+
+    /// 按名字剔的口子不能开太大 —— 主题概念里没有以这些构词结尾的。
+    #[test]
+    fn name_rules_do_not_swallow_theme_boards() {
+        for name in [
+            "参股券商", "参股银行", "超级品牌", "稀缺资源", "中特估",
+            "消费电子概念", "电池技术", "油气资源", "谷子经济", "首发经济",
+            "北交所概念", "融资融券", "转债标的", "养老金", "券商金股",
+        ] {
+            assert!(!is_recurring_non_concept(name), "{} 被名字规则误剔", name);
+        }
+        // 四是四位年份开头的才认:3D 开头、少一位年份都不算业绩预告
+        assert!(!is_recurring_non_concept("3D打印"));
+        assert!(!is_recurring_non_concept("2026规划"));
+    }
+
+    fn board(code: &str, name: &str, pct: f64) -> SectorItem {
+        SectorItem {
+            code: code.to_string(),
+            name: name.to_string(),
+            change_pct: pct,
+            leader_name: None,
+            leader_pct: None,
+            laggard_name: None,
+            laggard_pct: None,
+        }
+    }
+
+    /// 白酒Ⅱ / 白酒Ⅲ 是同一个板块在申万两级里的两次出现(成分股完全一致,
+    /// 实测 2026-10),合并后只留一行,名称也不带后缀。
+    #[test]
+    fn merges_same_named_boards_across_levels() {
+        let merged = merge_duplicate_boards(
+            vec![
+                board("BK1575", "白酒Ⅲ", 1.22),
+                board("BK1277", "白酒Ⅱ", 1.22),
+                board("BK1496", "洗护用品", 0.98),
+            ],
+            "up",
+        );
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].name, "白酒");
+        assert_eq!(merged[0].code, "BK1277", "保留层级更高的那只(Ⅱ)");
+        assert_eq!(merged[1].name, "洗护用品");
+    }
+
+    /// 只有一层分类的板块没有孪生项,后缀照样去掉 —— 榜单上没有层级信息的位置。
+    #[test]
+    fn strips_level_suffix_without_a_twin() {
+        let merged = merge_duplicate_boards(vec![board("BK1612", "农商行Ⅲ", -0.46)], "down");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].name, "农商行");
+    }
+
+    /// 两个层级的成分股偶尔并不相同(其他电源设备Ⅱ 36 只 / Ⅲ 30 只),
+    /// 取上位的那只,并按它的涨跌幅重排 —— 否则替换代表项后榜单会失序。
+    #[test]
+    fn keeps_the_upper_level_board_and_resorts() {
+        let merged = merge_duplicate_boards(
+            vec![
+                board("BK0003", "风电设备", -2.09),
+                board("BK0002", "其他电源设备Ⅲ", -3.44),
+                board("BK0001", "其他电源设备Ⅱ", -3.23),
+            ],
+            "down",
+        );
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].name, "其他电源设备", "跌幅榜里深的一只排前面");
+        assert_eq!(merged[0].code, "BK0001");
+        assert_eq!(merged[0].change_pct, -3.23, "用的是上位板块自己的涨跌幅");
+        assert_eq!(merged[1].name, "风电设备");
+    }
+
+    /// 预拉量必须大于所需条数,否则合并同名板块后会缺列;同时封顶 100 控制响应体。
+    #[test]
+    fn industry_prefetch_size_leaves_headroom_and_is_capped() {
+        for n in SECTOR_TOP_N_MIN..=SECTOR_TOP_N_MAX {
+            assert!(
+                industry_prefetch_size(n) > n,
+                "预拉 {} 条不足以在合并后凑出 {} 条",
+                industry_prefetch_size(n),
+                n
+            );
+        }
+        assert_eq!(industry_prefetch_size(1), 20, "小值走 20 下限");
+        assert_eq!(industry_prefetch_size(10), 30);
+        assert_eq!(industry_prefetch_size(50), 100, "大值封顶 100");
+        assert_eq!(industry_prefetch_size(999), 100, "越界先夹到 50 再算");
     }
 
     #[test]
