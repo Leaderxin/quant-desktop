@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
+use chrono::{FixedOffset, Timelike, Utc};
 use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::{SectorItem, AppError};
@@ -16,11 +18,16 @@ use super::headers;
 /// - 涨跌家数:东财 `push2ex.eastmoney.com/getTopicZDFenBu`,返回涨跌分布自算。
 /// - 板块排名:东财 `push2delay.eastmoney.com/api/qt/clist/get`,
 ///   行业 `m:90+t:2`、概念 `m:90+t:3`。
+/// - 较昨日同期的成交额增量:腾讯分时 `ifzq.gtimg.cn/appstock/app/{minute,day}/query`
+///   —— 每行是「时间 点位 累计成交量 累计成交额」,五日那份直接给出前一交易日的曲线。
 ///
 /// ⚠️ 域名坑:`push2.eastmoney.com` 在本环境被拦截(clist 返回 HTTP 000),
 /// 必须用 `push2delay` / `push2ex` 这两个可用域名。
 pub struct MarketOverviewClient {
     client: Client,
+    /// 前一交易日的分时曲线。它是**静态**的(昨天不会变),每天只值得拉一次;
+    /// 当日那条每次轮询都要新值,走 `MINUTE_QUERY` 的小响应。
+    prev_day: Mutex<Option<Arc<PrevDayCurves>>>,
 }
 
 /// 新浪指数接口(GBK) —— 成交额用
@@ -30,6 +37,14 @@ const SINA_INDEX_URL: &str = "https://hq.sinajs.cn/list=sh000001,sz399106";
 const EASTMONEY_PUSH2EX: &str = "https://push2ex.eastmoney.com";
 /// 东财板块列表接口(可用的延迟域名)
 const EASTMONEY_PUSH2DELAY: &str = "https://push2delay.eastmoney.com";
+
+/// 腾讯当日分时(~12KB):`data.<code>.data = {date, data: [...]}`
+const TENCENT_MINUTE_QUERY: &str = "http://ifzq.gtimg.cn/appstock/app/minute/query?code=";
+/// 腾讯五日分时(~50KB):`data.<code>.data = [{date, data: [...]}, ...]`
+const TENCENT_DAY_QUERY: &str = "http://ifzq.gtimg.cn/appstock/app/day/query?code=";
+
+/// 两市成交额口径的两个指数 —— 与 `SINA_INDEX_URL` 一致,增量和上面那个数才可比。
+const TURNOVER_CODES: [&str; 2] = ["sh000001", "sz399106"];
 
 /// getTopicZDFenBu 的 ut token
 const BREADTH_UT: &str = "7eea3edcaed734bea9cbfc24409ed989";
@@ -67,6 +82,7 @@ impl MarketOverviewClient {
     pub fn new() -> Self {
         Self {
             client: super::shared_client().clone(),
+            prev_day: Mutex::new(None),
         }
     }
 
@@ -92,6 +108,100 @@ impl MarketOverviewClient {
         let (body, _, _) = GBK.decode(&body_bytes);
 
         Ok(parse_sina_turnover(&body))
+    }
+
+    /// 两市成交额较**上一交易日同一时点**的增量(元):正数=放量,负数=缩量。
+    ///
+    /// 为什么两边都取腾讯分时、而不是拿上面那个新浪成交额直接减:
+    /// 「增量」是个差值,两边必须同源同时刻才成立 —— 混用两家口径,差值里就混进了
+    /// 换源误差,而那个误差和真实的增减量同一个量级，看起来完全像真的。
+    ///
+    /// 盘前、非交易日、接口异常一律返回 `None`(面板据此隐藏这块),不返回 0 ——
+    /// 0 会被读成「与昨日持平」。
+    pub async fn fetch_turnover_delta(&self) -> Option<f64> {
+        let now = beijing_now();
+        let today = now.format("%Y%m%d").to_string();
+        let hhmm = now.hour() * 100 + now.minute();
+
+        let (today_curves, prev) = tokio::join!(
+            async {
+                let (sh, sz) = tokio::join!(
+                    self.fetch_today_curve(TURNOVER_CODES[0], &today),
+                    self.fetch_today_curve(TURNOVER_CODES[1], &today),
+                );
+                (sh, sz)
+            },
+            self.prev_day_curves(&today),
+        );
+
+        let (Some(sh_today), Some(sz_today)) = today_curves else {
+            return None;
+        };
+        let prev = prev?;
+
+        let today_total =
+            cumulative_at(&sh_today, hhmm)? + cumulative_at(&sz_today, hhmm)?;
+        let prev_total = cumulative_at(&prev.sh, hhmm)? + cumulative_at(&prev.sz, hhmm)?;
+        Some(today_total - prev_total)
+    }
+
+    /// 当日分时曲线。接口在盘前/休市时给的是**上一交易日**的整天数据 ——
+    /// 用 `date` 对一下,不是今天就当没有,免得把昨天的曲线当成今天。
+    async fn fetch_today_curve(&self, code: &str, today: &str) -> Option<AmountCurve> {
+        let body = self
+            .get_json(&format!("{}{}", TENCENT_MINUTE_QUERY, code), "分时")
+            .await?;
+        let day = parse_minute_query(&body, code)?;
+        (day.date == today).then_some(day.curve)
+    }
+
+    /// 前一交易日的两条分时曲线(沪、深),按 UTC+8 日期缓存 —— 昨天不会变,
+    /// 没必要每 60s 重拉 100KB。
+    async fn prev_day_curves(&self, today: &str) -> Option<Arc<PrevDayCurves>> {
+        if let Some(cached) = self.prev_day.lock().ok().and_then(|g| g.clone()) {
+            if cached.for_date == today {
+                return Some(cached);
+            }
+        }
+
+        let (sh, sz) = tokio::join!(
+            self.fetch_prev_curve(TURNOVER_CODES[0], today),
+            self.fetch_prev_curve(TURNOVER_CODES[1], today),
+        );
+        let curves = Arc::new(PrevDayCurves {
+            for_date: today.to_string(),
+            sh: sh?,
+            sz: sz?,
+        });
+        if let Ok(mut guard) = self.prev_day.lock() {
+            *guard = Some(curves.clone());
+        }
+        Some(curves)
+    }
+
+    async fn fetch_prev_curve(&self, code: &str, today: &str) -> Option<AmountCurve> {
+        let body = self
+            .get_json(&format!("{}{}", TENCENT_DAY_QUERY, code), "五日分时")
+            .await?;
+        pick_prev_day(&parse_day_query(&body, code), today).map(|d| d.curve.clone())
+    }
+
+    async fn get_json(&self, url: &str, what: &str) -> Option<serde_json::Value> {
+        let resp = headers::with_browser_headers(self.client.get(url), "https://gu.qq.com")
+            .send()
+            .await
+            .map_err(|e| log::debug!("[market] {}请求失败: {:#}", what, e))
+            .ok()?;
+
+        if !resp.status().is_success() {
+            log::debug!("[market] {} HTTP {}", what, resp.status());
+            return None;
+        }
+
+        resp.json()
+            .await
+            .map_err(|e| log::debug!("[market] {}解析失败: {}", what, e))
+            .ok()
     }
 
     /// 涨跌家数(全市场)。返回 (上涨, 下跌, 平盘)。
@@ -305,6 +415,95 @@ fn parse_sina_turnover(body: &str) -> f64 {
             fields[9].parse::<f64>().ok()
         })
         .sum()
+}
+
+/// 分时累计成交额曲线:`(HHMM, 当日累计成交额(元))`,按时间升序。
+type AmountCurve = Vec<(u32, f64)>;
+
+/// 一个交易日的分时曲线
+#[derive(Debug, Clone)]
+struct DayCurve {
+    /// `YYYYMMDD`
+    date: String,
+    curve: AmountCurve,
+}
+
+/// 前一交易日的沪深两条曲线 —— 口径与 `SINA_INDEX_URL` 相同(沪指 + 深证综指)。
+struct PrevDayCurves {
+    /// 抓取时 UTC+8 的日期。跨日即失效:「昨天」是相对于今天说的。
+    for_date: String,
+    sh: AmountCurve,
+    sz: AmountCurve,
+}
+
+/// UTC+8 的当前时间 —— 盘中判断与时间戳都按北京时间,不看本机时区。
+fn beijing_now() -> chrono::DateTime<FixedOffset> {
+    Utc::now().with_timezone(&FixedOffset::east_opt(8 * 3600).expect("UTC+8 is a valid offset"))
+}
+
+/// 解析腾讯分时的单行:`0930 3671.00 4371035 7416126878.20`
+/// → `(930, 7416126878.20)`。第四列是**当日累计**成交额,不是本分钟的量。
+fn parse_amount_line(line: &str) -> Option<(u32, f64)> {
+    let mut fields = line.split_whitespace();
+    let hhmm = fields.next()?.parse::<u32>().ok()?;
+    let _price = fields.next()?;
+    let _volume = fields.next()?;
+    let amount = fields.next()?.parse::<f64>().ok()?;
+    Some((hhmm, amount))
+}
+
+fn parse_curve(lines: &[serde_json::Value]) -> AmountCurve {
+    lines
+        .iter()
+        .filter_map(|v| parse_amount_line(v.as_str()?))
+        .collect()
+}
+
+/// `.../minute/query`:`data.<code>.data = { date, data: [...] }`
+fn parse_minute_query(body: &serde_json::Value, code: &str) -> Option<DayCurve> {
+    let data = body.pointer(&format!("/data/{}/data", code))?;
+    Some(DayCurve {
+        date: data.get("date")?.as_str()?.to_string(),
+        curve: parse_curve(data.get("data")?.as_array()?),
+    })
+}
+
+/// `.../day/query`:`data.<code>.data = [{ date, data: [...] }, ...]`(最近五个交易日)
+fn parse_day_query(body: &serde_json::Value, code: &str) -> Vec<DayCurve> {
+    let Some(days) = body
+        .pointer(&format!("/data/{}/data", code))
+        .and_then(|d| d.as_array())
+    else {
+        return Vec::new();
+    };
+    days.iter()
+        .filter_map(|d| {
+            Some(DayCurve {
+                date: d.get("date")?.as_str()?.to_string(),
+                curve: parse_curve(d.get("data")?.as_array()?),
+            })
+        })
+        .collect()
+}
+
+/// 取 `hhmm` 时点的累计成交额 —— 最后一条时间 ≤ hhmm 的记录。
+/// 午休时 11:30 之后没有新行,自然停在 11:30,正是要和昨天 11:30 对比的那个数。
+fn cumulative_at(curve: &[(u32, f64)], hhmm: u32) -> Option<f64> {
+    curve
+        .iter()
+        .rev()
+        .find(|(t, _)| *t <= hhmm)
+        .map(|(_, amount)| *amount)
+}
+
+/// 从五日分时里挑**前一交易日**。接口按时间**倒序**给(最新的一天在前):
+/// 今天已经出现时,昨天就在它后一条;今天还没出现(盘前 / 休市)时最新那条就是
+/// 前一交易日 —— 那种情况下今天本来也拿不到曲线,调用方会放弃对比。
+fn pick_prev_day<'a>(days: &'a [DayCurve], today: &str) -> Option<&'a DayCurve> {
+    match days.iter().position(|d| d.date == today) {
+        Some(i) => days.get(i + 1),
+        None => days.first(),
+    }
 }
 
 /// 解析东财涨跌分布响应,自算涨/跌/平家数。
@@ -657,6 +856,96 @@ var hq_str_sz399106="深证综指,1,2,3,4,5,0,0,57760736028,951499754726.529,0";
         assert_eq!(industry_prefetch_size(10), 30);
         assert_eq!(industry_prefetch_size(50), 100, "大值封顶 100");
         assert_eq!(industry_prefetch_size(999), 100, "越界先夹到 50 再算");
+    }
+
+    fn day(date: &str, curve: AmountCurve) -> DayCurve {
+        DayCurve {
+            date: date.to_string(),
+            curve,
+        }
+    }
+
+    /// 腾讯分时一行是「时间 点位 累计成交量 累计成交额」,第四列才是成交额;
+    /// 第三列是累计手数,用错会让「增量」变成一个荒谬的量级。
+    #[test]
+    fn parses_tencent_minute_amount_line() {
+        let (t, a) = parse_amount_line("0930 3671.00 4371035 7416126878.20").unwrap();
+        assert_eq!(t, 930);
+        assert!((a - 7_416_126_878.20).abs() < 0.01);
+        assert_eq!(parse_amount_line("坏行"), None);
+        assert_eq!(parse_amount_line("0930 3671.00"), None);
+    }
+
+    #[test]
+    fn parses_minute_and_day_payloads() {
+        let minute = serde_json::json!({
+            "data": { "sh000001": { "data": {
+                "date": "20261027",
+                "data": ["0930 3671.00 4371035 7416126878.20", "0931 3674.25 20772190 35232785418.20"]
+            }}}
+        });
+        let parsed = parse_minute_query(&minute, "sh000001").unwrap();
+        assert_eq!(parsed.date, "20261027");
+        assert_eq!(parsed.curve.len(), 2);
+        assert_eq!(parsed.curve[1].0, 931);
+
+        let five = serde_json::json!({
+            "data": { "sh000001": { "data": [
+                { "date": "20261027", "data": ["0930 3671.00 4371035 7416126878.20"] },
+                { "date": "20261026", "data": ["0930 3671.00 4371035 7416126878.20", "1500 3697.52 432794318 746528025716.40"] }
+            ]}}
+        });
+        let days = parse_day_query(&five, "sh000001");
+        assert_eq!(days.len(), 2);
+        assert_eq!(days[0].date, "20261027", "接口按时间倒序给");
+        assert_eq!(days[1].curve.len(), 2);
+
+        // 码不对 / 结构不对都不该 panic,给空
+        assert!(parse_day_query(&five, "sz399106").is_empty());
+        assert!(parse_minute_query(&serde_json::json!({"data": {}}), "sh000001").is_none());
+    }
+
+    /// 午休与收盘后都要落在正确的那一行上 —— 这是「同时点」对比的全部依据。
+    #[test]
+    fn cumulative_at_uses_last_point_at_or_before_time() {
+        let curve = vec![
+            (930, 100.0),
+            (935, 200.0),
+            (1130, 900.0),
+            (1300, 950.0),
+            (1500, 1000.0),
+        ];
+        assert_eq!(cumulative_at(&curve, 930), Some(100.0));
+        assert_eq!(cumulative_at(&curve, 940), Some(200.0), "取 <= t 的最后一条");
+        assert_eq!(cumulative_at(&curve, 1200), Some(900.0), "午休停在 11:30");
+        assert_eq!(cumulative_at(&curve, 1600), Some(1000.0), "收盘后是全天值");
+        assert_eq!(cumulative_at(&curve, 925), None, "开盘前没有可比时点");
+        assert_eq!(cumulative_at(&[], 1000), None);
+    }
+
+    /// 五日分时按时间倒序,「昨天」在今天**后面**一条;今天还没出现时最新那条就是昨天。
+    #[test]
+    fn picks_previous_trading_day() {
+        let days = vec![
+            day("20261027", vec![(930, 1.0)]),
+            day("20261026", vec![(930, 2.0)]),
+            day("20261023", vec![(930, 3.0)]),
+        ];
+        assert_eq!(
+            pick_prev_day(&days, "20261027").map(|d| d.date.as_str()),
+            Some("20261026")
+        );
+        assert_eq!(
+            pick_prev_day(&days, "20261026").map(|d| d.date.as_str()),
+            Some("20261023")
+        );
+        // 今天还没出现在五日分时里 → 最新那条就是「昨天」
+        assert_eq!(
+            pick_prev_day(&days, "20261028").map(|d| d.date.as_str()),
+            Some("20261027")
+        );
+        assert!(pick_prev_day(&[], "20261027").is_none());
+        assert!(pick_prev_day(&days[..1], "20261027").is_none(), "只有今天一条时没有基准");
     }
 
     #[test]

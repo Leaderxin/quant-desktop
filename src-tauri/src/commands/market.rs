@@ -28,13 +28,15 @@ pub async fn get_market_overview(
 ) -> Result<MarketOverview, String> {
     let top_n = crate::datasource::market::clamp_top_n(top_n.unwrap_or(5));
 
-    // 并行发起:四个请求共用一个 10s 超时的 client,串行时一个慢端点会把整份
-    // 概览拖到最坏 ~40s;join! 并发等待后总耗时约等于最慢的那一个请求。
-    let (turnover, breadth, industry, concept) = tokio::join!(
+    // 并行发起:五块数据共用一个 10s 超时的 client,串行时一个慢端点会把整份
+    // 概览拖到最坏 ~50s;join! 并发等待后总耗时约等于最慢的那一个请求。
+    // `fetch_turnover_delta` 自己也不发错 —— 拿不到就是 None,面板隐藏那一段。
+    let (turnover, breadth, industry, concept, turnover_delta) = tokio::join!(
         client.fetch_total_turnover(),
         client.fetch_market_breadth(),
         client.fetch_sector_ranking("m:90+t:2", &direction, top_n),
         client.fetch_concept_ranking(&direction, top_n),
+        client.fetch_turnover_delta(),
     );
 
     let turnover = turnover.unwrap_or_else(|e| {
@@ -59,6 +61,7 @@ pub async fn get_market_overview(
 
     Ok(MarketOverview {
         turnover,
+        turnover_delta,
         up,
         down,
         flat,

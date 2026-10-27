@@ -40,7 +40,7 @@ const INTERVAL_CMD = 'get_overview_interval';
 
 /** 用 turnover 当身份标记 —— 构造类型完全合法的概览响应,便于断言「哪一份数据落地了」。 */
 function mkOverview(marker: number): MarketOverview {
-  return { turnover: marker, up: 0, down: 0, flat: 0, industry: [], concept: [] };
+  return { turnover: marker, turnover_delta: null, up: 0, down: 0, flat: 0, industry: [], concept: [] };
 }
 
 const UP_DATA = 1_001;

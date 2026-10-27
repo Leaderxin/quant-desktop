@@ -46,6 +46,8 @@ export interface SectorItem {
 
 export interface MarketOverview {
   turnover: number;
+  /** 较上一交易日同一时点的成交额增量(元):正=放量,负=缩量;盘前/休市时为 null */
+  turnover_delta: number | null;
   up: number;
   down: number;
   flat: number;

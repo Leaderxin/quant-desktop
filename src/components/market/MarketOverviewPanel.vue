@@ -2,12 +2,15 @@
 import { computed, onMounted, onUnmounted } from 'vue';
 import { useMarketStore, type MarketDirection } from '@/stores/market';
 import type { SectorItem } from '@/types';
-import { formatAmount } from '@/utils/format';
+import { formatAmount, formatTurnoverDelta } from '@/utils/format';
 import { ChevronDown } from '@lucide/vue';
 
 const market = useMarketStore();
 
 const turnoverText = computed(() => formatAmount(market.overview?.turnover));
+/** 较昨日同期的增量：后端拿不到（盘前 / 休市 / 接口异常）时是 null，整块隐藏 */
+const turnoverDelta = computed(() => market.overview?.turnover_delta ?? null);
+const turnoverDeltaText = computed(() => formatTurnoverDelta(turnoverDelta.value));
 const up = computed(() => market.overview?.up ?? 0);
 const down = computed(() => market.overview?.down ?? 0);
 const flat = computed(() => market.overview?.flat ?? 0);
@@ -82,6 +85,12 @@ onUnmounted(() => {
         <span class="turnover">
           <span class="turnover-label">两市成交额</span>
           <span class="turnover-value tabular-nums">{{ turnoverText }}</span>
+          <!-- 较昨日同一时点：正=放量、负=缩量。中性配色 —— 放量/缩量不是涨跌，
+               套红绿会被读成方向，而且涨跌配色切到 us 后含义还会翻过来 -->
+          <span v-if="turnoverDelta !== null" class="turnover-delta">
+            <span class="turnover-delta-label">较昨同期</span>
+            <span class="turnover-delta-value tabular-nums">{{ turnoverDeltaText }}</span>
+          </span>
         </span>
 
         <span v-if="breadthAvailable" class="breadth">
@@ -253,6 +262,22 @@ onUnmounted(() => {
   font-size: var(--text-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
+}
+
+/* 较昨日同期 —— 与成交额同排但降一级：主数字仍是成交额本身。
+   不套涨跌色：放量/缩量不是涨跌，红绿会被读成方向，且切到 us 配色后会反过来。 */
+.turnover-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.turnover-delta-label {
+  color: var(--color-text-tertiary);
+}
+.turnover-delta-value {
+  color: var(--color-text-secondary);
 }
 
 /* 涨跌分布条 */
