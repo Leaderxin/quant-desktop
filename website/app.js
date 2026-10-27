@@ -167,9 +167,13 @@
     // Slot = which cell of the track is in view: 0 = clone of the last slide,
     // 1..count = the real slides, count + 1 = clone of the first slide.
     var slot = 1;
-    // A click that arrives while the track is parked on a clone (i.e. during
-    // that one transition) — replayed once the snap has happened.
-    var pending = null;
+    // Operations that arrive while the track is parked on a clone (i.e. during
+    // that one wrap transition). Single-slot callbacks can't do this: rapid
+    // clicks overwrite each other and N presses advance only one slide.
+    // Steps accumulate their net displacement instead (three quick "next"s land
+    // three slides ahead, in one transition); a dot jump replaces whatever was
+    // queued — the last action wins.
+    var pending = null; // { kind: 'step', delta } | { kind: 'jump', index }
 
     function atClone() {
       return slot === 0 || slot === count + 1;
@@ -213,16 +217,28 @@
 
       var queued = pending;
       pending = null;
-      if (queued) queued();
+      if (!queued) return;
+      if (queued.kind === 'jump') {
+        moveTo(queued.index + 1);
+      } else if (queued.delta !== 0) {
+        // Wrap the net displacement onto a real slide — moveTo must never land
+        // beyond the clones (there is nothing there).
+        moveTo((((slot - 1 + queued.delta) % count) + count) % count + 1);
+      }
     }
 
     function step(dir) {
-      if (atClone()) { pending = function () { step(dir); }; return; }
+      if (atClone()) {
+        pending = pending && pending.kind === 'step'
+          ? { kind: 'step', delta: pending.delta + dir }
+          : { kind: 'step', delta: dir };
+        return;
+      }
       moveTo(slot + dir);
     }
 
     function jump(index) {
-      if (atClone()) { pending = function () { jump(index); }; return; }
+      if (atClone()) { pending = { kind: 'jump', index: index }; return; }
       moveTo(index + 1);
     }
 
