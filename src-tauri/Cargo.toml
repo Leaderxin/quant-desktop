@@ -57,6 +57,9 @@ thiserror = "2"
 dirs = "5"
 tauri-plugin-updater = "2"
 raw-window-handle = "0.6"
+tauri-plugin-dialog = "2"
+rust_xlsxwriter = "0.101"
+calamine = "0.37"
 
 # WinRT StartupTask API for the store build's autostart (Windows only, pulled in
 # by the `store` feature). Same version as the copy already in the dependency

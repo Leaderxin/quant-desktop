@@ -4,6 +4,7 @@ pub mod datasource;
 pub mod cache;
 pub mod commands;
 pub mod hotkey;
+pub mod import;
 
 use std::fs::File;
 use std::sync::Arc;
@@ -269,6 +270,8 @@ fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogg
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // 原生「另存为」对话框：自选导入模板让用户自己挑目录。
+        .plugin(tauri_plugin_dialog::init())
         // Registry Run-key autostart (macOS: LaunchAgent). Store builds on
         // Windows don't use this — their autostart goes through the packaged
         // StartupTask API instead (see commands/autostart.rs); the plugin stays
@@ -802,6 +805,9 @@ pub fn run() {
             commands::watchlist::set_ticker_enabled_bulk,
             commands::watchlist::reorder_ticker,
             commands::watchlist::search_stocks,
+            commands::import::import_watchlist,
+            commands::import::save_import_template,
+            commands::import::read_spreadsheet,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::settings::set_boss_key,
