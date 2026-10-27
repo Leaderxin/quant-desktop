@@ -383,15 +383,17 @@ pub fn run() {
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
-            // Portable mode and Store builds both skip the "check update" tray
-            // item: portable updates are user-managed (download & replace the
-            // zip), and Store updates are handled by the Microsoft Store itself.
+            // 「设置」放在分隔线之下、「检查更新」之后：线上面是两条窗口操作，
+            // 线下面都是应用级操作（检查更新 / 设置 / 退出）—— 分组按这个分，
+            // 而不是按菜单项的创建顺序。
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
-                .item(&settings_item)
                 .item(&toggle_ticker)
                 .separator();
 
+            // Portable mode and Store builds both skip the "check update" tray
+            // item: portable updates are user-managed (download & replace the
+            // zip), and Store updates are handled by the Microsoft Store itself.
             #[cfg(not(feature = "store"))]
             let menu = if is_portable {
                 menu
@@ -401,7 +403,7 @@ pub fn run() {
                 menu.item(&check_update_item)
             };
 
-            let menu = menu.item(&quit_item).build()?;
+            let menu = menu.item(&settings_item).item(&quit_item).build()?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(
