@@ -44,6 +44,8 @@ Coverage by area:
 | [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts. 主题那一组钉的是三态：首帧前就落 `data-theme`、显式模式不看系统深浅、系统主题变化只在跟随时被采纳、切到跟随系统时读的是**解 pin 之后**的系统值（用一个「IPC 里改值但不通知监听者」的假 matchMedia 分辨这两种读法），以及传给原生层的始终是模式而不是解析好的主题 |
 | [src/utils/theme.spec.ts](src/utils/theme.spec.ts) | 「跟随系统」的窗口侧解析：显式模式不看系统深浅、结果里永远不出现 `system`、没有 `matchMedia` 时按浅色而不抛错（它跑在 store 的建立路径上，抛了就是白屏）、订阅与取消订阅 |
 | [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
+| [src/utils/csv.spec.ts](src/utils/csv.spec.ts) | 自选导入 CSV 的三处「不报错、只是导错」：编码（中文 Windows 上 Excel 存出来是 GBK —— 先按 UTF-8 严格解码、解不动才退 GBK，反过来会把 UTF-8 中文解成乱码而不报错）、引号内的逗号与换行、表头列名；以及**行号必须按物理行记**（引号内嵌的换行占行，否则失败提示里的「第 N 行」会把用户指到别人的行）与 Excel 拆出来的网格共用同一套 `mapWatchlistRows` |
+| [src/utils/format.spec.ts](src/utils/format.spec.ts) | 「较昨同期」增量的格式：正负号必须留在文字里（那块不套涨跌色，符号是唯一的方向信息）、不足一亿按持平、缺失值给空串让调用方整块隐藏 |
 | [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及不在打字路径上的组合才许当热键 —— 裸键与只带 Shift 的组合都会把字符从全系统抢走（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」） |
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
@@ -74,7 +76,7 @@ Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vit
 
 ### Rust backend (`src-tauri/src/`)
 
-**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/settings/toggle-ticker/quit), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
+**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/toggle-ticker/—/check-update/settings/quit — 分隔线把「窗口操作」和「应用操作」分开), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
 
 Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
 
@@ -163,7 +165,11 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 - `settings.rs` — `get_settings`, `set_setting`, `set_boss_key` (writes the setting *and* re-registers the global shortcut; empty string = unset), `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
 - `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
 - `window.rs` — `show_main_window` (ticker-bar click; delegates to `crate::show_main_window`), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
+- `import.rs` — 自选导入。`import_watchlist(entries, group_ids)` 一次 IPC 完成「匹配 + 落库 + 逐行结果」（`added` / `exists` / `failed`），只发一次 `watchlist-changed`；`save_import_template(path)` 生成模板并写到用户在前端「另存为」里选定的路径（`tauri-plugin-dialog`，取消则不写；没扩展名时补 `.xlsx`）；`read_spreadsheet(bytes)` 把 Excel 拆成单元格网格。
+  **模板是 xlsx 而不是 csv**，唯一理由是表头要能带底色（CSV 是纯文本，Excel 打开不带任何样式，填表时容易把表头当数据行）；顺带把代码列设成文本格式，用户敲 `000001` 不会被 Excel 改成 `1`。导入接受 `.xlsx` / `.xls` / `.csv`：Excel 由后端拆成网格，CSV 由前端解码解析，**两者共用前端同一套表头识别与列映射**（`mapWatchlistRows`）——两条路径各写一份，迟早一边认表头一边不认。
+  **匹配规则是代码优先、名称兜底、只认完全相等**：批量导入里模糊匹配悄悄导错一只，比报错难发现得多；名称命中多只时直接报错并列出代码。**代码命中多只时（沪深同号，如 `000001` 上证指数 / 平安银行）先用名称在这几只里再筛一次**，名称也对不上才报错 —— 名称本来就填在表里，是现成的消歧信息。代码接受 `600519` / `sh600519` / `600519.SH` / `s_sh600519`，以及专业软件里常见的 `SH.600519`、`sh-600519`、`600519 sh` 这类带分隔符的写法（前缀后缀都认）。**纯数字不足 6 位按左补零处理（Excel 会吃掉 `000001` 的前导零），但补出来的码是猜测**：必须由名称证实才能导（`1,平安银行` 可以，`700,腾讯控股` 不能悄悄补成 `000700` 导成模塑科技），且搜索关键字用名称 —— 拿猜测的码当关键字，候选里根本没有用户要的那只；只填短代码没填名称就直接报「不足 6 位」，不猜。另一条容易写错的语义：`exists` 按**导入前**的快照算 —— 否则同一次导入里先加进去的那只，再出现一次就会被误报成「已存在」。逐行搜索用信号量限 6 并发（每行一次 suggest 请求），落库串行，单次上限 500 行。
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI. 行业板块榜要先**合并同名板块**再截取（东财 `m:90+t:2` 把申万一级/二级/三级混在一张榜里，同一个板块会以「白酒Ⅱ」「白酒Ⅲ」两行出现，成分股完全一致），所以 `fetch_sector_ranking` 按 `industry_prefetch_size` 多拉一批 —— 直接按 `top_n` 拉，榜首那对就会吃掉两个名额。概念榜的过滤名单分两半：**代码表**（风格/指数/资金/业绩的历史各期）+ **名字规则**（业绩预告 = 四位年份开头且含「报」、持仓 = 以 重仓/新进/增仓/减仓/持股 结尾、风格 = 以「风格」结尾）。后一半不可省：东财每期新开一批板块、代码跟着发（2026 一季报 → 中报 → 三季报），只靠代码表每一季都会漏掉新冒出来的那几个。
+  `turnover_delta` = 较**上一交易日同一时点**的两市成交额增量（正=放量、负=缩量）。这个差值两边必须**同源同时刻**：今日累计与昨日曲线都取自腾讯分时（`minute/query` 小响应 + 五日的 `day/query`），不拿新浪那个成交额去减 —— 混用两家口径，换源误差与真实增减量同量级，看起来完全像真的。前一交易日的曲线是静态的，按 UTC+8 日期缓存、每天只拉一次；盘前/休市拿不到当日曲线时给 `null`（面板隐藏），不给 0 —— 0 会被读成「与昨日持平」。
 - `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
 
 ### Frontend (`src/`)
@@ -194,6 +200,8 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
             ├─ WatchlistTable.vue (NDataTable: 动态列、默认排序、右键菜单)
             │    ├─ GroupTabs.vue (分组标签栏：切换/重命名/右键菜单/新建)
             │    ├─ AddStockDialog.vue (搜索 + 选择目标分组)
+            │    ├─ ImportWatchlistDialog.vue (CSV 批量导入：模板 / 拖放 / 逐行结果)
+            │    ├─ GroupPicker.vue (分组多选药丸，添加与导入共用)
             │    └─ StockDetail.vue (expanded row detail panel)
             │         ├─ ChartSwitcher.vue (toggle: 分时/日K/周K/月K)
             │         ├─ MinuteChart.vue (intraday chart, auto-refresh 5s)
@@ -337,8 +345,8 @@ Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-
 
 ### Key dependencies
 
-- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging), `tauri-plugin-global-shortcut` (老板键，钉 `~2.3`，见 `hotkey.rs`)
-- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
+- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging), `tauri-plugin-global-shortcut` (老板键，钉 `~2.3`，见 `hotkey.rs`), `tauri-plugin-dialog` (导入模板的原生「另存为」；能力里只开了 `dialog:allow-save`), `rust_xlsxwriter` + `calamine` (导入模板的生成与 Excel 读取)
+- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-dialog` (导入模板的保存对话框), `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
 
 ### Default settings (auto-inserted on first run)
 
