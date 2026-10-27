@@ -28,6 +28,17 @@ export function formatTurnoverDelta(delta: number | null | undefined, fallback =
 }
 
 /**
+ * 指数代码去掉数据源的 `s_` 前缀：`s_sh000001` → `sh000001`。
+ *
+ * 只去 `s_`，交易所前缀**保留** —— 指数代码跨市场会重号（`sh000001` 上证指数
+ * 与 `sz000001` 平安银行），而这里从来拼着名称显示，保留 `sh`/`sz` 只是让人
+ * 一眼看出是哪个市场，`s_` 则是腾讯/新浪接口的标记，没有阅读价值。
+ */
+export function formatIndexCode(code: string): string {
+  return code.replace(/^s_/, '');
+}
+
+/**
  * 格式化价格字符串
  */
 export function formatPrice(price: number | null | undefined, fallback = '--'): string {
