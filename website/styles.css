@@ -760,6 +760,12 @@ button {
   transition: transform 420ms var(--ease-out-expo);
 }
 
+/* 归位帧：首尾各有一张克隆图（见 app.js），换页过渡一结束就把 track 从克隆位
+   瞬移到对应的真图 —— 这一跳不能补间，否则会看到轨道往回扫一整条。 */
+.carousel__track.is-snap {
+  transition: none;
+}
+
 .carousel__slide {
   flex: 0 0 100%;
   min-width: 0;

@@ -14,6 +14,31 @@ export function getPricePrecision(price: number): number {
 }
 
 /**
+ * 格式化「较昨日同期」的成交额增量。输入单位是元，输出到亿：
+ * `+1234亿` / `-987亿`，不足 1 亿按「持平」。
+ *
+ * 符号必须留在文字里，不能只靠颜色：涨跌配色可切换（cn/us），而放量/缩量
+ * 不是涨跌，用红绿反而会读成方向。
+ */
+export function formatTurnoverDelta(delta: number | null | undefined, fallback = ''): string {
+  if (delta == null || isNaN(delta)) return fallback;
+  const yi = Math.round(Math.abs(delta) / 1e8);
+  if (yi === 0) return '持平';
+  return `${delta > 0 ? '+' : '-'}${yi}亿`;
+}
+
+/**
+ * 指数代码去掉数据源的 `s_` 前缀：`s_sh000001` → `sh000001`。
+ *
+ * 只去 `s_`，交易所前缀**保留** —— 指数代码跨市场会重号（`sh000001` 上证指数
+ * 与 `sz000001` 平安银行），而这里从来拼着名称显示，保留 `sh`/`sz` 只是让人
+ * 一眼看出是哪个市场，`s_` 则是腾讯/新浪接口的标记，没有阅读价值。
+ */
+export function formatIndexCode(code: string): string {
+  return code.replace(/^s_/, '');
+}
+
+/**
  * 格式化价格字符串
  */
 export function formatPrice(price: number | null | undefined, fallback = '--'): string {

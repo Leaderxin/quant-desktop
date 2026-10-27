@@ -131,12 +131,12 @@
 
   if (carousel && track) {
     var slides = Array.prototype.slice.call(track.children);
+    var count = slides.length;
     var prevBtn = document.getElementById('carouselPrev');
     var nextBtn = document.getElementById('carouselNext');
     var dots = Array.prototype.slice.call(document.querySelectorAll('.carousel__dot'));
     var indexEl = document.getElementById('carouselIndex');
     var textEl = document.getElementById('carouselText');
-    var current = 0;
 
     // Slide 1's caption is whatever is already in the DOM — that is the no-JS
     // fallback — so only slides 2+ carry data-caption and no sentence is
@@ -145,42 +145,123 @@
       return slide.getAttribute('data-caption') || (i === 0 && textEl ? textEl.textContent : '');
     });
 
-    function goTo(next) {
-      var count = slides.length;
-      current = ((next % count) + count) % count;
-      track.style.transform = 'translateX(' + -current * 100 + '%)';
+    /* ── Wrapping with clones ────────────────────────────────────────
+       The last and first slides each get a clone at the opposite end, so
+       "last → first" and "first → last" are also a single step, identical to
+       1→2 and 2→3. Without them the wrap was translateX(0) ⇄ translateX(-400%)
+       in one 420ms transition — the track swept across every screenshot and
+       read as a stutter. A clone is only ever on screen for the length of one
+       transition: `settle()` snaps the track onto the real slide the moment
+       that transition ends, with transitions off, so the pixels never move.
+       Clones stay out of the accessibility tree and out of the dots. */
+    var firstClone = slides[0].cloneNode(true);
+    var lastClone = slides[count - 1].cloneNode(true);
+    [firstClone, lastClone].forEach(function (clone) {
+      clone.setAttribute('aria-hidden', 'true');
+      clone.setAttribute('data-clone', '');
+      clone.removeAttribute('data-caption');
+    });
+    track.insertBefore(lastClone, slides[0]);
+    track.appendChild(firstClone);
 
+    // Slot = which cell of the track is in view: 0 = clone of the last slide,
+    // 1..count = the real slides, count + 1 = clone of the first slide.
+    var slot = 1;
+    // Operations that arrive while the track is parked on a clone (i.e. during
+    // that one wrap transition). Single-slot callbacks can't do this: rapid
+    // clicks overwrite each other and N presses advance only one slide.
+    // Steps accumulate their net displacement instead (three quick "next"s land
+    // three slides ahead, in one transition); a dot jump replaces whatever was
+    // queued — the last action wins.
+    var pending = null; // { kind: 'step', delta } | { kind: 'jump', index }
+
+    function atClone() {
+      return slot === 0 || slot === count + 1;
+    }
+
+    function paint(instant) {
+      if (instant) track.classList.add('is-snap');
+      track.style.transform = 'translateX(' + -slot * 100 + '%)';
+      if (instant) {
+        void track.offsetWidth; // let `transition: none` take effect before it is dropped
+        track.classList.remove('is-snap');
+      }
+    }
+
+    function syncUi(index) {
       slides.forEach(function (slide, i) {
         // The other slides are only translated out of view, so they are still
         // in the accessibility tree — without this a screen reader reads all
         // five screenshots at once.
-        slide.setAttribute('aria-hidden', i === current ? 'false' : 'true');
+        slide.setAttribute('aria-hidden', i === index ? 'false' : 'true');
       });
 
       dots.forEach(function (dot, i) {
-        if (i === current) dot.setAttribute('aria-current', 'true');
+        if (i === index) dot.setAttribute('aria-current', 'true');
         else dot.removeAttribute('aria-current');
       });
 
-      if (indexEl) indexEl.textContent = (current < 9 ? '0' : '') + (current + 1);
-      if (textEl && captions[current]) textEl.textContent = captions[current];
+      if (indexEl) indexEl.textContent = (index < 9 ? '0' : '') + (index + 1);
+      if (textEl && captions[index]) textEl.textContent = captions[index];
     }
 
-    if (prevBtn) prevBtn.addEventListener('click', function () { goTo(current - 1); });
-    if (nextBtn) nextBtn.addEventListener('click', function () { goTo(current + 1); });
+    function moveTo(nextSlot) {
+      slot = nextSlot;
+      paint(false);
+      syncUi(((slot - 1) % count + count) % count);
+    }
+
+    function settle() {
+      if (slot === 0) { slot = count; paint(true); }
+      else if (slot === count + 1) { slot = 1; paint(true); }
+
+      var queued = pending;
+      pending = null;
+      if (!queued) return;
+      if (queued.kind === 'jump') {
+        moveTo(queued.index + 1);
+      } else if (queued.delta !== 0) {
+        // Wrap the net displacement onto a real slide — moveTo must never land
+        // beyond the clones (there is nothing there).
+        moveTo((((slot - 1 + queued.delta) % count) + count) % count + 1);
+      }
+    }
+
+    function step(dir) {
+      if (atClone()) {
+        pending = pending && pending.kind === 'step'
+          ? { kind: 'step', delta: pending.delta + dir }
+          : { kind: 'step', delta: dir };
+        return;
+      }
+      moveTo(slot + dir);
+    }
+
+    function jump(index) {
+      if (atClone()) { pending = { kind: 'jump', index: index }; return; }
+      moveTo(index + 1);
+    }
+
+    track.addEventListener('transitionend', function (e) {
+      if (e.target !== track || e.propertyName !== 'transform') return;
+      if (atClone()) settle();
+    });
+
+    if (prevBtn) prevBtn.addEventListener('click', function () { step(-1); });
+    if (nextBtn) nextBtn.addEventListener('click', function () { step(1); });
 
     dots.forEach(function (dot, i) {
-      dot.addEventListener('click', function () { goTo(i); });
+      dot.addEventListener('click', function () { jump(i); });
     });
 
     // Arrow keys, but only while focus is inside the carousel — a listener on
     // document would hijack the page's own arrow-key scrolling.
     carousel.addEventListener('keydown', function (e) {
       if (e.key === 'ArrowLeft') {
-        goTo(current - 1);
+        step(-1);
         e.preventDefault();
       } else if (e.key === 'ArrowRight') {
-        goTo(current + 1);
+        step(1);
         e.preventDefault();
       }
     });
@@ -206,11 +287,14 @@
       var dx = e.changedTouches[0].clientX - startX;
       var dy = e.changedTouches[0].clientY - startY;
       if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 3) {
-        goTo(dx < 0 ? current + 1 : current - 1);
+        step(dx < 0 ? 1 : -1);
       }
     }, { passive: true });
 
-    goTo(0);
+    // Land on the first real slide (slot 1) without an entrance animation.
+    slot = 1;
+    paint(true);
+    syncUi(0);
 
     // Slides 2–5 are loading="lazy" to keep the first paint light. But an image
     // that is merely translated out of view is never "near the viewport", so it

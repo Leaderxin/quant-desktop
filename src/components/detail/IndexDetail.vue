@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { IndexQuote, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
-import { formatPrice, formatVolume } from '@/utils/format';
+import { formatPrice, formatVolume, formatIndexCode } from '@/utils/format';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
 import MinuteChart from './MinuteChart.vue';
 import KLineChart from './KLineChart.vue';
@@ -63,7 +63,7 @@ const statCards = computed(() => [
     <div class="detail-header">
       <div class="detail-title">
         <span class="detail-name">{{ index.name }}</span>
-        <span class="detail-code">{{ index.code }}</span>
+        <span class="detail-code">{{ formatIndexCode(index.code) }}</span>
       </div>
       <button class="detail-close" @click="emit('close')" aria-label="关闭指数详情">&times;</button>
     </div>

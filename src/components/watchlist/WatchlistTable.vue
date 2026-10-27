@@ -7,10 +7,11 @@ import { useQuoteStore } from '@/stores/quote';
 import { useMarketStore } from '@/stores/market';
 import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
-import { Inbox, Plus } from '@lucide/vue';
+import { Inbox, Plus, Upload } from '@lucide/vue';
 import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
+import ImportWatchlistDialog from './ImportWatchlistDialog.vue';
 import GroupTabs from './GroupTabs.vue';
 import MarketTag from './MarketTag.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
@@ -22,6 +23,7 @@ const market = useMarketStore();
 const settings = useSettingsStore();
 const message = useMessage();
 const showAddDialog = ref(false);
+const showImportDialog = ref(false);
 
 const indexDetailCoord = inject<{
   clearIndexDetail: () => void;
@@ -313,10 +315,20 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   <div class="watchlist-container">
     <div class="watchlist-header">
       <GroupTabs />
-      <button class="add-btn" @click="showAddDialog = true" aria-label="添加自选股票">
-        <Plus :size="14" aria-hidden="true" />
-        添加自选
-      </button>
+      <div class="header-actions">
+        <button
+          class="import-btn"
+          @click="showImportDialog = true"
+          aria-label="导入自选"
+        >
+          <Upload :size="14" aria-hidden="true" />
+          导入自选
+        </button>
+        <button class="add-btn" @click="showAddDialog = true" aria-label="添加自选股票">
+          <Plus :size="14" aria-hidden="true" />
+          添加自选
+        </button>
+      </div>
     </div>
 
     <div v-if="watchlist.error" class="error-state" role="alert">
@@ -368,6 +380,7 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
     />
 
     <AddStockDialog v-model:show="showAddDialog" />
+    <ImportWatchlistDialog v-model:show="showImportDialog" />
 
     <NDropdown
       :show="showCtxMenu"
@@ -402,13 +415,46 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
   flex-shrink: 0;
   border-bottom: 1px solid var(--color-border-0);
 }
+/* 导入是低频操作，做成描边按钮 —— 每个区域只留一个主按钮（添加自选） */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+.import-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 10px;
+  height: 28px;
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast),
+    background var(--transition-fast);
+}
+.import-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+.import-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
 .add-btn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   padding: 0 12px;
   height: 28px;
-  margin-bottom: 2px;
   border: none;
   border-radius: var(--radius-sm);
   background: var(--color-accent);

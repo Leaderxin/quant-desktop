@@ -15,7 +15,7 @@
 [![CI](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square)](https://github.com/Leaderxin/quant-desktop/releases)
 
-[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.6.2-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
+[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.6.3-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
 [![Microsoft Store](https://img.shields.io/badge/Microsoft_Store-%E4%B8%8B%E8%BD%BD-00A4EF?style=for-the-badge)](https://apps.microsoft.com/detail/9P46MZZDTTZ0)
 [![加入交流群](https://img.shields.io/badge/%E5%8A%A0%E5%85%A5%E4%BA%A4%E6%B5%81%E7%BE%A4-%E5%BE%AE%E4%BF%A1-07c160?style=for-the-badge)](#-贡献与交流)
 
@@ -55,7 +55,7 @@
 
 - **指数任你搭配** —— 14 个主流指数候选池自由勾选、拖拽排序：上证指数、深证成指、创业板指、科创 50、科创 100、中证 500、科创综指、上证 50、沪深 300、中证 1000、中证 800、北证 50、深证综指、中小 100，勾选后顶栏立刻显示，点击任一指数展开指数详情
 - **涨跌速览** —— 上涨 / 下跌 / 平盘、涨停 / 跌停家数常驻主界面，市场情绪一眼看清
-- **市场概览面板** —— 两市成交额、全市场涨跌分布直方图、行业与概念板块涨跌排行，热点在哪里一目了然
+- **市场概览面板** —— 两市成交额（附较昨同期的放量 / 缩量）、全市场涨跌分布直方图、行业与概念板块涨跌排行，热点在哪里一目了然
 
 <img src="screenshots/market-overview.png" width="880" alt="市场涨跌概览与板块排名" />
 
@@ -98,6 +98,7 @@
 
 - **自选分组** —— 标签栏一键切换，双击就地重命名，右键菜单重命名 / 删除 / 上下移动 / 新建分组；同一只股票可同时属于多个分组，在每个分组里的位置各自独立
 - **列随你挑** —— 显示哪些列、列的先后顺序、默认按哪列排序，都在设置里调；点列头即可临时改排，列宽固定、数字成列对齐不跳动
+- **表格批量导入** —— 弹框里下载模板（xlsx）、选文件或直接拖入，支持 .xlsx / .xls / .csv；按代码或名称自动匹配，导入前可勾选落到哪些分组，导入后逐行显示成功 / 已存在 / 失败原因
 - 输入 6 位代码即时搜索，**市场标签**（沪A / 深A / 北A / 沪指 / ETF…）让同代码的指数与个股一眼可辨
 - 覆盖沪深京三市个股、指数与 ETF
 - 置顶 / 上移 / 下移 / 删除，右键菜单快捷操作
@@ -341,6 +342,6 @@ Windows 10 / 11、macOS（Intel + Apple Silicon）、Linux（Ubuntu 22.04+ / gli
 
 **如果 QuantDesktop 对你有用，欢迎点一个 ⭐ Star —— 这是持续开发的动力！**
 
-QuantDesktop v1.6.2 · 让看盘更安静一点
+QuantDesktop v1.6.3 · 让看盘更安静一点
 
 </div>

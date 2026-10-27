@@ -4,6 +4,7 @@ pub mod datasource;
 pub mod cache;
 pub mod commands;
 pub mod hotkey;
+pub mod import;
 
 use std::fs::File;
 use std::sync::Arc;
@@ -269,6 +270,8 @@ fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogg
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // 原生「另存为」对话框：自选导入模板让用户自己挑目录。
+        .plugin(tauri_plugin_dialog::init())
         // Registry Run-key autostart (macOS: LaunchAgent). Store builds on
         // Windows don't use this — their autostart goes through the packaged
         // StartupTask API instead (see commands/autostart.rs); the plugin stays
@@ -383,15 +386,17 @@ pub fn run() {
             let toggle_ticker = MenuItemBuilder::with_id("toggle_ticker", "显示/隐藏行情条").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
-            // Portable mode and Store builds both skip the "check update" tray
-            // item: portable updates are user-managed (download & replace the
-            // zip), and Store updates are handled by the Microsoft Store itself.
+            // 「设置」放在分隔线之下、「检查更新」之后：线上面是两条窗口操作，
+            // 线下面都是应用级操作（检查更新 / 设置 / 退出）—— 分组按这个分，
+            // 而不是按菜单项的创建顺序。
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
-                .item(&settings_item)
                 .item(&toggle_ticker)
                 .separator();
 
+            // Portable mode and Store builds both skip the "check update" tray
+            // item: portable updates are user-managed (download & replace the
+            // zip), and Store updates are handled by the Microsoft Store itself.
             #[cfg(not(feature = "store"))]
             let menu = if is_portable {
                 menu
@@ -401,7 +406,7 @@ pub fn run() {
                 menu.item(&check_update_item)
             };
 
-            let menu = menu.item(&quit_item).build()?;
+            let menu = menu.item(&settings_item).item(&quit_item).build()?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(
@@ -800,6 +805,9 @@ pub fn run() {
             commands::watchlist::set_ticker_enabled_bulk,
             commands::watchlist::reorder_ticker,
             commands::watchlist::search_stocks,
+            commands::import::import_watchlist,
+            commands::import::save_import_template,
+            commands::import::read_spreadsheet,
             commands::settings::get_settings,
             commands::settings::set_setting,
             commands::settings::set_boss_key,

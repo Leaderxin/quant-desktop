@@ -7,6 +7,7 @@
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { moveByStep } from '@/utils/dragSort';
+import { formatIndexCode } from '@/utils/format';
 import DragSortList from '@/components/common/DragSortList.vue';
 
 const settings = useSettingsStore();
@@ -88,7 +89,7 @@ function onMove(index: number, direction: -1 | 1) {
               @change="remove(item.code)"
             />
             <span class="dname">{{ item.name }}</span>
-            <span class="dcode">{{ item.code.replace(/^s_/, '') }}</span>
+            <span class="dcode">{{ formatIndexCode(item.code) }}</span>
           </template>
         </DragSortList>
       </div>

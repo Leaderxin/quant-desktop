@@ -102,6 +102,9 @@ pub struct SectorItem {
 pub struct MarketOverview {
     /// 沪深两市总成交额(元),来自 cache 指数 turnover 相加
     pub turnover: f64,
+    /// 较上一交易日**同一时点**的两市成交额增量(元):正=放量,负=缩量。
+    /// 盘前、休市、数据缺失时为 None —— 界面据此隐藏,而不是显示成 0(那会被读成持平)。
+    pub turnover_delta: Option<f64>,
     /// 上涨家数(沪深京三市)
     pub up: u32,
     /// 下跌家数(沪深京三市)

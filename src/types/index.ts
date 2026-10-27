@@ -46,6 +46,8 @@ export interface SectorItem {
 
 export interface MarketOverview {
   turnover: number;
+  /** 较上一交易日同一时点的成交额增量(元):正=放量,负=缩量;盘前/休市时为 null */
+  turnover_delta: number | null;
   up: number;
   down: number;
   flat: number;
@@ -72,6 +74,27 @@ export interface WatchGroup {
   created_at: string;
   /** 组内成员的自选 id，按组内顺序。 */
   watch_ids: number[];
+}
+
+/** 导入时提交的一行。两列都可以为空 —— 填一个就够，后端按代码或名称匹配。 */
+export interface ImportEntry {
+  code: string;
+  name: string;
+}
+
+/** 导入的逐行结果，顺序与提交的行一致。 */
+export interface ImportRowResult {
+  /** 提交时的行号（1 起），用来对回 CSV 里的那一行 */
+  line: number;
+  /** added = 已加入；exists = 已在所选分组；failed = 失败 */
+  status: 'added' | 'exists' | 'failed';
+  /** 原始输入，失败时回显 */
+  input: string;
+  code: string | null;
+  name: string | null;
+  market: string | null;
+  /** 失败原因或补充说明 */
+  message: string | null;
 }
 
 /**

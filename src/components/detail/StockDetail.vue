@@ -3,7 +3,8 @@ import { ref, computed } from 'vue';
 import type { WatchItem, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
-import { formatCode } from '@/utils/format';
+import { formatCode, cnCategory } from '@/utils/format';
+import MarketTag from '@/components/watchlist/MarketTag.vue';
 import StockSummary from './StockSummary.vue';
 import DepthPanel from './DepthPanel.vue';
 import MinuteChart from './MinuteChart.vue';
@@ -35,7 +36,10 @@ useMinuteKUnavailable(activePeriod);
   <div class="stock-detail">
     <div class="detail-header">
       <div class="detail-title">
-        <span class="detail-name">{{ item.name }}</span>
+        <span class="detail-name-cell">
+          <MarketTag :code="item.code" :category="cnCategory(item.code)" />
+          <span class="detail-name">{{ item.name }}</span>
+        </span>
         <span class="detail-code">{{ formatCode(item.code) }}</span>
       </div>
       <button class="detail-close" @click="emit('close')" aria-label="关闭详情">&times;</button>
@@ -95,8 +99,15 @@ useMinuteKUnavailable(activePeriod);
 }
 .detail-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+}
+/* 标签 + 名称作为一组，间距与自选表名称列一致 —— 详情页与列表读的是同一个东西，
+   两处间距不同会显得名称与代码的疏密关系不一致 */
+.detail-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .detail-name {
   font-size: 15px;
