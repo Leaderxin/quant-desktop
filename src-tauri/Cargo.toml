@@ -57,7 +57,13 @@ thiserror = "2"
 dirs = "5"
 tauri-plugin-updater = "2"
 raw-window-handle = "0.6"
-tauri-plugin-dialog = "2"
+# 原生「另存为」对话框（自选导入模板保存用）。
+#
+# 与下面 global-shortcut 钉 ~2.3 同一个理由：tauri-plugin-dialog 2.8 起要求
+# tauri ^2.12，会让 cargo 顺势把 tauri / tao / wry 一起顶上去。npm 侧的
+# @tauri-apps/plugin-dialog 必须跟着钉在 ~2.7 —— tauri build 启动时会核对
+# 两侧的 major/minor（v1.6.3 tag 第一次 release 就是这样挂的）。
+tauri-plugin-dialog = "~2.7"
 rust_xlsxwriter = "0.101"
 calamine = "0.37"
 
