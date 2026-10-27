@@ -39,6 +39,18 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ (e: 'open-settings'): void }>();
 
+/* 状态栏同排是 12px 文字与 14px 图标，而 NSwitch 的 small 也有 18px 高
+   （轨道 32×18、圆钮 14），比周围大一圈。naive-ui 没有更小的档位，只能按
+   组件级 themeOverrides 把 small 压到 16px（圆钮 12）—— 再小圆钮就贴住轨道边，
+   不再像开关。只作用于这一处，设置页里的开关仍是标准 small。 */
+const autolaunchSwitchTheme = {
+  railHeightSmall: '16px',
+  railWidthSmall: '28px',
+  buttonHeightSmall: '12px',
+  buttonWidthSmall: '12px',
+  buttonWidthPressedSmall: '17px',
+};
+
 // 打包进安装包的本地兜底二维码（远程加载失败时回退用）
 const QRCODE_FALLBACK_URL = '/qrcode.png';
 // 当前实际展示的二维码地址：远程失败 → 回退本地旧图；本地也失败 → 显示占位提示
@@ -145,6 +157,7 @@ onMounted(async () => {
         <span class="sb-autolaunch-label">开机自启</span>
         <NSwitch
           size="small"
+          :theme-overrides="autolaunchSwitchTheme"
           :value="settings.autoLaunch"
           aria-label="开机自启"
           @update:value="settings.toggleAutoLaunch()"
