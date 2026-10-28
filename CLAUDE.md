@@ -1,423 +1,229 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件只记「代码里看不出来、踩过会再踩」的约定、操作步骤与坑。历史与取舍过程写在代码注释或提交信息里，不在这里复述。
 
 ## Build & Run
 
 ```bash
-# Install dependencies (use ci for deterministic installs)
-npm ci
-
-# Run in development mode (starts Vite dev server, then Tauri)
-npm run tauri dev
-
-# Build for production (cross-platform: .exe on Windows, .dmg on macOS, .deb/.AppImage on Linux)
-# Requires signing env vars for updater artifacts:
-#   $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\quant-desktop.key"
-#   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
-npm run tauri:build
-
-# Alternative: cross-platform build with proxy auto-detect (see scripts/build.mjs)
-node scripts/build.mjs
-
-# Type-check the frontend
-npx vue-tsc --noEmit
-
-# Frontend unit tests (vitest)
-npm test
-
-# Build Rust backend only
+npm ci                      # 确定性安装
+npm run tauri dev           # Vite + Tauri 开发模式
+npm run tauri:build         # 生产构建（updater 产物需要签名变量，见下）
+node scripts/build.mjs      # 跨平台构建 + 本地代理自动探测（Clash/V2Ray 常见端口）
+npx vue-tsc --noEmit        # 前端类型检查
+npm test                    # vitest；npm run test:watch 监听
 cargo build --manifest-path src-tauri/Cargo.toml
 ```
 
-Frontend tests run with `vitest` (`npm test`, or `npm run test:watch`). Two conventions worth keeping:
+生产构建的签名变量：
 
-- **Only the Tauri boundary is mocked** — `invoke`/`listen`/`emit` from `@tauri-apps/api/*`. Pinia and the stores under test are real, because the behaviour being pinned *is* the store's own. Specs that need `document` opt in per file with `// @vitest-environment happy-dom` rather than switching the global environment.
-- **Pure logic that a component can't be tested on gets extracted into `src/utils/`.** That is why `dragSort.ts`, `paging.ts`, `watchGroups.ts`, `minuteBars.ts`, `minuteAxis.ts`, and `theme.ts` exist: the drop-index arithmetic, the carousel windowing, the delete-dialog impact lists, the 分时图's session split / axis geometry, and 三态主题的解析（模式 + 系统深浅 → 实际主题）all live inside components otherwise, where no test can reach them.
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\quant-desktop.key"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
+```
 
-Coverage by area:
+测试约定：
 
-| File | What it pins |
-|------|--------------|
-| [src/stores/market.spec.ts](src/stores/market.spec.ts) | Refresh-scheduler concurrency: stale responses not landing, in-flight + session-switch interleaving（这个文件跑在 happy-dom 下不是因为它自己看 DOM，而是它构造的 market store 会顺带构造 settings store，而后者一建立就要落 `<html data-theme>`） |
-| [src/stores/watchlist.spec.ts](src/stores/watchlist.spec.ts) | Derived ordering (group order comes from the join table, not the pool), dangling ids dropped, `ticker_order` sorting, optimistic `setTickerEnabled`, and **IPC argument spelling** (`groupId`/`watchId`/`groupIds` — Rust is snake_case, JS must be camelCase, and a typo surfaces only as a Tauri deserialization error) |
-| [src/stores/settings.spec.ts](src/stores/settings.spec.ts) | Derived-config fallbacks, clamping before write, and the cross-window contract that `applyRemoteSetting` never writes back or re-broadcasts. 主题那一组钉的是三态：首帧前就落 `data-theme`、显式模式不看系统深浅、系统主题变化只在跟随时被采纳、切到跟随系统时读的是**解 pin 之后**的系统值（用一个「IPC 里改值但不通知监听者」的假 matchMedia 分辨这两种读法），以及传给原生层的始终是模式而不是解析好的主题 |
-| [src/utils/theme.spec.ts](src/utils/theme.spec.ts) | 「跟随系统」的窗口侧解析：显式模式不看系统深浅、结果里永远不出现 `system`、没有 `matchMedia` 时按浅色而不抛错（它跑在 store 的建立路径上，抛了就是白屏）、订阅与取消订阅 |
-| [src/utils/prefs.spec.ts](src/utils/prefs.spec.ts) | Every corrupt/legacy settings value yields something usable instead of throwing |
-| [src/utils/csv.spec.ts](src/utils/csv.spec.ts) | 自选导入 CSV 的三处「不报错、只是导错」：编码（中文 Windows 上 Excel 存出来是 GBK —— 先按 UTF-8 严格解码、解不动才退 GBK，反过来会把 UTF-8 中文解成乱码而不报错）、引号内的逗号与换行、表头列名；以及**行号必须按物理行记**（引号内嵌的换行占行，否则失败提示里的「第 N 行」会把用户指到别人的行）与 Excel 拆出来的网格共用同一套 `mapWatchlistRows` |
-| [src/utils/format.spec.ts](src/utils/format.spec.ts) | 「较昨同期」增量的格式：正负号必须留在文字里（那块不套涨跌色，符号是唯一的方向信息）、不足一亿按持平、缺失值给空串让调用方整块隐藏 |
-| [src/utils/hotkey.spec.ts](src/utils/hotkey.spec.ts) | 老板键加速键字符串的两端约定：录制端产出的写法必须是 Rust 解析端认得的（词表两边各写一份，错了不报错，只表现为「录进去了、按了没反应」）、修饰键顺序固定、以及不在打字路径上的组合才许当热键 —— 裸键与只带 Shift 的组合都会把字符从全系统抢走（KeyH 是小写 h、Shift+KeyH 是大写 H、Shift+Digit1 是「!」） |
-| [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
-| [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
-| [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
-| [src/utils/watchGroups.spec.ts](src/utils/watchGroups.spec.ts) | The orphan/kept lists shown in the delete-group confirmation（含顺序、去重、目标分组不存在时给空名单） |
-| [src/utils/minuteBars.spec.ts](src/utils/minuteBars.spec.ts) | 分时图的交易日切分（适配器的滚动窗口盘中横跨两个交易日，只有最后一个可以画，日期取自数据而非本机时钟）、图上所画的昨收（上一交易日的收盘，同样来自那个窗口）、防止跨日刷新把昨天的 bar 接着往后追加的判定，以及"未来 bar"过滤所比较的 UTC+8 墙钟上界 |
-| [src/utils/minuteAxis.spec.ts](src/utils/minuteAxis.spec.ts) | 分时图网格算术（每个 bar 间隔的槽位数、让曲线左对齐的右侧偏移、刻度坐标、低于该宽度时整张网格必须交还给 klinecharts）以及关于昨收对称的区间与其百分比标签 |
-| [src/composables/useTickerWindowHeight.spec.ts](src/composables/useTickerWindowHeight.spec.ts) | Ticker window resizes keep the bottom edge anchored |
-| [src/utils/webLog.spec.ts](src/utils/webLog.spec.ts) | 前端日志桥的纯逻辑：console 参数拼接（Error 带堆栈、循环引用不抛错）、按字符截断、去重窗口、转发前缀 |
+- **只 mock Tauri 边界**（`@tauri-apps/api/*` 的 `invoke`/`listen`/`emit`）。Pinia 与 store 用真的 —— 被钉的行为就是 store 自己的。需要 `document` 的 spec 在文件头加 `// @vitest-environment happy-dom`，不切全局环境。
+- **组件测不了的纯逻辑抽到 `src/utils/`**：`dragSort`、`paging`、`watchGroups`、`minuteBars`、`minuteAxis`、`theme`、`webLog` 都是这么来的。
 
-Deliberately **not** covered, so nobody mistakes absence for an oversight: Vue component rendering (would need `@vue/test-utils`, not currently a dependency), drag-and-drop DOM events (only the index math is tested), and anything visual — the token palette, the tab-bar spacing, icon silhouettes. Those are eyeball-only. `cargo test` covers the Rust side (blacklist classification, response parsing, session intervals, group ownership/migration semantics in `db::tests`, and the logging helpers — `QUANT_LOG` parsing、2MB 轮转、按字符截断、告警去重窗口); `vue-tsc` with the strict tsconfig enforces type correctness on both app and test code. There is no lint command configured yet.
+覆盖范围（细节读 spec 本身）：
+
+| Spec | 钉住的行为 |
+|------|-----------|
+| `stores/market.spec.ts` | 刷新调度并发：过期响应不落地、in-flight 与切时段交错 |
+| `stores/watchlist.spec.ts` | 派生顺序（分组顺序来自关联表）、悬空 id、`ticker_order`、乐观 `setTickerEnabled`、**IPC 参数拼写**（Rust snake_case / JS camelCase，拼错只表现为反序列化失败） |
+| `stores/settings.spec.ts` | 派生配置兜底、写入前夹取、`applyRemoteSetting` 不回写不广播；主题三态与解 pin 顺序 |
+| `utils/theme.spec.ts` | 「跟随系统」解析：显式模式不看系统、无 `matchMedia` 时按浅色且不抛错、订阅/退订 |
+| `utils/prefs.spec.ts` | 任何损坏/旧版设置值都给出可用默认值 |
+| `utils/csv.spec.ts` | CSV 编码（UTF-8 严格优先、失败才退 GBK）、引号内逗号/换行、表头；**行号按物理行**；与 Excel 网格共用 `mapWatchlistRows` |
+| `utils/format.spec.ts` | 「较昨同期」增量的符号、不足一亿按持平、缺失给空串 |
+| `utils/hotkey.spec.ts` | 加速键字符串两端一致、修饰键顺序、裸键/只带 Shift 的组合不得当热键 |
+| `utils/changelog.spec.ts` | 更新说明解析：版本/日期/小节、CRLF、坏输入不抛错 |
+| `utils/dragSort.spec.ts` / `paging.spec.ts` | 拖拽落点（四向 × 前后）、轮播窗口（短列表不自转） |
+| `utils/watchGroups.spec.ts` | 删除分组确认框的两份名单（顺序、去重、目标不存在给空） |
+| `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界；网格槽位/偏移/刻度与窄宽回退 |
+| `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动 |
+| `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
+
+不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（短信分类、响应解析、时段、分组归属/迁移、日志工具）；`vue-tsc` 负责类型；暂无 lint 命令。
 
 ## Git 提交信息
 
-提交信息中**不要出现 "Claude" 字眼** —— 包括 `Co-Authored-By: Claude`、"Generated with Claude Code" 之类的工具署名尾注。提交历史面向仓库读者，工具来源只是噪音；把改了什么、为什么改写清楚即可。
+提交信息中**不要出现 "Claude" 字眼** —— 包括 `Co-Authored-By: Claude`、`Generated with Claude Code` 之类的工具署名尾注。提交历史面向仓库读者，工具来源只是噪音；把改了什么、为什么改写清楚即可。
 
 ## Architecture
 
-QuantDesktop is a **Tauri 2 desktop app** for monitoring Chinese A-share stock markets. It has two separate webview windows driven by two Vite/Vue entry points, a SQLite-backed Rust backend, and a pluggable data source layer for fetching market data.
+QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗口、SQLite 后端、可切换的数据源适配器。
 
-### Two-window layout
+### 两个窗口
 
-| Window | Label | Entry | Config |
-|--------|-------|-------|--------|
-| Main UI | `main` | `index.html` → `src/main.ts` | 1100×680, starts hidden, hides to tray instead of closing, position/size persisted to SQLite |
-| Ticker bar | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38, always-on-top, decorationless, positioned bottom-right, skip-taskbar |
+| 窗口 | Label | 入口 | 配置 |
+|------|-------|------|------|
+| 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
+| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38，置顶、无边框、右下角、不进任务栏 |
 
-Vite is configured with two Rollup inputs (`index.html` + `ticker.html`) in [vite.config.ts](vite.config.ts). Each entry mounts a separate Vue app with its own Pinia instance. Both share the same stores and composables via import.
+[vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
-### Rust backend (`src-tauri/src/`)
+### Rust 后端（`src-tauri/src/`）
 
-**`lib.rs`** — Application setup. Initializes SQLite database, registers data source adapters (Tencent first as default, then Sina as fallback), restores quote cache from DB, spawns the background polling `Scheduler` (with adaptive polling: probe → normal → idle for holiday detection), builds the system tray menu (left-click toggle, right-click menu with show/toggle-ticker/—/check-update/settings/quit — 分隔线把「窗口操作」和「应用操作」分开), registers all Tauri IPC commands, and sets up the auto-updater. The main window's `CloseRequested` event is intercepted to hide instead of quit. Window position/size is saved to SQLite and restored on next launch with monitor-boundary validation.
+**`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。窗口位置/大小落库并在下次启动时按显示器边界校验后恢复。
 
-Also home to `set_ticker_visible(app, db, visible)` — the single implementation of "show/hide the ticker window", shared by the tray menu and the settings page's `set_ticker_visible` command. Both callers need the same four follow-ups on show (always-on-top, skip-taskbar, `WS_EX_TOOLWINDOW`, position restore) and the same persistence; having two copies guarantees one of them drifts, and the symptoms (window lands in the taskbar, or off-screen) are invisible when editing the other. Order matters: Windows' `set_skip_taskbar` goes through `ITaskbarList::DeleteTab`, which only takes effect once the window has actually been shown.
+三个必须单点实现的窗口 helper（托盘与设置页共用，各写一份必漂）：
 
-Also home to `set_app_theme(app, theme)` — the single implementation of "把应用主题同步到窗口标题栏", shared by startup and the settings page's `set_window_theme` command. It takes a **mode** (`dark`/`light`/`system`), not a resolved theme.
+- `set_ticker_visible(app, db, visible)`：显示时依次 show → 置顶 / 隐藏任务栏 / `WS_EX_TOOLWINDOW` / 还原位置，并持久化 `ticker_visible`。**顺序不能反**：Windows 的 `set_skip_taskbar` 走 `ITaskbarList::DeleteTab`，窗口必须已经真正显示过才生效。
+- `show_main_window(app)`：`show()` 之后必须 `unminimize()` —— Windows 的 `SW_SHOW` 不会退出最小化，用户只看到任务栏图标闪一下。托盘左键还要判 `is_minimized()`：最小化窗口在 Win32 眼里仍是 `WS_VISIBLE`，只判 `is_visible()` 会把想叫回来的窗口又藏起来。托盘的「设置」在显示窗口后还要 `emit("open-settings")`（webview 常驻，隐藏时也收得到）。
+- `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system`（含缺键、坏值）必须传 `None` 给 tao —— 一旦显式设过主题，tao 会忽略系统主题变化，WebView2 的 `prefers-color-scheme` 被一起钉死，「跟随系统」就失效了。启动那次必须**先于** `main.show()`（否则先闪一帧白条）；运行期挂在 store 的模式 watch 上。只作用于 `main`（ticker 无边框、也从没被钉过）。
 
-**「跟随系统」是这个函数里唯一不平凡的分支**：`"system"`（以及缺键、手改坏的值）要传 `None` 给 tao，表示「这个窗口不表态、由系统定」。不能图省事传解析后的 light/dark —— tao 一旦被显式设过主题（`preferred_theme.is_some()`）就会**忽略系统主题的变化**（见 tao 的 `event_loop::update_theme`，来自系统设置变更时直接 `return`），tauri-runtime-wry 于是不再往 WebView 转发，WebView2 的 `PreferredColorScheme` 就停在应用自己的主题上；而 `prefers-color-scheme` 正是由它决定的。合起来：**显式主题会把 webview 的深浅判定一起钉死** —— 前端读 `matchMedia` 读到的是应用自己的主题，系统切换时那个媒体查询也不动，「跟随系统」于是要么锁死在上一次显式主题、要么在行情条（它的窗口从没被钉过）与主窗口之间表现出不一致。所以那条 `matchMedia` 订阅只在 `None` 之下才有意义。
+**`domain/mod.rs`** — IPC 数据类型，对应 [src/types/index.ts](src/types/index.ts)：`Quote`、`IndexQuote`、`Depth`/`Level`、`MinuteData`、`KLineData`、`StockBrief`、`Market`（CN/HK/US）。
 
-Also home to `show_main_window(app)` — the single implementation of "把主窗口显示出来并聚焦", shared by the three entries that need it: the ticker bar's click, the tray menu's 「显示主界面」and 「设置」, and the tray icon's left-click. The step that matters is `unminimize()`: `show()` 在 Windows 上走 `SW_SHOW`，对最小化的窗口只是「在当前大小和位置显示」，窗口照旧缩在任务栏里 —— 用户看到任务栏图标闪一下、界面不出来。漏掉这一处的症状是「点了没反应」，而另外两处照旧正常，改哪一处都看不出来。托盘左键还要额外判一次 `is_minimized()`：最小化的窗口在 Win32 眼里**仍然是 visible**（`WS_VISIBLE` 还在），只判 `is_visible()` 会落进「隐藏」分支，把用户想叫回来的窗口反倒藏起来。
+**`db/mod.rs`** — SQLite（rusqlite bundled），五张表：`watchlist` / `watch_groups` / `watch_group_members` / `settings` / `quote_cache`。
 
-托盘菜单的「设置」不只是一次 `show_main_window` —— 它随后 `emit("open-settings")`，由主窗口 `AppLayout` 的监听把 `showSettings` 置真。主窗口的 webview 是常驻的（隐藏不等于卸载），所以窗口处于隐藏或最小化状态时这个事件也收得到。
+- 路径由 `dirs::data_dir()/quant-desktop` 决定，**不来自** Tauri `identifier`；Windows 实为 `%APPDATA%\quant-desktop`。便携模式（exe 旁有 `portable.dat`）用 `<exe_dir>/data`。Store(MSIX) 构建仍解析 `%APPDATA%`，由文件系统虚拟化重定向到包私有目录 —— 与 NSIS/便携版数据分离、卸载即删。启动日志会打印 `Data directory: ... (portable: ...)`。
+- 建表与默认设置在首次打开时完成；`init_defaults()` 只在键不存在时写入，用户改动跨重启保留。
+- 迁移在每次 `Database::open()` 都跑，必须保持幂等。
 
-**标题栏不受 `<html data-theme>` 影响**：标题栏是操作系统画的，CSS 变量够不到它 —— 不显式告诉窗口的话，暗色主题下顶上那一条会照旧是白的。tao 收到 `set_theme` 后会调 `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)`（Windows 10 1809+ 生效；macOS 走 NSWindow 的 appearance），所以 `set_app_theme` 这一次调用就是全部。两个调用点各有非它不可的理由：启动那次必须**先于 `main.show()`**（窗口是先 show 出来、webview 才加载完的，晚一步就会先闪一帧白条）；运行期那次挂在 store 里那条**模式 watch** 上（`themeMode` 变 → `set_window_theme`，见下面的 `settings.ts`）—— 它是所有改主题路径的唯一汇合点，行情条调它只是白跑一次 IPC（命令只作用于 `main`），换来的是没有任何一条改主题的路径会漏掉标题栏。`set_app_theme` 只作用于 `main`：ticker 是 `decorations: false`，没有标题栏可画；它的窗口也从没被钉过，所以行情条那边读到的 `prefers-color-scheme` 永远是系统真值。
+**自选是多分组（标签式）归属**：`watchlist` 是全局池（`UNIQUE(code, market)`），`ticker_enabled`/`ticker_order` 在池上（行情条是跨分组扁平列表）；`watch_group_members` 是 (group, stock) 多对多并带**组内** `sort_order`。1.5.x 的全局 `sort_order` 列留在表里但不再读写（删列要重建表）。
 
-**`domain/mod.rs`** — Shared data types serialized across the IPC boundary to TypeScript types in [src/types/index.ts](src/types/index.ts):
-- `Market` enum (CN/HK/US)
-- `Quote` — real-time quote with price, change, open/high/low, volume, turnover, turnover_rate
-- `IndexQuote` — index-level quote
-- `Depth` — 5-level bid/ask depth (bids: `Vec<Level>`, asks: `Vec<Level>`)
-- `Level` — single depth level (price + volume)
-- `MinuteData` — intraday minute bar (time, price, open, high, low, volume, avg_price)
-- `KLineData` — daily/weekly/monthly K-line bar (date, open, high, low, close, volume, turnover)
-- `StockBrief` — minimal stock identifier for search results
+| 场景 | 行为 |
+|------|------|
+| 加入已在其它分组的股票 | 追加目标分组，不移动 |
+| 加入已在同组的股票 | 无操作；保留原组内位置 |
+| 从分组移除 | 若是它**唯一**的分组，股票一并删除（`remove_watch_from_group` 返回 `true`） |
+| `set_watch_groups` 传空列表 | 拒绝；全不勾是易误触，静默删数据代价太大。彻底删除走 `remove_watch` |
+| 删除分组 | 只删归属；孤儿并入兜底分组，仍在其它分组的不动；最后一个分组不可删 |
+| 重命名分组 | 拒绝空名、超长、重名 |
 
-**`db/mod.rs`** — SQLite database (via `rusqlite` with bundled SQLite). Five tables: `watchlist`, `watch_groups`, `watch_group_members`, `settings` (key-value), `quote_cache`. The database lives at `dirs::data_dir().join("quant-desktop")/quant-desktop.db` — note this is **not** derived from the Tauri `identifier` in `tauri.conf.json`; on Windows the real path is `%APPDATA%\quant-desktop\quant-desktop.db`. In portable mode (a `portable.dat` next to the executable) it is `<exe_dir>/data/quant-desktop.db` instead. Microsoft Store (MSIX) builds add no branch here — the app still resolves `%APPDATA%\quant-desktop`, but MSIX file-system virtualization transparently redirects those writes to the package-private `%LOCALAPPDATA%\Packages\<package family name>\LocalCache\Roaming\quant-desktop\`. Store data is therefore separate from NSIS/portable data and is deleted on uninstall; the `unvirtualizedResources` capability that would have shared one directory with the other builds was removed (see [store/AppxManifest.xml](store/AppxManifest.xml)). The startup log prints the resolved path as `Data directory: <path> (portable: ...)`. Auto-creates tables and default settings on first open. `init_defaults()` inserts default settings only on first run (when key does not exist); user preferences persist across restarts. Schema migrations run inside `Database::open()` on **every** launch, so they must stay idempotent.
+迁移用 `groups_migrated` 标记而不是「关联表是否为空」：用户可能合法地清空所有分组的成员而池里仍有行，空表检查会在下次启动重新播种。老数据按旧全局 `sort_order` 填入组内顺序，并回填 `ticker_order`。
 
-**Watchlist data model — multi-group (tag-like) ownership:**
+**`datasource/`** — `DataSource` trait：`fetch_realtime` / `fetch_indices` / `search` / `fetch_depth` / `fetch_minute_data` / `fetch_kline` / `health_check`。`DataSourceManager` 持有适配器注册表与 active 名，切换时用 `tokio::sync::Notify` 唤醒调度器立即刷新。
 
-- `watchlist` is a **global stock pool**: a stock is inserted once (`UNIQUE(code, market)`) and carries `ticker_enabled` + `ticker_order` (the ticker carousel is a flat, cross-group list, so its ordering lives here, not on the join table).
-- `watch_groups` — group id/name/display order.
-- `watch_group_members` — the (group, stock) many-to-many join, carrying the **per-group** `sort_order`. A stock has a different position in each group, which is exactly why ordering cannot stay on `watchlist` (the 1.5.x global `sort_order` column is left in place but no longer read or written; dropping it would require a table rebuild).
+- `INDEX_CODES` 是 14 个宽基指数的**候选池**，每轮一次性批量拉取，前端按 `index_codes` 过滤排序 —— 这样设置里勾选后立刻显示，不用等下一轮（交易中 2s，休市最长 30s）。`INDEX_POOL_NAMES` 是设置页用的名称表；新增代码必须**同时**在腾讯与新浪上验证。
+- 量/额归一：个股原始单位是手、万元，进共享管道前 `normalize_volume(×100)`、`normalize_turnover(×10000)` 转成股、元。
+- `sina.rs`（备用）：GBK、`var hq_str_`。指数必须用**股票格式**接口（不带 `s_` 前缀）——紧凑格式对 `s_sz399006` 的量额是错的；上证指数成交额在所有格式下都只有 1/100，需 `saturating_mul(100)`；指数数据已是股/元，不再乘。搜索只认精确代码；深度借腾讯；分时/K 线走 `money.finance.sina.com.cn`。
+- `tencent.rs`（默认）：GBK、`v_sh600519=` + `~` 分隔；分时 `ifzq.gtimg.cn`、K 线 `web.ifzq.gtimg.cn`、深度取内嵌字段（位置 9–28）。
+- `market_clock.rs`：`MarketSession`（PreOpen/MorningTrade/LunchBreak/AfternoonTrade/Closed，含周末）。`recommended_interval()`：交易 2s、盘前 5s、午休 10s、休市 30s；概览另用 `overview_interval()`。
 
-Semantics worth preserving when touching this code:
+**`hotkey.rs`** — 全局老板键（按下只隐藏主窗口，不动行情条、不改设置）。注册放在 Rust 侧，因为要响应时应用没有任何焦点。
 
-| Case | Behaviour |
-|------|-----------|
-| Adding a stock already in another group | Adds to the target group too — no move |
-| Adding a stock already in the same group | No-op; keeps its existing in-group position |
-| Removing from a group | If it was the stock's **only** group, the stock is deleted too (`remove_watch_from_group` returns `true`) — an orphan row would be invisible in the UI |
-| `set_watch_groups` with an empty list | Rejected; unchecking every box is an easy misclick and silently deleting data is too expensive. Full deletion goes through `remove_watch` |
-| Deleting a group | Deletes only the memberships. Stocks that become orphaned move into the default group; stocks still in other groups are untouched. The last group cannot be deleted |
-| Renaming a group | Rejects empty/over-long names and duplicates |
+- `apply(app, accelerator)` 是唯一注册入口，空串 = 不设；**先 `unregister_all()` 再注册**，否则旧键会继续响应且设置页上看不到。
+- `set_boss_key` 先注册成功再落库；注册失败与落库失败都回滚旧键（前者会先注销全部，不回滚就把原来能用的键也弄丢；后者会让系统与库不一致）。
+- 启动时 `register_from_db` 读库注册，失败只记 warning，不拦启动。
+- 加速键词表是 global-hotkey 的 `Code` 名，与 `KeyboardEvent.code` 基本一致，前端直接取 `e.code`；两端各写一份由 [src/utils/hotkey.ts](src/utils/hotkey.ts) 与 spec 对齐。插件钉 `~2.3`（2.4 起要求 tauri ^2.12）。
 
-Migration is guarded by a `groups_migrated` settings key rather than "is the join table empty" — a user may legitimately remove every stock from every group while the pool still has rows, and an empty-table check would re-seed them on the next launch. Legacy rows get their in-group order from the old global `sort_order`, and `ticker_order` is backfilled from it so existing users' carousel order is unchanged.
+**`cache/mod.rs`** — `QuoteCache`：内存 `HashMap` + SQLite 双写，启动时 `restore_from_db()`。`Scheduler` 按会话跑自适应状态机：
 
-**`datasource/mod.rs`** — Pluggable data source architecture. The `DataSource` trait defines `fetch_realtime()`, `fetch_indices()`, `search()`, `fetch_depth()`, `fetch_minute_data()`, `fetch_kline()`, `health_check()`. `DataSourceManager` holds a registry of adapters and an `active` name, supporting runtime switching. A `tokio::sync::Notify` wakeup mechanism triggers immediate refresh on data source switch.
+| 状态 | 触发 | 间隔 |
+|------|------|------|
+| Probing（3×2s） | 进入早/午盘 | 2s |
+| Normal | 探测到价格变化 | `market_clock` 基准（2s） |
+| Idle | 连续 10 次无变化 / 节假日 | 30s |
 
-`INDEX_CODES` is the **candidate pool** of 14 broad-based indices that both adapters fetch in one batched request each poll; the frontend filters and orders this by the user's `index_codes` setting. Fetching the whole pool rather than just the selection means toggling an index in settings shows it on the bar *immediately* instead of waiting for the next poll (2s during trading, up to 30s when closed) — the extra cost is a few lines of response text. `INDEX_POOL_NAMES` maps those codes to display names for the settings page (names come from the quote response, so the settings page cannot derive them for unselected indices). `index_pool_names_match_codes` pins the two lists together, and any new code must be verified against **both** Tencent and Sina — the two use different index formats, so one working says nothing about the other.
+调度器按市场分组批量拉报价、更新缓存，发 `quotes-updated` / `indices-updated` / `market-session-changed`；数据源切换有单独的 wakeup 监听。抓取失败回退缓存；Closed 时段优先用缓存。
 
-Volume/turnover normalization: adapters return raw data in 手 (hands) / 万元 for stocks, and data is normalized to 股 (shares) / 元 via `normalize_volume(×100)` and `normalize_turnover(×10000)`. The frontend `formatVolume()` converts back to human-readable units for display.
+**`commands/`** — IPC 处理函数，全部在 `lib.rs` 注册：
 
-- `sina.rs` — Sina Finance (新浪财经) adapter, the **backup** data source. GBK-encoded responses, `var hq_str_xxx="..."` format. Handles code-to-exchange mapping (sh/sz prefix). **Index fetching uses stock-format API** (codes without `s_` prefix, 30+ fields per line) because the compact index-only format (`s_` prefix, 6 fields) returns incorrect volume/turnover for 创业板指 (s_sz399006). **Shanghai (`sh`) index volume is consistently 1/100 of the correct value** in all Sina formats — corrected with `saturating_mul(100)` before entering the shared pipeline. Stock-format data arrives in 股/元 pre-normalized, so `normalize_volume`/`normalize_turnover` are NOT applied for indices. Search only supports exact 6-digit code lookup. Depth data fetched via Tencent API fallback (Sina's native depth endpoint is dead). Minute/K-line data from `money.finance.sina.com.cn`. Covers 7 major indices.
+- `quote.rs` — `get_quotes`/`get_indices` 读缓存；`get_depth`/`get_intraday`/`get_kline` 走活跃源，分时与 K 线在活跃源失败/数据不足时回退备用源。
+- `watchlist.rs` — `get_watchlist` 一次返回 `WatchlistSnapshot { items, groups, default_group_id }`，`groups[].watch_ids` 带有序成员，切分组是纯本地过滤。池/归属/组内排序/分组/行情条范围各组命令见文件；组内排序一律按 `(group_id, watch_id)` 定位。写操作后发 `watchlist-changed`。
+- `settings.rs` — 键值读写、老板键、切数据源（**先落库再切**，否则重启会回退）、数据源与指数池列表、便携/商店标志。
+- `autostart.rs` — 非商店版走 registry Run key；Store 版走 StartupTask WinRT。
+- `window.rs` — 三个窗口 helper 的 IPC 包装。
+- `import.rs` — 自选导入：一次 IPC 完成匹配 + 落库 + 逐行结果（`added`/`exists`/`failed`），只发一次 `watchlist-changed`。模板是 xlsx（表头要底色、代码列设为文本，`000001` 不被 Excel 吃掉前导零）；`.xlsx/.xls` 由后端拆网格，CSV 由前端解析，**两者共用 `mapWatchlistRows`**。匹配只认完全相等：代码优先、名称兜底；代码命中多只（沪深同号）时用名称再筛；不足 6 位的纯数字按左补零**但必须由名称证实**，否则报「不足 6 位」，且搜索关键字用名称。`exists` 按**导入前**快照判断。逐行搜索限 6 并发，单次上限 500 行。
+- `market.rs` — 市场概览。`top_n` 后端再夹一次（IPC 参数不能假定已校验）。行业榜先**合并同名板块**再截取（东财 `m:90+t:2` 混了申万各级，「白酒Ⅱ/Ⅲ」成分相同）；概念榜过滤 = 代码表（风格/指数/资金/业绩各期）+ 名字规则（业绩预告、持仓、风格），后者不可省 —— 东财每季新开板块。`turnover_delta` 必须**同源同时刻**（今日与昨日曲线都取腾讯分时），混用两家口径的误差与真实增减同量级；拿不到给 `null`（面板隐藏），不给 0。
+- `updater.rs` — 更新检查/安装；交易时段抑制提示；Store 版运行时早退（命令仍注册）。
+- `log.rs` — `log_event`，前端日志落盘。
 
-- `tencent.rs` — Tencent Securities (腾讯证券) adapter, the **default** data source. GBK-encoded responses, `v_sh600519="..."` format with `~` separators. Full implementation: realtime quotes, 7 indices, exact-code search, minute data via `ifzq.gtimg.cn`, K-line (daily/weekly/monthly) via `web.ifzq.gtimg.cn`, and depth from embedded bid/ask fields (positions 9-28). Volume converted from 手 to 股 (×100), turnover from 万元 to 元 (×10000).
+### Frontend（`src/`）
 
-- `market_clock.rs` — Trading session detection (China Standard Time / UTC+8). `MarketSession` enum: PreOpen/MorningTrade/LunchBreak/AfternoonTrade/Closed with weekend detection. `recommended_interval()`: 2s trading, 5s pre-open, 10s lunch, 30s closed. Scheduler uses this as the base interval, then applies adaptive polling on top.
+**Stores（Pinia）**
+- `quote.ts` — 监听行情事件，`Map<"market:code", Quote>` 做 O(1) 查找；`indices` 存整个候选池，`IndexBar` 按设置过滤排序。
+- `watchlist.ts` — 只存快照，其余全部本地派生（`activeGroup`/`visibleItems`/`tickerItems`）。写操作一律「一次 IPC + 重拉快照」，不做乐观更新 —— 归属、顺序、孤儿处理都在后端，猜会漂；唯一例外是 `setTickerEnabled` 先翻本地再同步。
+- `settings.ts` — 键值表 + 全部派生为 `computed`（单一口径）。**主题是三态**：库里的 `themeMode` ∈ `system`/`dark`/`light`，窗口用的 `theme` 只会是 `dark`/`light`。`theme` 变 → 立即落 `<html data-theme>`（`immediate`，首帧前就位）；`themeMode` 变 → 先把**模式**交原生层，**再**重读 `matchMedia`（顺序反了读到的是被钉的值）；系统主题变化只在 `system` 下采纳。`setSetting` 广播 `settings-changed`，ticker 用 `applyRemoteSetting` 就地更新且**不回写不重播**。
+- `updater.ts` — 更新状态机，监听后端事件。
 
-**`hotkey.rs`** — 全局快捷键。目前只有一个老板键：按下即隐藏主窗口。注册放在 Rust 侧而不是用配套的 JS 插件 —— 它要在主窗口已经隐藏、整个应用没有焦点的时候仍然响应，那正是 webview 里的 JS 拿不到执行时机的情形。
+**`utils/prefs.ts`** — 设置值域与解析。所有值都是字符串，结构化值存 JSON；每个 parser 都回退到可用默认值而不抛错。`ALL_COLUMNS` 是列的唯一清单，`parseColumns` 会补回被坏配置弄丢的 `code`/`name`。
 
-`apply(app, accelerator)` 是唯一的注册入口（空串 = 不设），**先 `unregister_all()` 再注册**：改键时只加不减的话，旧键会继续响应而设置页上已经看不到它了 —— 一个用户既关不掉也查不到的全局热键。`commands::settings::set_boss_key` 是「先注册、成功了再落库」，两条失败路径都**回滚到旧键**：注册失败时 —— `apply` 会先注销全部，新键注册不上时旧键已经没了，不回滚的话用户试着换一个已被占用的键，代价是连原来能用的那个也一起丢掉；落库失败时（DB 锁 / IO）—— OS 里已经在响应新键，不回滚的话「系统响应的键」与「库/界面显示的键」会分家到下次重启。启动那次由 `register_from_db` 在 setup 末尾读库注册，注册失败只记 warning，不拦启动（组合键被别的程序占着是用户环境问题，设置页里改一次就会重试并把原因回显）。
+**`utils/webLog.ts`** — 前端日志桥（见 Logging）。
 
-老板键**只隐藏主窗口**，不碰行情条，也不改任何设置 —— 这是一次临时躲避，不是把配置改掉。恢复走托盘图标或点一下行情条（即上面的 `show_main_window`）。做成来回切的键，在「人真的站在身后」的那一刻就有被按亮的风险。
+**组件地图** — `AppLayout` 之下两块：设置页（`components/settings/`，覆盖式整页，`KeepAlive` 保留分区状态，`v-if` 卸载看盘界面以停轮询并在返回时重建自选表）；看盘界面 `TopBar` / `IndexBar` / `MarketOverviewPanel` / `WatchlistTable`（含 `GroupTabs`、添加/删除/导入弹框、`GroupPicker`）/ `StockDetail`（分时/K 线/深度/摘要）/ `StatusBar`。不要在这里维护完整层级树 —— 代码即地图。
 
-加速键字符串的词表是 global-hotkey 那套 `Code` 名（`KeyH` / `Digit1` / `F5` / `ArrowUp` …），与浏览器 `KeyboardEvent.code` 几乎逐字相同，所以前端录制时直接取 `e.code`、不做映射表；词表两边各写一份，由 [src/utils/hotkey.ts](src/utils/hotkey.ts) 与其 spec 钉住对齐 —— 对不上的症状是「录进去了、按了没反应」，而设置页上显示得好好的。`Cargo.toml` 里插件钉在 `~2.3`：2.4.0 起要求 tauri ^2.12，会让 cargo 顺势顶掉 tauri / tao / wry。
+- 设置页共用原语：`SettingsRow`（标签 + 常驻说明，不靠 placeholder）、`SegmentedControl`（与 `ChartSwitcher`、概览方向同一套视觉）、`DragSortList`（拖拽 + `Alt+↑/↓` + 行内按钮）。开关用 `NSwitch size="small"`，下拉用 `NSelect size="small"`（原生 `<select>` 的展开列表不跟主题）。共用样式在 [settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先。
+- 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
+- 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
+- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
+- Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
+- Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
 
-**`cache/mod.rs`** — `QuoteCache` provides in-memory `HashMap` storage with SQLite dual-write persistence. `restore_from_db()` on startup for instant quote display.
-
-**`Scheduler`** spawns a `tokio` background task with an **adaptive polling state machine**:
-
-| State | Trigger | Interval |
-|-------|---------|----------|
-| **Probing** (3×2s) | Entering morning/afternoon trading | 2s |
-| **Normal** | Price change detected during probe | market_clock base (2s) |
-| **Idle** | 10 consecutive unchanged polls, or holidays | 30s fixed |
-
-The scheduler groups watchlist codes by market, fetches batch quotes, updates the cache, and emits three Tauri events: `quotes-updated`, `indices-updated`, and `market-session-changed`. A separate wakeup listener task triggers immediate refresh on data source switch. On fetch failure, falls back to cached data. In Closed session, serves entirely from cache.
-
-**`commands/`** — Tauri IPC command handlers. Each file exposes `#[tauri::command]` functions registered in `lib.rs`:
-- `quote.rs` — `get_quotes`, `get_indices` (read from cache), `get_depth`, `get_intraday`, `get_kline` (async via active data source)
-- `watchlist.rs` — the watchlist pool, group membership, and ticker range:
-  - Snapshot: `get_watchlist` returns a `WatchlistSnapshot { items, groups, default_group_id }` in one call — `groups[].watch_ids` carries the ordered member ids, so switching groups in the tab bar is pure local filtering with no intermediate state.
-  - Pool: `add_watch` (upsert + join the selected groups; empty/unknown ids fall back to the default group), `remove_watch` (delete everywhere), `search_stocks` (cross-source fallback)
-  - Membership: `remove_watch_from_group`, `set_watch_groups` (full-overwrite, for the context menu's checkable submenu)
-  - Per-group ordering: `move_group_member_top|up|down`, `reorder_group_members` — all keyed by `(group_id, watch_id)`, since the same stock sits at different positions in different groups
-  - Groups: `add_watch_group`, `rename_watch_group`, `delete_watch_group`, `reorder_watch_groups`
-  - Ticker range: `set_watch_ticker_enabled`, `set_ticker_enabled_bulk`, `reorder_ticker`
-- `settings.rs` — `get_settings`, `set_setting`, `set_boss_key` (writes the setting *and* re-registers the global shortcut; empty string = unset), `switch_datasource`, `list_datasources`, `list_index_pool`, `get_portable_mode`, `is_store_build`
-- `autostart.rs` — `get_autostart`, `set_autostart` (OS-level autostart; registry Run key via tauri-plugin-autostart, except Windows store builds which use the packaged-app StartupTask WinRT API)
-- `window.rs` — `show_main_window` (ticker-bar click; delegates to `crate::show_main_window`), `set_ticker_visible` (settings-page toggle; delegates to `crate::set_ticker_visible`), `set_window_theme` (delegates to `crate::set_app_theme` — see the 标题栏 note below)
-- `import.rs` — 自选导入。`import_watchlist(entries, group_ids)` 一次 IPC 完成「匹配 + 落库 + 逐行结果」（`added` / `exists` / `failed`），只发一次 `watchlist-changed`；`save_import_template(path)` 生成模板并写到用户在前端「另存为」里选定的路径（`tauri-plugin-dialog`，取消则不写；没扩展名时补 `.xlsx`）；`read_spreadsheet(bytes)` 把 Excel 拆成单元格网格。
-  **模板是 xlsx 而不是 csv**，唯一理由是表头要能带底色（CSV 是纯文本，Excel 打开不带任何样式，填表时容易把表头当数据行）；顺带把代码列设成文本格式，用户敲 `000001` 不会被 Excel 改成 `1`。导入接受 `.xlsx` / `.xls` / `.csv`：Excel 由后端拆成网格，CSV 由前端解码解析，**两者共用前端同一套表头识别与列映射**（`mapWatchlistRows`）——两条路径各写一份，迟早一边认表头一边不认。
-  **匹配规则是代码优先、名称兜底、只认完全相等**：批量导入里模糊匹配悄悄导错一只，比报错难发现得多；名称命中多只时直接报错并列出代码。**代码命中多只时（沪深同号，如 `000001` 上证指数 / 平安银行）先用名称在这几只里再筛一次**，名称也对不上才报错 —— 名称本来就填在表里，是现成的消歧信息。代码接受 `600519` / `sh600519` / `600519.SH` / `s_sh600519`，以及专业软件里常见的 `SH.600519`、`sh-600519`、`600519 sh` 这类带分隔符的写法（前缀后缀都认）。**纯数字不足 6 位按左补零处理（Excel 会吃掉 `000001` 的前导零），但补出来的码是猜测**：必须由名称证实才能导（`1,平安银行` 可以，`700,腾讯控股` 不能悄悄补成 `000700` 导成模塑科技），且搜索关键字用名称 —— 拿猜测的码当关键字，候选里根本没有用户要的那只；只填短代码没填名称就直接报「不足 6 位」，不猜。另一条容易写错的语义：`exists` 按**导入前**的快照算 —— 否则同一次导入里先加进去的那只，再出现一次就会被误报成「已存在」。逐行搜索用信号量限 6 并发（每行一次 suggest 请求），落库串行，单次上限 500 行。
-- `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI. 行业板块榜要先**合并同名板块**再截取（东财 `m:90+t:2` 把申万一级/二级/三级混在一张榜里，同一个板块会以「白酒Ⅱ」「白酒Ⅲ」两行出现，成分股完全一致），所以 `fetch_sector_ranking` 按 `industry_prefetch_size` 多拉一批 —— 直接按 `top_n` 拉，榜首那对就会吃掉两个名额。概念榜的过滤名单分两半：**代码表**（风格/指数/资金/业绩的历史各期）+ **名字规则**（业绩预告 = 四位年份开头且含「报」、持仓 = 以 重仓/新进/增仓/减仓/持股 结尾、风格 = 以「风格」结尾）。后一半不可省：东财每期新开一批板块、代码跟着发（2026 一季报 → 中报 → 三季报），只靠代码表每一季都会漏掉新冒出来的那几个。
-  `turnover_delta` = 较**上一交易日同一时点**的两市成交额增量（正=放量、负=缩量）。这个差值两边必须**同源同时刻**：今日累计与昨日曲线都取自腾讯分时（`minute/query` 小响应 + 五日的 `day/query`），不拿新浪那个成交额去减 —— 混用两家口径，换源误差与真实增减量同量级，看起来完全像真的。前一交易日的曲线是静态的，按 UTC+8 日期缓存、每天只拉一次；盘前/休市拿不到当日曲线时给 `null`（面板隐藏），不给 0 —— 0 会被读成「与昨日持平」。
-- `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
-- `log.rs` — `log_event`（前端日志落盘，见下面的 Logging 一节）
-
-### Frontend (`src/`)
-
-**Stores (Pinia)** — Four stores mirroring the backend state:
-- `quote.ts` — Listens to `quotes-updated` and `indices-updated` Tauri events. Quotes stored in a `Map<"market:code", Quote>` for O(1) lookup. `indices` holds the whole 14-index candidate pool; `IndexBar` filters/orders it by `settings.indexCodes`.
-- `watchlist.ts` — Holds the `WatchlistSnapshot` and derives everything else locally: `activeGroup` (the selected tab), `visibleItems` (active group's members in in-group order), `tickerItems` (cross-group, sorted by `ticker_order`). Mutations are one IPC followed by a snapshot refetch — no optimistic updates, because group membership, in-group order, and orphan handling all live in the backend and guessing them locally drifts. The single exception is `setTickerEnabled`, which flips the switch locally first so the toggle feels instant.
-- `settings.ts` — Key-value settings map plus a **derived** config layer (`indexCodes`, `sectorTopN`, `tickerTransparent`, `watchlistColumns`, `colorScheme`, …). Every config value is a `computed` over the string map rather than its own `ref`, so the map is the single source of truth and there is no window where local state and the DB disagree. **主题这一项是三态**：库里存的是**模式**（`themeMode`，`theme` 键 ∈ `system`/`dark`/`light`），窗口上用的才是解析后的 `theme`（也是 `computed`，只会是 `dark`/`light`）—— 两态存库时「系统现在是不是深色」没有地方待，而且模式一旦被解析掉就没法交给原生层，那个「谁来决定」的信息就丢了。三条 watch 走完这条链：`theme` 变 → 落 `<html data-theme>`（`immediate`，所以 store 一建立、**首屏渲染之前**就定好属性，跟随系统下首帧就是对的）；`themeMode` 变 → 先把**模式**交给原生层（`set_window_theme`），**再**重读 `matchMedia`（顺序不能反：解 pin 之前读回来的是应用自己钉的值）；`watchSystemTheme` 只在其值是 `system` 时采纳系统主题变化（显式模式下那个事件可能只是自己 pin 出来的结果）。原来的 `theme-changed` 专线已删 —— 它带的「解析好的实际主题」现在每个窗口都能自己从本窗口的 `matchMedia` 解析出来，多一条通道只会多一份两边说法不一致的机会。Manages colour scheme (`<html data-color-scheme>`), data source switching, auto-launch, and the ticker window toggle. `setSetting` broadcasts `settings-changed` for the ticker window; the ticker applies the payload via `applyRemoteSetting` (no refetch — that would cost 5 extra IPC calls per toggle; for `theme` it also triggers that same mode watch, which is exactly how the ticker follows along).
-- `updater.ts` — Update state (checking/available/downloading/installing). Watches backend update events.
-
-**`utils/prefs.ts`** — Settings value domains and parsers. Settings are strings in SQLite, so structured values are JSON; every parser (`parseColumns`, `parseDefaultSort`, `parseJsonArray`, `parseBool`, `parseCount`) falls back to a usable default instead of throwing. A single corrupted key must not blank the UI. `ALL_COLUMNS` is the canonical column list (key + label + `required`); `parseColumns` honours the user's order but re-inserts `code`/`name` if a bad config dropped them.
-
-**`utils/webLog.ts`** — 前端日志桥。入口经 [bootstrapLog.ts](src/bootstrapLog.ts) 在应用模块图之前安装：接管 `console.error/warn`、`window.onerror`、`unhandledrejection`，经 `log_event` 写进后端日志文件（`[web]` 前缀 + 窗口名）。同一句话 5 秒内只转发一次（轮询失败不该刷满文件），单条封顶 4000 字符；`formatLogArgs` / `createLogGate` / `createWebLogger` / `windowSource` 都是纯函数，由 [webLog.spec.ts](src/utils/webLog.spec.ts) 覆盖。
-
-**Component hierarchy (main window)**:
-```
-App.vue → NConfigProvider + NMessageProvider
-  └─ AppLayout.vue
-       ├─ SettingsPage.vue   (v-if 切换：设置页打开时看盘界面整体卸载；顶部横向分区 Tab + 居中限宽 1000px 的内容列，参考 CC Switch；Tab 条与内容列共用 max(24px,(100%-1000px)/2) 外边距保证右缘对齐)
-       │    ├─ IndexSection.vue      (候选池勾选 + 拖拽排序)
-       │    ├─ MarketSection.vue     (显示开关 + 榜单条数)
-       │    ├─ WatchlistSection.vue  (列显示/顺序、默认排序、涨跌配色)
-       │    ├─ TickerSection.vue     (显示、透明背景、每屏条数、轮播范围)
-       │    ├─ GeneralSection.vue    (主题、开机自启、数据源、老板键)
-       │    └─ AboutSection.vue      (关于：版本、检查更新、更新说明、GitHub Star / 商店好评引导)
-       └─ 看盘界面
-            ├─ TopBar.vue (slogan, data source dropdown)
-            ├─ IndexBar.vue → IndexCard.vue × N (按设置筛选/排序)
-            ├─ MarketOverviewPanel.vue (受 marketOverviewVisible 控制)
-            ├─ WatchlistTable.vue (NDataTable: 动态列、默认排序、右键菜单)
-            │    ├─ GroupTabs.vue (分组标签栏：切换/重命名/右键菜单/新建)
-            │    │    └─ DeleteGroupDialog.vue (删除确认：影响面账目行)
-            │    ├─ AddStockDialog.vue (搜索 + 选择目标分组)
-            │    ├─ DeleteStockDialog.vue (删除自选确认：会从哪些分组消失)
-            │    ├─ ImportWatchlistDialog.vue (CSV 批量导入：模板 / 拖放 / 逐行结果)
-            │    ├─ GroupPicker.vue (分组多选药丸，添加与导入共用)
-            │    └─ StockDetail.vue (expanded row detail panel)
-            │         ├─ ChartSwitcher.vue (toggle: 分时/日K/周K/月K)
-            │         ├─ MinuteChart.vue (intraday chart, auto-refresh 5s)
-            │         ├─ KLineChart.vue (daily/weekly/monthly K-line, auto-refresh 30s/60s)
-            │         ├─ DepthPanel.vue (5-level bid/ask, auto-refresh 3s)
-            │         └─ StockSummary.vue (open/high/low/volume/turnover/turnover_rate)
-            └─ StatusBar.vue (版本、检查更新、官网、设置入口、开机自启、联系)
-```
-
-**设置页（`src/components/settings/`）** — 覆盖式整页，入口在状态栏的齿轮按钮。用 `KeepAlive` 切换分区，保住各分区的本地 UI 状态（正在输入的自定义条数、轮播范围的分组筛选）。`AppLayout` 用 `v-if` 而非 `v-show` 承载它，两个后果都是要的：设置期间看盘界面的轮询全部停掉；返回时自选表重建，`defaultSortOrder` 这类只在挂载时生效的初值会按新设置重新应用（否则改完默认排序要重启应用才看得到）。
-
-共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉；选项可带 `icon`，主题三态就是这么用的 —— 图标与文字同色，随选中态一起变，`aria-hidden` 掉，读屏只念文字）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
-
-**分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 左移 / 右移）、＋新建。删除确认是自建的 [DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)（NModal + 设计令牌，不用 naive 的 `useDialog`：后者的卡片/字号/正文层级都不跟应用走）。影响面在本地算出（快照里已有每组的有序成员 id）：把组内自选分成**两份名单** —— 仅属此组的会并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`：被删的恰好是默认分组时那正是它自己；与后端 `delete_watch_group` 挑 fallback 的查询同一规则），其余留在别的分组、不受影响。确认框逐只列出名称 + 代码而不是只给数量 —— 只给数字的话「删了会不会丢东西」还得靠猜；两组各自封顶滚动，并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
-
-**自选的右键菜单与删除确认（[WatchlistTable.vue](src/components/watchlist/WatchlistTable.vue)）** — 「删除自选」不可逆，先过 [DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)：说明它会从哪些分组里消失 —— 多归属下用户往往正看着某一个分组，而「删除自选」删的是股票池里的整条记录，不只是当前分组里那一行。只剩一个分组时「从本组移除」与「删除自选」是同一件事（后端会连股票一起删），菜单里**直接不出现前者** —— 两条同名的菜单项只会让人以为其中一个更轻；还有别的分组时它只是移除归属，不经确认。两个确认框（分组 / 自选）共用 [components/common/ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 的外壳（危险标记、标题、常驻说明、按钮、默认焦点落在「取消」），内容各自用插槽填 —— 卡片底色、字号、按钮高度与设计令牌的对应关系只写一遍。
-
-**Ticker bar** ([TickerBar.vue](src/components/ticker/TickerBar.vue)) — Standalone mini Vue app. Cycles through `watchlist.tickerItems` (cross-group, sorted by `ticker_order`) taking `ticker_items_per_page` at a time with 3-second auto-scroll. Pauses on hover. Clicking restores the main window. Reloads the watchlist on the `watchlist-changed` event, which is why every ticker-range mutation emits it. 只播报 `ticker_enabled` 为开的自选；该开关与轮播顺序统一在设置页的「行情条 → 轮播范围」维护（原先自选表里的逐行开关列已移除）。
-
-设置同步走 `settings-changed` 事件（主窗口 `setSetting` 时广播），ticker 用 `applyRemoteSetting` 就地更新 —— 它读不到主窗口的 store，而重拉整份设置要 5 次 IPC，为一个开关付这个代价不值得。主题也在这条通道上：模式落到设置表后，ticker 的 store 用**本窗口自己的** `matchMedia` 解析（它的窗口从没被钉过，读到的是系统真值），所以两个窗口各算各的、不需要主窗口把结果送过来。**透明背景**由 `document.body` 的 `ticker-transparent` class 控制（底板画在 [ticker.html](ticker.html) 的 body 上，不在组件里）：底板、圆角、阴影必须**一起**去掉，只把 background 改成 transparent 会留下一圈阴影脏边；窗口本身在 `tauri.conf.json` 里开了 `transparent: true`，否则 webview 会先画一层不透明底，CSS 怎么改都透不过去。
-
-**Composables**:
-- `useTauriEvent.ts` — Vue lifecycle wrapper for `listen()` (auto-cleanup on unmount)
-- `useTheme.ts` — Standalone theme state (used by ticker)
-- `useChart.ts` — Shared chart composable (init, data loading, auto-refresh with period-dependent intervals, theme-aware styling for both minute and K-line charts)
-- `useUpdateCheck.ts` — Startup update check with trading-session gating (suppresses prompts during active trading)
-
-**Styles**:
-- `variables.css` — Design system tokens: 4 surface levels, border system, text palette, semantic up/down colors (red=up, green=down per A-share convention), monospace font for numbers (tabular-nums), 4px-base spacing scale, radius tokens, shadow tokens, dark + light theme overrides. Also holds the **涨跌配色方案覆盖块** (`[data-color-scheme="us"]`) — placed *after* both theme blocks because it has the same specificity (0,1,0) as `[data-theme="light"]` and wins on source order; the light variant needs the compound `[data-theme="light"][data-color-scheme="us"]` (0,2,0) to beat the light-theme definitions. The derived `-bg`/`-bar` tokens must flip with the primaries, or heat bars and text colours disagree.
-- `dark.css` — Scrollbar theming
-- `chart.css` — Shared chart container styles (overlay, error, status text)
-- `settings.css` — Settings-page shared styles (cards, rows, list rows, checkbox, inputs), scoped under `.settings-page` so the five section components don't each carry a copy
-
-### 官网（`website/`）
-
-对外落地页，发布在 <https://leaderxin.github.io/quant-desktop/>，由 [pages.yml](.github/workflows/pages.yml) 部署到 GitHub Pages。**它与 Tauri 应用没有任何代码关系** —— 不在 `vite.config.ts` 的两个 Rollup 入口里，不参与 `npm run build`，也不依赖任何 npm 包。三个文件（`index.html` / `styles.css` / `app.js`）就是全部，改完刷新即见。
-
-应用里唯一的入口是状态栏那颗「官网」链接（`SITE_URL`，在 [src/components/layout/StatusBar.vue](src/components/layout/StatusBar.vue)）：域名或子路径变了要跟着改这一处。
-
-三处刻意的设计：
-
-- **素材不复制，而且不在 `public/` 下。** 截图住在仓库根的 `screenshots/`（README 也在用），`website/assets/` 由 [scripts/site-assets.mjs](scripts/site-assets.mjs) 复制生成，并加进 `.gitignore` —— 与 `dist/` 同级，都是产物。**位置这件事有个坑**：`public/` 是 Vite 的静态目录，会被整份复制进 `dist/`，而 `tauri.conf.json` 的 `frontendDist` 就是 `../dist` —— 截图原本放在 `public/screenshots/` 时，那 1.9MB 一直在被打进桌面安装包，而应用代码一处都没引用（`StatusBar.vue` 只引用了 `public/qrcode.png`，那是二维码的远程地址与兜底，**不能跟着搬**）。搬到仓库根之后 `dist/` 从约 3.3MB 降到 1.4MB。**改位置时必须同一个提交里改 README** —— 它由 github.com 按仓库相对路径渲染，文件一挪就全变破图。
-  脚本在 CI 与本地是**同一条命令**（`npm run site:assets`），所以本地过了 CI 就会过。它顺带做几件 CI 才有意义的事：扫描**每个**页面（不只 `index.html`）的 `src`/`href`/`srcset` 并断言文件存在 —— 截图名写错在浏览器里只是一张破图，评审时看不出来；以及**生成 `sitemap.xml`**（见下）。
-- **配色与 `variables.css` 同源，且是仓库里唯一一处有意重复。** 站点没有构建步骤，就拿不到 `variables.css`；把调色板搬一份进 `website/styles.css` 是唯一的办法。所以**改那边的 surface / text / accent token 时，这里要跟着改**。站点在其上追加了一组**页面级氛围 token**（`--page-*` / `--grid-line` / `--hairline` / `--sheen` / `--glow-*` / `--btn-accent-*`），那批是站点自己的，应用里没有对应物：风格取向是深色金融终端 —— 有纵深的渐变底 + 蓝图网格、发丝描边 + 顶边 1px 高光、主按钮辉光。
-- **主题契约与应用一致**：`<html data-theme>`，`<head>` 里那段内联脚本在首帧前定好主题（否则深色访问者会先看到一帧白闪），`app.js` 只做增强 —— 禁用 JS 时页面依然完整可读，`.reveal` 的隐藏也由内联脚本加的 `.js` 类门控，不是无条件写死。`app.js` 里没有网络请求。
-
-**图片管线（`scripts/optimize-images.mjs`，`npm run site:images`）。** 截图原图是 2057px 的 PNG，一张 200–330KB；站点按 `<picture>` + WebP + `srcset` 三档（600 / 1100 / 2057）出，落地的通常是 44–68KB，降约 75–80%。同时出 favicon 32/180、品牌图标 128（原先 28px 的位置挂着 512px 的 203KB 原图）、以及 1200×630 的社交卡片。产物**提交进仓库**，所以 CI 不需要浏览器 —— 为十几张营销图给每次 `npm ci` 拉一个 `sharp` 那样的原生依赖不划算。代价是脚本本身依赖本机 Chrome（`CHROME_PATH` 可覆盖），**只有换截图时才需要手动跑**。三条实测得到的坑：
-
-- **`canvas.toDataURL` 在 `file://` 下会因 canvas 被 taint 而抛 SecurityError**，必须给 Chrome 加 `--allow-file-access-from-files`。
-- **目标宽 > 源宽时必须整个跳过，不能 `Math.min` 后仍按目标宽命名。** `settings-index.png` 只有 1298px 宽，早期实现产出的是 1298px 的图却叫 `-2057.webp`，而 HTML 里写着 `2057w` —— 描述符撒谎会让浏览器算出错误的密度。现在的规则是"文件名永远等于真实宽度"，源图比所有目标都小的（行情条那两张 344×59）就不出 WebP，直接用 PNG。脚本每次运行会先清掉上一轮的 `.webp`，否则改了规则会留下没人引用却照样被发布的残留。
-- **`background-clip: text` 会静默吃掉溢出元素框的字形**（`scripts/og-card.html` 的字标就是被它截断的）：渐变只画在框内，溢出部分没有背景可裁，于是 `color: transparent` 生效、字直接消失。配 `width: max-content` 让框包住文字。
-
-功能图的 `<picture>` 外面套了一层壳，所以给 `picture` 加了 `display: contents` —— 否则它会成为 grid/flex 的子项，把 `.ticker-runway` 的 `place-items` 和功能图栅格的列宽都算错一层。
-
-三条踩过坑的约束，改样式时别破坏：
-
-- **不引 webfont。** 通用设计建议会给 Inter + Google Fonts，但 `fonts.googleapis.com` 在国内基本加载不出来，而这个应用的用户主要在国内 —— 引它等于拿首屏去赌。科技感靠**刻意使用等宽栈**（`--font-mono`，应用本来就有这条栈）传达：区块编号、规格行、文件名、体积、表头。零网络依赖。
-- **`--text-3` 只许用在装饰上**（目前只有亮点卡片角上那个序号）。实测对比度：`#6e7681` 在 `#0d1117` 上是 4.12:1，`#8b949e` 在纯白上是 3.08:1 —— 两个都够不上小字号要求的 4.5:1。正文级的灰一律 `--text-2`（深色 6.15:1 / 浅色 5.25:1）。「深色底上一片灰」正是这一点没守住的样子。
-- **主按钮的标签色必须跟着主题走**（`--on-accent`）。深色主题的强调色是亮蓝，标签用近黑；浅色主题是深蓝，标签用白 —— 写死深色标签压在浅色主题的 `#0969da` 上只有 3.68:1。同理浅色主题下 hover 要**变深**而不是变亮。全量配色对有一份实测清单，改动后按它复核（深浅两套 × 各背景 × 按钮四个状态）。
-
-Hero 的截图是一组五张的轮播（`.carousel`），首张是**日间主题** —— 深色站点上先给一张亮色截图，应用有两套主题这件事才在第一眼说清楚。**不自动播放**是刻意的：会动的 Hero 抢走正文注意力，而且正是 `prefers-reduced-motion` 想拦掉的那类动效。五条别丢的约束：
-
-- **左右按钮常显，不做成 hover 才出现，并且跟着主题走。** 触摸设备没有 hover，而「看不出可以点」是轮播最常见的失败。按钮用 `--surface-1` + `--text-1` 并保持 92% 不透明度 —— 于是它既属于当前主题，又压得住任何一张截图。**早先这里是写死的深色实心圆，理由是「它压的是截图、不是页面底色」；那个理由在浅色主题下不成立**，一颗黑圆钉在白页面上。形状是圆角矩形而非圆形，与全站 `.btn` 的控件语言一致。
-- **非当前页要设 `aria-hidden`。** 其余几页只是被 transform 移出视野，仍在无障碍树里；不标记的话读屏会把五张截图一口气全念出来。
-- **方向键只在焦点进入轮播时才接管。** 监听挂在 `.carousel` 上而不是 document 上，否则会劫持页面本身的上下键滚动。触摸滑动只是加分项（按钮和圆点始终可见），判定条件卡得很严（横向位移 >45px 且大于纵向 3 倍）且**不调 preventDefault** —— 竖向拖动仍然是滚动页面。
-- **`<img>` 上的 `height` 属性是定值，CSS 里必须配 `height: auto`。** 轮播图带 `width`/`height` 属性是为了防 CLS，但只覆盖 `width` 的话图会被拉成原始像素高（实测 1070×1466 而不是 1070×763）。功能图那边同理，用 `aspect-ratio: 2057 / 1466` 预留比例，而行情条那两张 344×59 的要 `aspect-ratio: auto` 把继承来的比例关掉。
-- **首尾各挂一张克隆图，环形的每一步才都是一步。** 只有真图时，「末张 → 首张」与「首张 → 末张」只能把 track 从 `0` 一口气挪到 `-400%`，420ms 里横穿中间三张，看着像卡了一下，和 1→2 完全不是一个动作。克隆只在过渡途中露脸：`transitionend` 一到，`settle()` 就给 track 加上 `.is-snap`（`transition: none`）把它瞬移到对应的真图 —— 像素不动，用户看到的一直是同一张。克隆对辅助技术不可见（`aria-hidden`），不进 dots，也不算进 caption。
-
-右下角的回到顶部做成 `<a href="#top">` 而不是 `<button>`：滚动本身交给片段导航与 `html{scroll-behavior:smooth}`，禁用 JS 时照样能用（显隐由 `.js` 类门控），JS 只负责决定「滚过 3/4 屏才值得显示」。用锚点还顺手避开一个坑 —— 按钮版本在「滚到顶就隐藏」时若正持有焦点，会把焦点丢给 body；锚点导航则把顺序焦点起点移到目标处。页脚底部因此多留了 48px：那个按钮是 fixed 的，滚到页尾会压住版权行。
-
-它外圈还有一道**滚动进度环**（`stroke-dashoffset` 由 JS 按 `scrollY / maxScroll` 改写）、以及 hover/focus 时出现的等宽字体气泡提示。三处值得留意：
-
-- 提示用 `::after { content: attr(aria-label) }` 而不是 `title` 属性 —— title 有约 1 秒延迟、样式不可控、触摸设备上根本不出现；这个版本 hover 与键盘 `focus-visible` 都会出，且零 JS，可见文案与无障碍名称还是同一个字符串，不会分家。
-- 进度环的**分母 `scrollHeight` 只在 load/resize 时量一次**，不在 scroll 里读 —— 那是会触发 layout 的属性。之所以敢这么缓存，是因为页面上每张图现在都预留了宽高比（`aspect-ratio`），文档高度在加载完成后不再变。**给图片加尺寸时别忘了这一层依赖。**
-- 位移、悬浮位移与按压缩放**合成在同一条 `transform` 上、靠 CSS 变量切换**（`--lift` / `--press`）。分开写的话 `.js .to-top.is-visible` 的 (0,3,0) 特异性会盖掉 `.to-top:active` 的 (0,2,0)，按下去没有反馈。
-
-SEO 与 GEO（生成式引擎优化）都落在 `<head>` 与 `website/` 根下的几个文件里，没有构建步骤：
-
-- **`application/ld+json` 是 GEO 的主要抓手。** 一个 `@graph` 装三个节点：`SoftwareApplication`（14 条 `featureList`、5 张 `screenshot`、`offers` 价格 0、`operatingSystem`、`license`）、`FAQPage`（页面上那四条问答）、`WebSite`。两条纪律：字段写**事实**不写形容词；`FAQPage` 的答案必须与**页面上看得见的正文**逐字对得上（结构化数据描述的内容页面没有，属于违规）。`scripts/` 之外有一个校验脚本会同时检查 JSON 能否解析、以及答案是否真的出现在正文里。
-- **有意不写 `softwareVersion`。** 页面上没有任何静态版本号（顶栏那枚徽章是运行时拉 shields.io 的），写死一个数字只会在下次发版后变成假信息。
-- **`og:image` 用 `main-light.png` 而不是 `main-dark.png`。** 缩略图尺寸下深色截图糊成一团，亮色的还能看清界面；同时要声明 `og:image:width/height`，宽高对不上会被判为无效图。
-- **`robots.txt` 与 `llms.txt` 都不在本仓库里，唯一一份在 [Leaderxin/leaderxin.github.io](https://github.com/Leaderxin/leaderxin.github.io)。** 原因是协议层面的：robots 规定爬虫只读 `scheme://host/robots.txt`，llms.txt 的约定同理 —— 而项目站挂在 `/quant-desktop/` 下，放在那里的这两份文件**一次都不会被访问**（实测 `https://leaderxin.github.io/robots.txt` 曾是 404）。2026-10 建了用户站仓库把域名根补上，顺带也解决了根域名 404。那个仓库同时放 `index.html`（跳转到项目站，刻意 noindex）与根域的 `404.html`。**所以本站不再有这两份文件** —— 曾经有过，删掉是为了不出现两份必然漂移的副本。改 AI 爬虫放行名单、或改那些事实（平台/体积/价格/许可）时，去那个仓库改。
-- **`sitemap.xml` 由 `site-assets.mjs` 生成，不是手写的。** 它扫描 `website/*.html`、排除 `SITEMAP_SKIP`（`404.html` 是错误页、`privacy.html` 带 `noindex` —— 把 noindex 页列进 sitemap 会被 Search Console 报成错误），`lastmod` 取自 `git log` 而不是「现在」：每次部署都变的日期对爬虫是噪音。之所以要生成：手维护的 sitemap 在加页面时必然漏登记，而且**失败是静默的** —— 没有人类链接指向 sitemap 去看它。
-
-改文案时记得回头看这几处：`<title>`、`meta description`、OG/Twitter 三件套、JSON-LD 里的 `description` 与 `featureList`、以及 `llms.txt`。它们不在一个文件里，最容易只改了一处。
-
-### 内容页与顶栏一致性
-
-除首页外还有 7 个页面：`download.html`、`faq.html`、`changelog.html`（生成）、`guide/`（索引 + 三篇：行情条 / 分组 / 老板键）。它们共用首页的 token 与顶栏页脚，版式换成阅读型 —— `.page-head`（标题区，自己让出 fixed 顶栏的高度）、`.prose`（**680px** 正文列，中文每行 35–45 字最省眼，比首页那 1072px 通栏窄得多）、`.card-grid`（下载卡与指南索引）、`.release*`（更新日志）。面包屑只在 `guide/*` 出现，那是全站唯一的三级路径。
-
-**顶栏、页脚、回到顶部这三段在每页各有一份**，好让每页都是「打开就能看」的独立文件。这违反本仓库平时拒绝的「同一个东西写两遍」，让它可接受的是 `site-assets.mjs` 里的校验：这三段各用 `<!-- chrome:nav:start -->` 之类的标记包起来，脚本提取后**逐字节比对**（比对前剥掉 `../`，因为子目录页面的深度不是漂移），不一致就让 CI 失败。`404.html` 与 `privacy.html` 用 `CHROME_SKIP` 排除 —— 前者要为任意深度的失效路径服务，链接只能是站点绝对路径；后者是从 `docs/` 复制来的、商店登记在册的隐私政策。
-
-于是**当前页高亮不能写进顶栏**（写了就不一致了），改成挂在 `<body data-page="…">` 上加 CSS。选择器用 `href$=` 后缀匹配，这样 `guide/*` 里的 `../` 前缀不影响命中；状态收进一个 `--current` 变量，颜色与指示器都从它派生，于是「哪个 data-page 对应哪个导航项」那份清单只写一遍（拆成两块迟早对不上，而症状只是某一页的指示器没出现）。加新页面时给它一个 `data-page` 值并在那份清单里登记一行；`download` 没有条目是故意的 —— 它的入口是顶栏那颗常驻 CTA 按钮，不是导航项，硬凑一条只会是死代码。
-
-**指示器的形状是有意的，不要改回「淡色底块 + 通栏下划线」。** 那是模板与生成式工具的默认答案；两个信号还互相打架（底块已经说了「就是这里」，再压一条粗线是重复），合起来会被读成一颗带下边框的按钮。现在只留一个信号：标签提亮 + 一条与文字等宽、两端渐隐、带辉光的强调色短横。三个细节各有原因：左右各 12px 正是 `.nav__link` 的内边距，于是线宽正好等于文字宽（按元素框算会宽出一截）；两端渐隐，与顶栏滚动后那条 `.nav.is-scrolled::after` 发丝线同源，全站只有这两处用渐变线；辉光用 `drop-shadow` 而非 `box-shadow` —— 前者跟着渐变渲染后的 alpha 走，后者会按元素框发一圈方形的光。手机菜单里同一枚指示器改成**左侧竖条**：竖排列表用竖条、横排用横线，方向跟着布局走。
-
-**`changelog.html` 由 `site-assets.mjs` 从 `CHANGELOG.md` 生成**，不是手抄的：手抄的那份下一次发版就过期，而且过期是静默的。生成器只认 `CHANGELOG.md` 实际用到的那几种写法（`##` 版本、`###` 小节、`-` 条目、行内 `**粗体**` 与 `` `代码` ``），遇到别的原样当段落输出、不抛错。它的顶栏是从 `index.html` 里**提取**出来的，所以顶栏仍然只有一份来源，而生成出来的页面同样受上面那条一致性校验约束（`readChrome` 返回的是**含标记**的整块，只返回内部内容的话生成页会因为「缺标记」而校验失败 —— 踩过）。
-
-站点里另外两处「按实际内容生成」的地方：`sitemap.xml` 扫描 `website/**/*.html`（**递归**，只扫顶层会让 `guide/*` 静默漏掉：不校验、不进 sitemap，而这两件事都不会有人注意到），`lastmod` 取自 `git log`；引用校验按**页面自己所在的目录**解析相对路径 —— 按站点根解析会把 `guide/` 下的 `../styles.css` 解到仓库外面去，而且会报出一堆假缺失。
-
-改动这些页面之后，`npm run site:assets` 会把四件事一次做完：资源复制、引用校验、顶栏一致性校验、sitemap 生成。
-
-注意 **`ticker-dark.png` / `ticker-light.png` 只有 344×59**，必须按原尺寸展示（`.ticker-runway` 就是为此存在的）—— 其余截图是 2000px 级，可自由缩放。
-
-Pages 现在已经跑在 GitHub Actions 上（2026-10 从 `master:/docs` 迁过来的，见下）。工作流的 `paths` 过滤器里带着 `screenshots/**` 与 `docs/privacy.html`：换一张截图、改一次隐私政策，同样应该重新发布，否则站点上还是旧的，而「只改了 screenshots/」看起来与官网无关。
-
-**从 `docs/` 迁过来这件事本身有个坑，别踩。** 迁之前 Pages 的源是 `master:/docs`（`build_type: legacy`），为的是 Microsoft Store 上架需要的隐私政策页（见 `183bba7 docs: 新增隐私政策页面(Microsoft Store 上架用)`）—— 也就是说 `https://leaderxin.github.io/quant-desktop/privacy.html` 是**商店登记过的地址**；同一个源顺带把 `docs/superpowers/` 下 20 份内部规划稿也公开了。而切到 GitHub Actions 后站点根变成 `website/`，那个地址会 404。所以 `scripts/site-assets.mjs` 会把 `docs/privacy.html` 复制到**站点根**（`website/privacy.html`，已 gitignore），与截图同一套「单一来源 + 脚本复制」的做法，两份不可能分家 —— **改隐私政策只改 `docs/privacy.html` 一处**。
-
-迁移的动作本身就是一次 API 调用：`gh api -X PUT repos/Leaderxin/quant-desktop/pages -f build_type=workflow`（等价于在 Settings → Pages 里点一下）。**但切完之后必须再手动跑一次 `gh workflow run pages.yml`，否则站点上挂的仍是旧的 docs 构建。**
-
-原因是 push 到 master 会**同时**触发两条路：`build_type` 还是 `legacy` 时 GitHub 用自己的构建器从 `master:/docs` 出一版，而工作流也提交一版部署。两条路都在跑，谁后落地谁赢 —— 实测就是 legacy 那次晚 3 秒完成，把 Actions 的部署盖掉了。症状很有迷惑性：**deploy job 报绿、`pages/builds/latest` 也是一条成功的 legacy 构建，但站点内容还是旧的**。切完 `build_type` 之后不会再有新的 legacy 构建，重跑一次就稳了。以后若再遇到「部署成功但内容没变」，先看 `gh api repos/{owner}/{repo}/pages/builds/latest` 的 commit 是不是你刚推的那个。
-
-### Data flow
+### Data flow 与事件
 
 ```
-DataSource API (Sina/Tencent)
-  → Scheduler (tokio background poll, adaptive interval)
-    → QuoteCache (in-memory HashMap + SQLite dual-write)
-      → app_handle.emit("quotes-updated" / "indices-updated" / "market-session-changed")
-        → Pinia Stores (Tauri event listener)
-          → Vue reactive components (main window + ticker bar)
+DataSource → Scheduler → QuoteCache（内存 + SQLite）
+  → emit quotes-updated / indices-updated / market-session-changed
+    → Pinia stores → Vue 组件（主窗口 + 行情条）
 ```
 
-On-demand requests:
-- **Depth**: `invoke("get_depth")` → active DataSource adapter → returned to `DepthPanel`. Auto-refreshes every **3s** while detail panel is open.
-- **Minute chart**: `invoke("get_intraday")` → adapter → `useMinuteChart` composable. Loads once on open, then auto-refreshes every **5s**. Both adapters return a *rolling window* of the last N minute bars (Tencent `,,242`, Sina `datalen=240&scale=5`), which intraday spans the previous trading day too — so `MinuteData.time` carries `YYYY-MM-DD HH:mm` and [src/utils/minuteBars.ts](src/utils/minuteBars.ts) keeps only the last session present. Dropping the date there (or stamping bars with the client's `today`) makes the chart draw yesterday's afternoon as if it were today's. The refresh publishes it via `subscribeBar`, which klinecharts only ever *appends* to — so when the mapped session differs from the one already loaded (the panel left open across 09:30, or overnight) the refresh re-installs the whole loader instead; and each bar is compared against a UTC+8 "now" (`beijingNow`) rather than `Date.now()`, since the timestamps carry the *source's* wall clock and a client west of UTC+8 would otherwise judge the entire session to be in the future and freeze the chart. The composable registers its own `onUnmounted` for the 5s poll and the resize observer — `useChartCore`'s only disposes the chart instance, so they would otherwise leak one per mount.
-- **Minute chart y-axis** carries both scales — prices on the right (where they already were) and 涨跌幅 on the left — over one range symmetric about 昨收, so the two columns read row by row and 0.00% sits dead centre (`convertToPixel(prevClose) === paneHeight / 2`, verified). The percent column is a second `createYAxis` on `candle_pane` that relabels itself through `displayValueToText`; the range comes from a single `overrideYAxis({ paneId })` so both axes get it, and it sets `gap` too — klinecharts' default is asymmetric (20% top / 10% bottom) and would tilt a symmetric range. The half-span is the day's largest `close` deviation from 昨收 (a 分时图 draws a close line, not candles) floored at 1% so the opening minute isn't magnified. The label hook is the only way to reach the hover readout: each `YAxisWidget` draws its own `CrosshairHorizontalLabelView`, and that text goes through the axis's `displayValueToText` — a `createTicks` override relabels the axis but leaves hover showing the price. 昨收 is read from the window itself — the close of the bar right before the drawn session (`sessionPrevClose`), i.e. the previous session's close — so the baseline always describes the day that is actually drawn; the `price - change` prop is only the fallback for a window with no prior session (a first-day listing). With no 昨收 the axis *and* the baseline are removed, not merely left uninstalled: the range callback and the label hook read 昨收 live, so keeping them would draw a range centred on 0 with blank labels.
-- **Minute chart x-axis** is pinned to one trading session (09:30–15:00) — the curve grows left-to-right from the open and the rest of the day stays blank. klinecharts lays out by bar count and right-aligns short series (29 bars landed at x=335–615 of a 700px plot, i.e. a blank left half), so [src/utils/minuteAxis.ts](src/utils/minuteAxis.ts) computes the bar space and right offset itself, slot = one bar (240 slots for Tencent's 1-min feed, 48 for Sina's 5-min), and [useMinuteChart.ts](src/composables/useMinuteChart.ts) re-applies it whenever the data or the container size changes (a resize otherwise drifts back to a left blank). Pan and zoom are off (`setScrollEnabled(false)` / `setZoomEnabled(false)`) — a pannable 分时图 would only fight the re-layout. The axis labels are a fixed `createTicks` list (09:30 / 10:30 / 11:30-13:00 / 14:00 / 15:00) because klinecharts extrapolates tick timestamps linearly across the blank region, which reads "12:10" during the morning — the lunch break isn't linear in wall-clock. Only the axis is corrected; the crosshair still extrapolates in the blank region. Both the labels and the computed offset give way to klinecharts when a full session no longer fits the pane (`sessionFits`): below that width the bar space is under `barSpaceLimit.min`, `setBarSpace` is silently dropped, and the five labels would be clamped onto the right edge on top of each other.
-- **K-line (daily)**: `invoke("get_kline", {period: "daily"})` → adapter → `useChart`. Loads once, auto-refreshes every **30s** (last candle updates intraday).
-- **K-line (weekly/monthly)**: Same path, auto-refreshes every **60s**.
+按需请求：深度 3s、分时 5s、日 K 30s、周/月 K 60s。分时/K 线的关键约束（日期来自数据而非本机时钟、以 UTC+8 墙钟过滤未来 bar、网格按会话固定、composable 自己注册卸载）见 [minuteBars.ts](src/utils/minuteBars.ts)、[minuteAxis.ts](src/utils/minuteAxis.ts)、[useMinuteChart.ts](src/composables/useMinuteChart.ts) 的注释与 spec。
 
-User mutations (add/remove/reorder watchlist) go through `invoke()` → Rust commands → SQLite, then the frontend re-fetches the watchlist. The scheduler picks up changes on the next poll cycle. Every watchlist-affecting command emits `watchlist-changed`, which is what keeps the ticker window's copy of the list in sync.
+自选写操作：`invoke` → Rust → SQLite → 前端重拉；每个影响自选的命令都发 `watchlist-changed`，行情条靠它同步。数据源切换走 `Notify` 立即刷新。
 
-DataSource switching triggers a `Notify` wakeup → Scheduler immediately refreshes with the new adapter.
+跨窗口设置：`setSetting` 写库并广播 `settings-changed`；ticker 直接 `applyRemoteSetting`，**不得回广播**（会来回弹）。`datasource-changed` 单独一条，因为它还有每窗口的副作用。主题不需要专线：两个窗口各自用本窗口的 `matchMedia` 解析 —— ticker 的窗口没被钉过，读到的是系统真值。
 
-Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-changed` with `{key, value}`. The ticker window applies it directly via `applyRemoteSetting` and must **not** re-broadcast — doing so would ping-pong between the two windows. (`theme-changed` used to be a third, separate channel; it is gone — the ticker follows `settings-changed('theme')` like any other setting and resolves the actual theme in its own window, which is the only place that can do it correctly: its `prefers-color-scheme` was never pinned. `datasource-changed` remains separate because it has an additional per-window side effect.)
+K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。
 
 ### Logging
 
-日志文件与数据库同目录：`%APPDATA%\quant-desktop\quant-desktop.log`（便携模式 `<exe_dir>/data/`）。四条约定各有非它不可的理由，改之前先看这里：
+日志与数据库同目录：`%APPDATA%\quant-desktop\quant-desktop.log`（便携模式 `<exe_dir>/data/`）。
 
-- **时间戳用本机时区**（[logging.rs](src-tauri/src/logging.rs)）。simplelog 默认 UTC，与用户报障时说的本机钟点差 8 小时，对不上。
-- **追加写 + 2MB 轮转**。`File::create` 会在每次启动清空日志，上一次崩溃的现场就没了；超过上限时当前文件改名为 `.log.1`（启动时与写入过程中都会检查 —— 只在启动时查的话，托盘常驻几天就没有上限了）。
-- **级别可用 `QUANT_LOG` 覆盖**（error/warn/info/debug/trace，默认 info）。现场要开 debug 不必重新打包。
-- **panic hook 落一条 error**。release 是 GUI 进程，stderr 不可见；启动期 `expect` 失败（数据库打不开等）否则看起来就是「双击没反应」。
+- **本机时区**；**追加写 + 2MB 轮转**（启动与运行期都检查，改名 `.log.1`）；级别由 `QUANT_LOG` 覆盖（默认 info）；panic hook 落一条 error（release 是 GUI，stderr 不可见）。
+- 前端经 `log_event` 落同一份文件，前缀 `[web] [main|ticker]`；[bootstrapLog.ts](src/bootstrapLog.ts) 必须排在 App / TickerBar 的 import 之前（静态 import 先求值整张依赖图）。捕获 `console.error/warn`、`window.onerror`、`unhandledrejection`；同一句 5 秒内只转发一次，单条封顶 4000 字符。
+- 高频轮询失败一律 `logging::warn_throttled`（同 key 5 分钟一条，抑制的仍在 debug）；跨窗口事件走 `events::emit_or_warn`；自选写库失败 warn、破坏性操作 info、导入每次一行汇总。
 
-前端日志经 `log_event` 命令落进同一份文件（`[web] [main|ticker]` 前缀）：release 包没有 devtools，`console.*` 只在内存里。[src/bootstrapLog.ts](src/bootstrapLog.ts) 按页面路径判断窗口并安装桥，两个入口都把它**排在 App / TickerBar 的 import 之前** —— 静态 import 会先求值整张依赖图，晚一步就赶不上模块求值期的错误。接管 `console.error/warn` 与 `window.onerror` / `unhandledrejection`；同一句话 5 秒内只转发一次，单条封顶 4000 字符。
+### 默认设置
 
-高频轮询路径（市场概览、深度、分时/K 线的活跃源失败）一律用 `logging::warn_throttled`：同一个 key 五分钟只记一条，否则断网时日志会被同一句话刷满。跨窗口事件统一走 `events::emit_or_warn` —— emit 失败时没有任何窗口会报错，界面只会停在旧状态，只能靠日志留痕；自选写库失败在命令层记 warn，破坏性操作（删分组/删自选）记 info，导入每次留一行汇总。
+由 `db::init_defaults()` 写入；前端镜像在 [settings.ts](src/stores/settings.ts) 与 [prefs.ts](src/utils/prefs.ts)。只在键不存在时写入，复杂值存 JSON。
 
-### K-line chart styling
+| Key | 默认 | 说明 |
+|-----|------|------|
+| `active_datasource` | `tencent` | 数据源 |
+| `theme` | `system` | `system` 跟随系统（Windows「默认应用模式」）/`dark`/`light` 显式。首启默认跟随系统：透明行情条的文字要与桌面深浅一致才可读 |
+| `ticker_visible` | `1` | 行情条可见性（托盘与设置页都持久化） |
+| `auto_launch` | `false` | 开机自启 |
+| `index_codes` | 原始 7 个 | JSON 数组，顺序即指数条从左到右 |
+| `market_overview_visible` | `1` | `0` 时整块概览不发请求 |
+| `sector_top_n` | `5` | 榜单条数；界面只给 5/10，后端仍按 `clamp_top_n` 夹到 1–50 |
+| `ticker_transparent` | `0` | 透明背景 |
+| `ticker_items_per_page` | `2` | 每屏条数 1–10（预设到 4 + 自定义）；上限也就是行情条最大高度 |
+| `watchlist_columns` | 全部 8 列 | JSON 数组，顺序即列顺序，不含 `ticker_enabled` |
+| `watchlist_default_sort` | `""` | JSON `{key, order}`，空 = 不自排 |
+| `color_scheme` | `cn` | `cn` 红涨绿跌 / `us` 反过来 |
+| `boss_key` | `""` | 空 = 不注册任何全局热键 |
 
-- **Candle colors**: `compareRule: 'previous_close'` — A-share convention (red=close>昨收, green=close<昨收, gray=close=昨收)
-- **Wick colors**: Explicitly set `upWickColor`/`downWickColor`/`noChangeWickColor` to match body/border colors, preventing klinecharts defaults from mismatching
-- **Volume indicator**: Custom `VOL` indicator with MA5/MA10/MA20 lines and colored volume bars at the bottom
+键名一律从 `db::keys` 取：裸字符串拼错不会编译失败，只会让 `get_setting` 返回 `None`、调用方静默用兜底值，症状是「这个设置永远不生效」。
 
-### Key dependencies
+`groups_migrated` **故意不在默认表里**：迁移靠它不存在来触发，给默认值会让迁移永不执行。
 
-- **Rust**: `tauri` v2 (with tray-icon feature), `rusqlite` (bundled), `reqwest` (rustls-tls), `tokio` (full), `chrono`, `serde`/`serde_json`, `encoding_rs` (GBK decoding), `async-trait`, `log` + `simplelog` (file+stderr logging), `tauri-plugin-global-shortcut` (老板键，钉 `~2.3`，见 `hotkey.rs`), `tauri-plugin-dialog` (导入模板的原生「另存为」；能力里只开了 `dialog:allow-save`；**钉 `~2.7`、npm 侧 `@tauri-apps/plugin-dialog` 钉 `~2.7.3` 且 `@tauri-apps/api` 钉 `~2.11.0`** —— 2.8 起要求 tauri ^2.12，而 `tauri build` 启动时核对 Rust/npm 两侧的 major/minor，任一侧漂移 release 直接挂：v1.6.3 的首次 tag 就是这样失败的), `rust_xlsxwriter` + `calamine` (导入模板的生成与 Excel 读取)
-- **Frontend**: `vue` 3, `pinia`, `naive-ui`, `@tauri-apps/api`, `@tauri-apps/plugin-opener`, `@tauri-apps/plugin-dialog` (导入模板的保存对话框), `@tauri-apps/plugin-updater`, `vite`, `vue-tsc`, `vitest` (dev, store unit tests), `klinecharts` (v10 beta), `@lucide/vue` (统一图标库 —— 全应用的功能图标一律从这里按需导入、`:size` 控制尺寸，不再手绘内联 SVG；例外是品牌图标用官方原版，如状态栏的 GitHub mark，以及非图标性质的绘制如二维码占位图。旧包名 `lucide-vue-next` 已停在 1.0.0 并被上游标记弃用，图标名与 props 不变，换的只是包名)
+`sector_top_n` 的界面域（5/10）比库里（1–50）窄：老版本可能存过 8/20，分段控件匹配不上会显示「全都不选中」。`MarketSection` 挂载（且 `loaded` 为真）时归到最近档并写回；后端不跟着收窄（`clamp_top_n` 是 IPC 兜底，概念榜预取上限也按 1–50 推导）。行情条相反：预设之外的值就是「自定义」，必须原样读回。
 
-### Default settings (auto-inserted on first run)
+以下测试把这张表和前端钉在一起：键名不可改（就是 wire format）、无重复键、`groups_migrated` 不是默认键、布尔只认 `"0"/"1"`、数字可解析。
 
-Written by `db::init_defaults()`; the frontend mirrors them in [src/stores/settings.ts](src/stores/settings.ts) and [src/utils/prefs.ts](src/utils/prefs.ts). Defaults are only inserted when the key is absent, so user changes survive restarts. Complex values are stored as JSON strings.
+两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 230 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `active_datasource` | `tencent` | Active market data provider |
-| `theme` | `system` | `system` = 跟随系统（Windows 的「默认应用模式」），`dark`/`light` 为显式主题。首启默认跟随系统 —— 系统深色下默认给亮色，透明行情条上的文字会落在深色桌面上看不清 |
-| `ticker_visible` | `1` | Ticker bar visibility (persisted on tray toggle **and** settings-page toggle) |
-| `auto_launch` | `false` | OS-level autostart |
-| `index_codes` | the original 7 | JSON array; order = left-to-right order on the index bar |
-| `market_overview_visible` | `1` | `0` skips the overview entirely (no turnover/breadth/sector requests) |
-| `sector_top_n` | `5` | Sector ranking rows shown. The settings page offers only `SECTOR_TOP_N_PRESETS` (5/10); the backend still clamps via `market::clamp_top_n` (1–50) |
-| `ticker_transparent` | `0` | Ticker window background |
-| `ticker_items_per_page` | `2` | Quotes shown per carousel page (1–`TICKER_ITEMS_MAX`, i.e. 10; the control shows presets up to `TICKER_ITEMS_PRESET_MAX` = 4 plus a 自定义 input). The upper bound doubles as the ticker window's max height |
-| `watchlist_columns` | all 8 | JSON array of column keys in display order (never contains `ticker_enabled`) |
-| `watchlist_default_sort` | `""` | JSON `{key, order}`; empty means "no sort" (watchlist order) |
-| `color_scheme` | `cn` | `cn` = red-up/green-down (A-share), `us` = the reverse |
-| `boss_key` | `""` | Global accelerator that hides the main window. Empty = not set — the app registers no global hotkey unless the user picks one |
+### 窗口位置
 
-The list lives in `Database::DEFAULT_SETTINGS` and every key name comes from the `db::keys` module — bare string literals are what this indirection exists to prevent: a typo in a key doesn't fail to compile, it makes `get_setting` return `None` and the caller silently take its fallback, so the only symptom is "that setting never takes effect". Keys are also read/written from several places (`window_x` and `ticker_x` each appear at three call sites), so a rename has to be a single edit.
+主窗口的 `window_x`/`window_y`/`window_width`/`window_height` 在移动/缩放/关闭时写入 `settings`，下次启动按显示器边界校验后恢复。行情条固定右下角（`available_monitors()` 计算）。
 
-`groups_migrated` is deliberately **not** in that table: the one-shot watch-group migration is guarded by its *absence*, so giving it a default would make the migration never run.
+### 官网（`website/`）
 
-`sector_top_n` 的**界面**取值域（5/10）比**库**里的取值域（1–50）窄 —— 差额是「自定义」档移除留下的。老版本可能存过 8、20 这类值，而分段控件对它们一个都匹配不上，会显示成「全都不选中」，看着像坏了。所以 [MarketSection.vue](src/components/settings/MarketSection.vue) 挂载时把它们归到最近的档并写回（`nearestTopNPreset`，等距取小），且必须等 `loaded` 为真 —— 之前 `sectorTopN` 是兜底值，那时写回等于拿兜底值覆盖库里真正的设置。后端区间**没有**跟着收窄：`clamp_top_n` 是 IPC 边界上的兜底，而且 `concept_prefetch_size` 的上限推导与它的测试都建立在 1–50 上。行情条那一侧是反过来的 —— 预设（1–4）之外的值就是「自定义」，必须原样读回（见 [settings.spec.ts](src/stores/settings.spec.ts) 里 `9` 不被夹到 4 的那条）。
+独立静态站，发布在 <https://leaderxin.github.io/quant-desktop/>，不在 Vite 入口里、不参与 `npm run build`、不依赖 npm 包。应用内唯一入口是状态栏的 `SITE_URL`。
 
-Four tests pin the contract between this table and the frontend: `default_settings_keys_are_pinned` (the key strings are the wire format — renaming one merely stops the frontend from reading it), `default_settings_have_no_duplicate_keys`, `migration_marker_is_not_a_default`, and the two wire-format checks `boolean_defaults_use_the_0_1_wire_format` / `numeric_defaults_parse` (the frontend's `parseBool` accepts only `"0"`/`"1"`, and `parseInt` silently yields NaN otherwise).
-
-Two deliberate non-settings: the market-overview **refresh interval** is not configurable — there is no base polling interval at all, since `market_clock` sets the pace per session and the adaptive state machine adjusts from there (the settings page used to show a read-only row for it; both that row and the vestigial `refresh_interval` key are gone). **Ticker window width** stays fixed at 230 logical px (its height is measured from content, see `useTickerWindowHeight`).
-
-### Window position persistence
-
-Main window position/size is saved to SQLite `settings` table on move/resize/close. Keys: `window_x`, `window_y`, `window_width`, `window_height`. On next launch, restored with monitor-boundary validation (clamped to visible area if monitor config changed). Ticker window is always positioned at bottom-right via `available_monitors()` calculation.
-
-## Development phases
-
-| Phase | Status | Scope |
-|-------|--------|-------|
-| Phase 1 (MVP) | ✅ Complete | Scaffold, Sina adapter, tray, ticker, watchlist CRUD, index bar, dark theme |
-| Phase 2 (Experience) | ✅ Complete | Detail panel (minute chart + depth + summary), Tencent adapter, column sorting, window position memory, market_clock dynamic polling |
-| Phase 3 (Quality) | ✅ Complete | Code review fixes (36 items): logging, error handling, spawn_blocking, CSS tokens, accessibility, CSP, encoding_rs migration, design system, dead code cleanup |
-| Phase 4 (Enhancement) | ✅ Partial | K-line chart (daily/weekly/monthly) ✅, chart auto-refresh ✅, adaptive polling (probe/idle) ✅, depth auto-refresh ✅, index detail panel ✅, auto-update ✅, 设置页（指数区/市场概览/自选列表/行情条/通用/关于）✅, 自选分组（多归属）✅, 行情条轮播范围与透明背景 ✅, price alerts 📋, import/export (JSON/CSV) 📋, auto-start ✅, packaging polish 📋 |
-| Phase 5 (Extension) | 🔮 Future | HK/US market support, professional data sources (Wind/Tushare), macOS/Linux adaptation |
+改完跑 **`npm run site:assets`**（资源复制 + 引用校验 + 顶栏一致性校验 + sitemap 生成）。截图、配色、SEO、内容页与图片管线的具体约束见 [website/CLAUDE.md](website/CLAUDE.md)。
 
 ## CI/CD
 
-- [release.yml](.github/workflows/release.yml) — triggered on `v*` tags or manual dispatch. Matrix build for Windows (MSVC), macOS (universal), Linux (gnu). Uploads `.exe`/`.msi`/`.dmg`/`.deb`/`.AppImage` artifacts.
-- [ci.yml](.github/workflows/ci.yml) — push/PR CI: `vue-tsc` + vitest (ubuntu), `cargo check` in both feature universes (default and `--features store`) + `cargo test` (windows — the store universe's Windows-only code only compiles there).
-- [pages.yml](.github/workflows/pages.yml) — 官网发布：跑 `node scripts/site-assets.mjs` 组装并校验 `website/`，push 到 master 时部署到 GitHub Pages；PR 上只校验不部署（`configure-pages` 可能尝试开启 Pages，而来自 fork 的 PR 拿不到那个权限）。
-- [store-release.yml](.github/workflows/store-release.yml) — manually dispatched Microsoft Store (MSIX) build: `tauri build --features store --config tauri.microsoftstore.conf.json`, then repacks the intermediate MSI into an unsigned MSIX (Store-signed on ingestion) via `msiexec /a` + `makeappx` with [store/AppxManifest.xml](store/AppxManifest.xml). The `store` cargo feature disables the built-in updater (Store distributes updates) and switches Windows autostart to the StartupTask API.
+- [release.yml](.github/workflows/release.yml) — `v*` tag 或手动触发；Windows MSVC / macOS universal / Linux gnu 矩阵，产出 exe/msi/dmg/deb/AppImage。
+- [ci.yml](.github/workflows/ci.yml) — push/PR：`vue-tsc` + vitest；`cargo check` 跑 default 与 `--features store` 两套 + `cargo test`（Windows，商店版的 Windows-only 代码只能在这里编译）。
+- [pages.yml](.github/workflows/pages.yml) — 官网发布：跑 `site-assets.mjs` 组装校验，push 到 master 部署；PR 只校验（fork 拿不到开启 Pages 的权限）。
+- [store-release.yml](.github/workflows/store-release.yml) — 手动触发 MSIX：`tauri build --features store --config tauri.microsoftstore.conf.json`，再用 `msiexec /a` + `makeappx` 重打包（商店签名）。`store` feature 关掉内置 updater、把 Windows 自启换成 StartupTask。
 
-`scripts/build.mjs` provides a cross-platform build wrapper with automatic proxy detection (Clash/V2Ray on common ports 7890/10809/1080/8118/8080/1087/4780).
+## 依赖版本钉子
+
+`tauri-plugin-dialog` 钉 `~2.7`、npm 侧 `@tauri-apps/plugin-dialog ~2.7.3` 且 `@tauri-apps/api ~2.11.0`（2.8 起要求 tauri ^2.12；`tauri build` 会核对两侧 major/minor，漂移直接挂）；`tauri-plugin-global-shortcut` 钉 `~2.3`（2.4 同理）。图标统一用 `@lucide/vue`（旧包 `lucide-vue-next` 已弃用）；图表用 klinecharts v10 beta。

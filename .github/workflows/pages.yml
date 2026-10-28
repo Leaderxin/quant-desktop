@@ -58,6 +58,11 @@ jobs:
       - name: Assemble and verify site
         run: node scripts/site-assets.mjs
 
+      # website/CLAUDE.md 是写站点的开发说明，不是页面内容；别跟着 artifact 发布出去。
+      - name: Drop agent docs from artifact
+        if: github.event_name != 'pull_request'
+        run: rm -f website/CLAUDE.md
+
       # PR 上只做上面的校验：configure-pages 可能尝试开启 Pages，而来自 fork 的
       # PR 拿不到这个权限，会把一次本该通过的校验变成失败。
       - name: Configure Pages
