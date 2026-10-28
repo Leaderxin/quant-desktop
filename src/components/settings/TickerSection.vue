@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 行情条：显示开关、透明背景、单次轮播条数、轮播范围。
+// 行情条：显示开关、透明背景、点击唤醒、单次轮播条数、轮播范围。
 import { computed, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -177,6 +177,18 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
             :value="settings.tickerTransparent"
             aria-label="行情条透明背景"
             @update:value="settings.setTickerTransparent($event)"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="点击唤醒主界面"
+          description="开启时点击行情条会叫出主界面；关闭后它只是纯展示，恢复主界面走托盘或老板键"
+        >
+          <NSwitch
+            size="small"
+            :value="settings.tickerClickWakes"
+            aria-label="点击行情条唤醒主界面"
+            @update:value="settings.setTickerClickWakes($event)"
           />
         </SettingsRow>
 

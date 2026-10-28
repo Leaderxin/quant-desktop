@@ -28,6 +28,8 @@ pub mod keys {
     pub const SECTOR_TOP_N: &str = "sector_top_n";
     pub const TICKER_VISIBLE: &str = "ticker_visible";
     pub const TICKER_TRANSPARENT: &str = "ticker_transparent";
+    /// 点击行情条是否唤醒主窗口。默认开；关闭后点击只是纯展示，不叫出主界面。
+    pub const TICKER_CLICK_WAKES: &str = "ticker_click_wakes";
     pub const TICKER_ITEMS_PER_PAGE: &str = "ticker_items_per_page";
     pub const WATCHLIST_COLUMNS: &str = "watchlist_columns";
     pub const WATCHLIST_DEFAULT_SORT: &str = "watchlist_default_sort";
@@ -351,6 +353,7 @@ impl Database {
         (keys::SECTOR_TOP_N, "5"),
         // 行情条
         (keys::TICKER_TRANSPARENT, "0"),
+        (keys::TICKER_CLICK_WAKES, "1"),
         (keys::TICKER_ITEMS_PER_PAGE, "2"),
         // 自选列表
         (keys::WATCHLIST_COLUMNS, DEFAULT_WATCHLIST_COLUMNS_JSON),
@@ -1879,6 +1882,7 @@ mod tests {
                 "market_overview_visible",
                 "sector_top_n",
                 "ticker_transparent",
+                "ticker_click_wakes",
                 "ticker_items_per_page",
                 "watchlist_columns",
                 "watchlist_default_sort",
@@ -1921,6 +1925,7 @@ mod tests {
             keys::MARKET_OVERVIEW_VISIBLE,
             keys::TICKER_VISIBLE,
             keys::TICKER_TRANSPARENT,
+            keys::TICKER_CLICK_WAKES,
         ] {
             let v = Database::DEFAULT_SETTINGS
                 .iter()

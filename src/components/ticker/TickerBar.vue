@@ -35,6 +35,16 @@ let openErrorTimer: ReturnType<typeof setTimeout> | null = null;
 const initFailed = ref(false);
 
 /**
+ * 关掉「点击唤醒主界面」后，行情条不再是一个按钮 —— 不能让读屏继续把它念成
+ * 「显示主界面」。初始化失败时的「点击重试」是另一回事，仍然可操作。
+ */
+const tickerActionable = computed(() => settings.tickerClickWakes || initFailed.value);
+const tickerAriaLabel = computed(() => {
+  if (initFailed.value) return '点击重试';
+  return settings.tickerClickWakes ? '显示主界面' : '行情条';
+});
+
+/**
  * 「打开主窗口」失败。行情条会短暂变成错误行，几秒后自动退回行情显示 ——
  * 常驻不清的话，一次偶发的 IPC 失败会把行情条永久占成错误页。
  */
@@ -191,7 +201,7 @@ const retryHintVisible = ref(false);
 // Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
 //
 // 点击 / 拖动靠按下后的位移区分：
-// - 点击(位移 ≤ 阈值)：@click 照常触发 → 打开主窗口
+// - 点击(位移 ≤ 阈值)：@click 照常触发 → 打开主窗口（受「点击唤醒主界面」设置控制）
 // - 拖动(位移 > 阈值)：startDragging() 走 Win32 模态拖拽循环，它把 mouseup
 //   吃掉，所以 @click 不会触发。
 //
@@ -297,6 +307,9 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   }
   // 上一次失败留下的错误行，点一下就当重试，先撤掉
   clearOpenError();
+  // 设置里可以关掉「点击唤醒主界面」；关掉后行情条只是纯展示。
+  // 上面的初始化失败重试不受这个开关影响 —— 那是修自己，不是叫主窗口。
+  if (!settings.tickerClickWakes) return;
   try {
     await invoke('show_main_window');
   } catch (e) {
@@ -311,9 +324,9 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   <div
     class="ticker-bar"
     :class="{ 'is-transparent': settings.tickerTransparent }"
-    role="button"
-    tabindex="0"
-    aria-label="显示主界面"
+    :role="tickerActionable ? 'button' : undefined"
+    :tabindex="tickerActionable ? 0 : undefined"
+    :aria-label="tickerAriaLabel"
     @keydown.enter="handleClick"
     @keydown.space.prevent="handleClick"
     @mousedown="onMouseDown"

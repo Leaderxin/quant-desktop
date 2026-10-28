@@ -149,7 +149,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 - 设置页共用原语：`SettingsRow`（标签 + 常驻说明，不靠 placeholder）、`SegmentedControl`（与 `ChartSwitcher`、概览方向同一套视觉）、`DragSortList`（拖拽 + `Alt+↑/↓` + 行内按钮）。开关用 `NSwitch size="small"`，下拉用 `NSelect size="small"`（原生 `<select>` 的展开列表不跟主题）。共用样式在 [settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先。
 - 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
 - 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
-- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
+- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
 - Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
 - Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
 
@@ -191,6 +191,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 | `market_overview_visible` | `1` | `0` 时整块概览不发请求 |
 | `sector_top_n` | `5` | 榜单条数；界面只给 5/10，后端仍按 `clamp_top_n` 夹到 1–50 |
 | `ticker_transparent` | `0` | 透明背景 |
+| `ticker_click_wakes` | `1` | 点击行情条是否唤醒主界面。关闭后只是纯展示，恢复主界面走托盘或老板键（初始化失败时的「点击重试」不受它影响） |
 | `ticker_items_per_page` | `2` | 每屏条数 1–10（预设到 4 + 自定义）；上限也就是行情条最大高度 |
 | `watchlist_columns` | 全部 8 列 | JSON 数组，顺序即列顺序，不含 `ticker_enabled` |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`，空 = 不自排 |

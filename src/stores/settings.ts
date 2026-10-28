@@ -89,6 +89,10 @@ export const useSettingsStore = defineStore('settings', () => {
   const tickerTransparent = computed(() =>
     parseBool(settings.value['ticker_transparent'], false));
 
+  /** 点击行情条是否唤醒主界面。默认开 —— 这是它一直以来的行为。 */
+  const tickerClickWakes = computed(() =>
+    parseBool(settings.value['ticker_click_wakes'], true));
+
   const tickerItemsPerPage = computed(() =>
     parseCount(
       settings.value['ticker_items_per_page'] ?? DEFAULTS.ticker_items_per_page,
@@ -189,6 +193,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setTickerTransparent(v: boolean) {
     await setSetting('ticker_transparent', v ? '1' : '0');
+  }
+
+  async function setTickerClickWakes(v: boolean) {
+    await setSetting('ticker_click_wakes', v ? '1' : '0');
   }
 
   async function setTickerItemsPerPage(n: number) {
@@ -338,12 +346,13 @@ export const useSettingsStore = defineStore('settings', () => {
     isPortable, isStoreBuild, loaded, updaterAvailable, error, bossKeyError,
     // 派生配置
     indexCodes, marketOverviewVisible, sectorTopN, tickerVisible, tickerTransparent,
+    tickerClickWakes,
     tickerItemsPerPage, watchlistColumns, watchlistDefaultSort, colorScheme, bossKey,
     // 动作
     fetchSettings, setSetting, switchDatasource, setThemeMode, toggleAutoLaunch,
     applyColorScheme, applyRemoteSetting,
     setIndexCodes, setMarketOverviewVisible, setSectorTopN, setTickerVisible,
-    setTickerTransparent, setTickerItemsPerPage, setWatchlistColumns,
+    setTickerTransparent, setTickerClickWakes, setTickerItemsPerPage, setWatchlistColumns,
     setWatchlistDefaultSort, setColorScheme, setBossKey,
   };
 });
