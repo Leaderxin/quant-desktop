@@ -3,17 +3,17 @@
 //
 // 标签本身是按钮而不是链接：这里没有路由，切换分组只是换一份本地过滤结果，
 // 用 <a> 会让人以为会跳页。
-import { computed, h, nextTick, ref } from 'vue';
-import { NDropdown, useDialog } from 'naive-ui';
+import { computed, nextTick, ref } from 'vue';
+import { NDropdown } from 'naive-ui';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { GROUP_NAME_MAX_LEN } from '@/utils/prefs';
-import { computeGroupRemovalImpact } from '@/utils/watchGroups';
+import { computeGroupRemovalImpact, type GroupRemovalImpact } from '@/utils/watchGroups';
 import { moveByStep } from '@/utils/dragSort';
 import { Plus } from '@lucide/vue';
-import type { WatchGroup } from '@/types';
+import DeleteGroupDialog from './DeleteGroupDialog.vue';
+import type { WatchGroup, WatchItem } from '@/types';
 
 const watchlist = useWatchlistStore();
-const dialog = useDialog();
 
 /** 正在编辑的标签：重命名某个已有分组，或新建一个。 */
 const editing = ref<{ mode: 'rename'; id: number } | { mode: 'create' } | null>(null);
@@ -116,8 +116,8 @@ const ctxOptions = computed(() => [
   { label: '重命名', key: 'rename' },
   { label: '删除分组', key: 'delete', disabled: !canDelete.value },
   { type: 'divider' as const, key: 'd1' },
-  { label: '上移', key: 'up', disabled: ctxIndex.value <= 0 },
-  { label: '下移', key: 'down', disabled: ctxIndex.value >= watchlist.groups.length - 1 },
+  { label: '左移', key: 'left', disabled: ctxIndex.value <= 0 },
+  { label: '右移', key: 'right', disabled: ctxIndex.value >= watchlist.groups.length - 1 },
 ]);
 
 const ctxIndex = computed(() =>
@@ -126,7 +126,7 @@ const ctxIndex = computed(() =>
 
 function moveGroup(index: number, direction: -1 | 1) {
   const next = moveByStep(watchlist.groups.map((g) => g.id), index, direction);
-  if (!next) return; // 队首上移 / 队尾下移：跳过 IPC
+  if (!next) return; // 已在最左 / 最右：跳过 IPC
   void watchlist.reorderGroups(next);
 }
 
@@ -141,47 +141,72 @@ function handleCtxSelect(key: string) {
     case 'delete':
       requestDelete(g);
       break;
-    case 'up':
+    case 'left':
       moveGroup(ctxIndex.value, -1);
       break;
-    case 'down':
+    case 'right':
       moveGroup(ctxIndex.value, 1);
       break;
   }
 }
 
+/** 正在确认删除的分组；null 表示确认框关闭。 */
+const deleteTarget = ref<WatchGroup | null>(null);
+
 /**
  * 删除分组前如实说明影响面。
  *
- * 两个数字都在本地算得出来（快照里已有每组的有序成员 id），不需要额外的
- * 预览 IPC：`orphans` 是「只属于这一个分组」的股票，它们会被并入默认分组；
- * 其余还留在别的分组里，不受影响。删除本身不删自选，这一点必须写进文案 ——
- * 用户对「删分组」的默认预期往往是「数据没了」。
+ * 名单在本地算得出来（快照里已有每组的有序成员 id），不需要额外的预览 IPC：
+ * `orphanIds` 是「只属于这一个分组」的股票，它们会被并入 `deleteFallbackName`；
+ * `keptIds` 还留在别的分组里，不受影响。确认框要把两边都逐只列出来 —— 只给
+ * 一个数字的话，「删了会不会丢东西」还是得靠猜。
  */
+const deleteImpact = computed<GroupRemovalImpact>(() =>
+  deleteTarget.value
+    ? computeGroupRemovalImpact(watchlist.groups, deleteTarget.value.id)
+    : { orphanIds: [], keptIds: [] },
+);
+
+/**
+ * 把影响面里的 id 换成可展示的标的。
+ * 池里找不到的（关联表残留的已删 watch_id）直接跳过 —— 与 `visibleItems`
+ * 同一条兜底，一条坏数据不该让整份名单消失。
+ */
+function resolveStocks(ids: number[]): WatchItem[] {
+  const byId = watchlist.itemsById;
+  return ids.map((id) => byId.get(id)).filter((it): it is WatchItem => !!it);
+}
+
+const deleteOrphans = computed(() => resolveStocks(deleteImpact.value.orphanIds));
+const deleteKept = computed(() => resolveStocks(deleteImpact.value.keptIds));
+
+/**
+ * 孤儿会并入哪个分组 —— 展示顺序里第一个**别的**分组，与后端
+ * `delete_watch_group` 的 fallback 查询同一条规则（`id != ?1 ORDER BY
+ * sort_order, id LIMIT 1`）。
+ *
+ * 不图省事取 `defaultGroupId`：被删的恰好是默认分组（展示顺序第一个）时，
+ * 那个 id 指向的正是正在删的分组自己，文案会变成「移入「（它自己）」」。
+ */
+const deleteFallbackName = computed(() => {
+  const target = deleteTarget.value;
+  if (!target) return '';
+  return watchlist.groups.find((g) => g.id !== target.id)?.name ?? '';
+});
+
 function requestDelete(g: WatchGroup) {
-  const defaultName = watchlist.groupName(watchlist.defaultGroupId);
-  const { orphans, kept } = computeGroupRemovalImpact(watchlist.groups, g.id);
+  deleteTarget.value = g;
+}
 
-  const lines: string[] = [];
-  if (orphans > 0) lines.push(`其中 ${orphans} 只仅在此分组，将移入「${defaultName}」；`);
-  if (kept > 0) lines.push(`其余 ${kept} 只还属于其它分组，不受影响。`);
-  if (orphans === 0 && kept === 0) lines.push('该分组下没有自选。');
+function closeDeleteDialog() {
+  deleteTarget.value = null;
+}
 
-  // 用 error 而不是 warning：删除是不可逆操作，确认按钮应当是危险色。
-  // warning 会把按钮渲染成琥珀色 —— 本应用的琥珀只用于「警告/注意」，
-  // 而且删除按钮和警告图标同色会削弱"这一步会删东西"的信号。
-  dialog.error({
-    title: `删除分组「${g.name}」？`,
-    content: () => [
-      ...lines.map((t) => h('p', { style: 'margin:0 0 4px;line-height:1.7;' }, t)),
-      h('p', { style: 'margin:8px 0 0;line-height:1.7;' }, '自选本身不会被删除。'),
-    ],
-    positiveText: '删除分组',
-    negativeText: '取消',
-    onPositiveClick: () => {
-      void watchlist.deleteGroup(g.id);
-    },
-  });
+async function confirmDelete() {
+  const target = deleteTarget.value;
+  // 先关框再落库：删除是一次 IPC + 重拉快照，等它回来才关会让按钮看起来发木。
+  deleteTarget.value = null;
+  if (target) await watchlist.deleteGroup(target.id);
 }
 </script>
 
@@ -253,6 +278,15 @@ function requestDelete(g: WatchGroup) {
       trigger="manual"
       @select="handleCtxSelect"
       @clickoutside="showCtx = false"
+    />
+
+    <DeleteGroupDialog
+      :group-name="deleteTarget?.name ?? null"
+      :fallback-name="deleteFallbackName"
+      :orphans="deleteOrphans"
+      :kept="deleteKept"
+      @close="closeDeleteDialog"
+      @confirm="confirmDelete"
     />
   </div>
 </template>

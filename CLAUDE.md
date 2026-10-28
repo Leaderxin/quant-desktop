@@ -33,7 +33,7 @@ cargo build --manifest-path src-tauri/Cargo.toml
 Frontend tests run with `vitest` (`npm test`, or `npm run test:watch`). Two conventions worth keeping:
 
 - **Only the Tauri boundary is mocked** — `invoke`/`listen`/`emit` from `@tauri-apps/api/*`. Pinia and the stores under test are real, because the behaviour being pinned *is* the store's own. Specs that need `document` opt in per file with `// @vitest-environment happy-dom` rather than switching the global environment.
-- **Pure logic that a component can't be tested on gets extracted into `src/utils/`.** That is why `dragSort.ts`, `paging.ts`, `watchGroups.ts`, `minuteBars.ts`, `minuteAxis.ts`, and `theme.ts` exist: the drop-index arithmetic, the carousel windowing, the delete-dialog counts, the 分时图's session split / axis geometry, and 三态主题的解析（模式 + 系统深浅 → 实际主题）all live inside components otherwise, where no test can reach them.
+- **Pure logic that a component can't be tested on gets extracted into `src/utils/`.** That is why `dragSort.ts`, `paging.ts`, `watchGroups.ts`, `minuteBars.ts`, `minuteAxis.ts`, and `theme.ts` exist: the drop-index arithmetic, the carousel windowing, the delete-dialog impact lists, the 分时图's session split / axis geometry, and 三态主题的解析（模式 + 系统深浅 → 实际主题）all live inside components otherwise, where no test can reach them.
 
 Coverage by area:
 
@@ -50,12 +50,13 @@ Coverage by area:
 | [src/utils/changelog.spec.ts](src/utils/changelog.spec.ts) | 「关于」页更新说明的解析契约：版本头/日期/小节条目、CRLF 行尾、坏输入不抛错 |
 | [src/utils/dragSort.spec.ts](src/utils/dragSort.spec.ts) | Drop-index arithmetic in all four directions × source-before/after-target |
 | [src/utils/paging.spec.ts](src/utils/paging.spec.ts) | Carousel windowing, including the "short list must not self-shuffle" edge |
-| [src/utils/watchGroups.spec.ts](src/utils/watchGroups.spec.ts) | The orphan/kept counts quoted in the delete-group confirmation |
+| [src/utils/watchGroups.spec.ts](src/utils/watchGroups.spec.ts) | The orphan/kept lists shown in the delete-group confirmation（含顺序、去重、目标分组不存在时给空名单） |
 | [src/utils/minuteBars.spec.ts](src/utils/minuteBars.spec.ts) | 分时图的交易日切分（适配器的滚动窗口盘中横跨两个交易日，只有最后一个可以画，日期取自数据而非本机时钟）、图上所画的昨收（上一交易日的收盘，同样来自那个窗口）、防止跨日刷新把昨天的 bar 接着往后追加的判定，以及"未来 bar"过滤所比较的 UTC+8 墙钟上界 |
 | [src/utils/minuteAxis.spec.ts](src/utils/minuteAxis.spec.ts) | 分时图网格算术（每个 bar 间隔的槽位数、让曲线左对齐的右侧偏移、刻度坐标、低于该宽度时整张网格必须交还给 klinecharts）以及关于昨收对称的区间与其百分比标签 |
 | [src/composables/useTickerWindowHeight.spec.ts](src/composables/useTickerWindowHeight.spec.ts) | Ticker window resizes keep the bottom edge anchored |
+| [src/utils/webLog.spec.ts](src/utils/webLog.spec.ts) | 前端日志桥的纯逻辑：console 参数拼接（Error 带堆栈、循环引用不抛错）、按字符截断、去重窗口、转发前缀 |
 
-Deliberately **not** covered, so nobody mistakes absence for an oversight: Vue component rendering (would need `@vue/test-utils`, not currently a dependency), drag-and-drop DOM events (only the index math is tested), and anything visual — the token palette, the tab-bar spacing, icon silhouettes. Those are eyeball-only. `cargo test` covers the Rust side (blacklist classification, response parsing, session intervals, and group ownership/migration semantics in `db::tests`); `vue-tsc` with the strict tsconfig enforces type correctness on both app and test code. There is no lint command configured yet.
+Deliberately **not** covered, so nobody mistakes absence for an oversight: Vue component rendering (would need `@vue/test-utils`, not currently a dependency), drag-and-drop DOM events (only the index math is tested), and anything visual — the token palette, the tab-bar spacing, icon silhouettes. Those are eyeball-only. `cargo test` covers the Rust side (blacklist classification, response parsing, session intervals, group ownership/migration semantics in `db::tests`, and the logging helpers — `QUANT_LOG` parsing、2MB 轮转、按字符截断、告警去重窗口); `vue-tsc` with the strict tsconfig enforces type correctness on both app and test code. There is no lint command configured yet.
 
 ## Git 提交信息
 
@@ -171,6 +172,7 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 - `market.rs` — `get_market_overview(direction, top_n)`, `get_overview_interval`. `top_n` comes from the settings page and is re-clamped backend-side via `market::clamp_top_n` — IPC arguments cannot be assumed to have been validated by the UI. 行业板块榜要先**合并同名板块**再截取（东财 `m:90+t:2` 把申万一级/二级/三级混在一张榜里，同一个板块会以「白酒Ⅱ」「白酒Ⅲ」两行出现，成分股完全一致），所以 `fetch_sector_ranking` 按 `industry_prefetch_size` 多拉一批 —— 直接按 `top_n` 拉，榜首那对就会吃掉两个名额。概念榜的过滤名单分两半：**代码表**（风格/指数/资金/业绩的历史各期）+ **名字规则**（业绩预告 = 四位年份开头且含「报」、持仓 = 以 重仓/新进/增仓/减仓/持股 结尾、风格 = 以「风格」结尾）。后一半不可省：东财每期新开一批板块、代码跟着发（2026 一季报 → 中报 → 三季报），只靠代码表每一季都会漏掉新冒出来的那几个。
   `turnover_delta` = 较**上一交易日同一时点**的两市成交额增量（正=放量、负=缩量）。这个差值两边必须**同源同时刻**：今日累计与昨日曲线都取自腾讯分时（`minute/query` 小响应 + 五日的 `day/query`），不拿新浪那个成交额去减 —— 混用两家口径，换源误差与真实增减量同量级，看起来完全像真的。前一交易日的曲线是静态的，按 UTC+8 日期缓存、每天只拉一次；盘前/休市拿不到当日曲线时给 `null`（面板隐藏），不给 0 —— 0 会被读成「与昨日持平」。
 - `updater.rs` — `check_update`, `install_update` (auto-update with trading-session-aware prompt suppression; store builds return early at runtime — the commands stay registered so the frontend gets a clean response)
+- `log.rs` — `log_event`（前端日志落盘，见下面的 Logging 一节）
 
 ### Frontend (`src/`)
 
@@ -182,9 +184,11 @@ The scheduler groups watchlist codes by market, fetches batch quotes, updates th
 
 **`utils/prefs.ts`** — Settings value domains and parsers. Settings are strings in SQLite, so structured values are JSON; every parser (`parseColumns`, `parseDefaultSort`, `parseJsonArray`, `parseBool`, `parseCount`) falls back to a usable default instead of throwing. A single corrupted key must not blank the UI. `ALL_COLUMNS` is the canonical column list (key + label + `required`); `parseColumns` honours the user's order but re-inserts `code`/`name` if a bad config dropped them.
 
+**`utils/webLog.ts`** — 前端日志桥。入口经 [bootstrapLog.ts](src/bootstrapLog.ts) 在应用模块图之前安装：接管 `console.error/warn`、`window.onerror`、`unhandledrejection`，经 `log_event` 写进后端日志文件（`[web]` 前缀 + 窗口名）。同一句话 5 秒内只转发一次（轮询失败不该刷满文件），单条封顶 4000 字符；`formatLogArgs` / `createLogGate` / `createWebLogger` / `windowSource` 都是纯函数，由 [webLog.spec.ts](src/utils/webLog.spec.ts) 覆盖。
+
 **Component hierarchy (main window)**:
 ```
-App.vue → NConfigProvider + NMessageProvider + NDialogProvider
+App.vue → NConfigProvider + NMessageProvider
   └─ AppLayout.vue
        ├─ SettingsPage.vue   (v-if 切换：设置页打开时看盘界面整体卸载；顶部横向分区 Tab + 居中限宽 1000px 的内容列，参考 CC Switch；Tab 条与内容列共用 max(24px,(100%-1000px)/2) 外边距保证右缘对齐)
        │    ├─ IndexSection.vue      (候选池勾选 + 拖拽排序)
@@ -199,7 +203,9 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
             ├─ MarketOverviewPanel.vue (受 marketOverviewVisible 控制)
             ├─ WatchlistTable.vue (NDataTable: 动态列、默认排序、右键菜单)
             │    ├─ GroupTabs.vue (分组标签栏：切换/重命名/右键菜单/新建)
+            │    │    └─ DeleteGroupDialog.vue (删除确认：影响面账目行)
             │    ├─ AddStockDialog.vue (搜索 + 选择目标分组)
+            │    ├─ DeleteStockDialog.vue (删除自选确认：会从哪些分组消失)
             │    ├─ ImportWatchlistDialog.vue (CSV 批量导入：模板 / 拖放 / 逐行结果)
             │    ├─ GroupPicker.vue (分组多选药丸，添加与导入共用)
             │    └─ StockDetail.vue (expanded row detail panel)
@@ -215,7 +221,9 @@ App.vue → NConfigProvider + NMessageProvider + NDialogProvider
 
 共用原语：`SettingsRow.vue`（标签 + 常驻说明 + 控件；说明一律常驻，不靠 placeholder/tooltip）、`SegmentedControl.vue`（与 `ChartSwitcher`、市场概览方向切换同一套视觉；选项可带 `icon`，主题三态就是这么用的 —— 图标与文字同色，随选中态一起变，`aria-hidden` 掉，读屏只念文字）、`components/common/DragSortList.vue`（拖拽 + `Alt+↑/↓` + 每行 ↑/↓ 按钮，拖拽不是唯一路径）。开关一律用 naive-ui 的 `NSwitch size="small"`（状态栏与设置分区共用；主题色经 `App.vue` 的 themeOverrides 跟随应用强调色）；下拉一律 `NSelect size="small"`，不用原生 `<select>` —— 原生 select 展开后的选项列表是操作系统画的，不跟应用主题（暗色下弹一块白底系统列表），合上的框再怎么用 CSS 画也补不上这一半。卡片/表头/列表行等共用样式在 [src/assets/styles/settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先选择器 —— 6 个分区各自 scoped 的话那几十行会复制六份。
 
-**分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 上移 / 下移）、＋新建。删除确认框在本地算出影响面（快照里已有每组的有序成员 id）：`orphans` 是「只属于这一个分组」的股票，会并入默认分组；其余不受影响；并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
+**分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）** — 点击切换、双击就地重命名、右键菜单（重命名 / 删除分组 / 左移 / 右移）、＋新建。删除确认是自建的 [DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)（NModal + 设计令牌，不用 naive 的 `useDialog`：后者的卡片/字号/正文层级都不跟应用走）。影响面在本地算出（快照里已有每组的有序成员 id）：把组内自选分成**两份名单** —— 仅属此组的会并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`：被删的恰好是默认分组时那正是它自己；与后端 `delete_watch_group` 挑 fallback 的查询同一规则），其余留在别的分组、不受影响。确认框逐只列出名称 + 代码而不是只给数量 —— 只给数字的话「删了会不会丢东西」还得靠猜；两组各自封顶滚动，并写明「自选本身不会被删除」。最后一个分组时菜单项禁用。
+
+**自选的右键菜单与删除确认（[WatchlistTable.vue](src/components/watchlist/WatchlistTable.vue)）** — 「删除自选」不可逆，先过 [DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)：说明它会从哪些分组里消失 —— 多归属下用户往往正看着某一个分组，而「删除自选」删的是股票池里的整条记录，不只是当前分组里那一行。只剩一个分组时「从本组移除」与「删除自选」是同一件事（后端会连股票一起删），菜单里**直接不出现前者** —— 两条同名的菜单项只会让人以为其中一个更轻；还有别的分组时它只是移除归属，不经确认。两个确认框（分组 / 自选）共用 [components/common/ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 的外壳（危险标记、标题、常驻说明、按钮、默认焦点落在「取消」），内容各自用插槽填 —— 卡片底色、字号、按钮高度与设计令牌的对应关系只写一遍。
 
 **Ticker bar** ([TickerBar.vue](src/components/ticker/TickerBar.vue)) — Standalone mini Vue app. Cycles through `watchlist.tickerItems` (cross-group, sorted by `ticker_order`) taking `ticker_items_per_page` at a time with 3-second auto-scroll. Pauses on hover. Clicking restores the main window. Reloads the watchlist on the `watchlist-changed` event, which is why every ticker-range mutation emits it. 只播报 `ticker_enabled` 为开的自选；该开关与轮播顺序统一在设置页的「行情条 → 轮播范围」维护（原先自选表里的逐行开关列已移除）。
 
@@ -336,6 +344,19 @@ User mutations (add/remove/reorder watchlist) go through `invoke()` → Rust com
 DataSource switching triggers a `Notify` wakeup → Scheduler immediately refreshes with the new adapter.
 
 Cross-window settings sync: `setSetting` writes the DB and broadcasts `settings-changed` with `{key, value}`. The ticker window applies it directly via `applyRemoteSetting` and must **not** re-broadcast — doing so would ping-pong between the two windows. (`theme-changed` used to be a third, separate channel; it is gone — the ticker follows `settings-changed('theme')` like any other setting and resolves the actual theme in its own window, which is the only place that can do it correctly: its `prefers-color-scheme` was never pinned. `datasource-changed` remains separate because it has an additional per-window side effect.)
+
+### Logging
+
+日志文件与数据库同目录：`%APPDATA%\quant-desktop\quant-desktop.log`（便携模式 `<exe_dir>/data/`）。四条约定各有非它不可的理由，改之前先看这里：
+
+- **时间戳用本机时区**（[logging.rs](src-tauri/src/logging.rs)）。simplelog 默认 UTC，与用户报障时说的本机钟点差 8 小时，对不上。
+- **追加写 + 2MB 轮转**。`File::create` 会在每次启动清空日志，上一次崩溃的现场就没了；超过上限时当前文件改名为 `.log.1`（启动时与写入过程中都会检查 —— 只在启动时查的话，托盘常驻几天就没有上限了）。
+- **级别可用 `QUANT_LOG` 覆盖**（error/warn/info/debug/trace，默认 info）。现场要开 debug 不必重新打包。
+- **panic hook 落一条 error**。release 是 GUI 进程，stderr 不可见；启动期 `expect` 失败（数据库打不开等）否则看起来就是「双击没反应」。
+
+前端日志经 `log_event` 命令落进同一份文件（`[web] [main|ticker]` 前缀）：release 包没有 devtools，`console.*` 只在内存里。[src/bootstrapLog.ts](src/bootstrapLog.ts) 按页面路径判断窗口并安装桥，两个入口都把它**排在 App / TickerBar 的 import 之前** —— 静态 import 会先求值整张依赖图，晚一步就赶不上模块求值期的错误。接管 `console.error/warn` 与 `window.onerror` / `unhandledrejection`；同一句话 5 秒内只转发一次，单条封顶 4000 字符。
+
+高频轮询路径（市场概览、深度、分时/K 线的活跃源失败）一律用 `logging::warn_throttled`：同一个 key 五分钟只记一条，否则断网时日志会被同一句话刷满。跨窗口事件统一走 `events::emit_or_warn` —— emit 失败时没有任何窗口会报错，界面只会停在旧状态，只能靠日志留痕；自选写库失败在命令层记 warn，破坏性操作（删分组/删自选）记 info，导入每次留一行汇总。
 
 ### K-line chart styling
 

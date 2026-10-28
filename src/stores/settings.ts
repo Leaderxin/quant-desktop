@@ -118,7 +118,7 @@ export const useSettingsStore = defineStore('settings', () => {
       isPortable.value = await invoke<boolean>('get_portable_mode');
       isStoreBuild.value = await invoke<boolean>('is_store_build');
     } catch (e) {
-      console.error('Failed to fetch settings:', e);
+      console.error('[settings] Failed to fetch settings:', e);
       error.value = `加载设置失败: ${e}`;
     } finally {
       loaded.value = true;

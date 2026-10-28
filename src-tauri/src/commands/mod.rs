@@ -6,3 +6,4 @@ pub mod autostart;
 pub mod updater;
 pub mod window;
 pub mod market;
+pub mod log;

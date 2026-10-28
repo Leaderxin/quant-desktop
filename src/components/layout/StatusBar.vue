@@ -68,8 +68,9 @@ function onQrError() {
 onMounted(async () => {
   try {
     appVersion.value = await getVersion();
-  } catch {
+  } catch (e) {
     appVersion.value = '';
+    console.warn('[StatusBar] getVersion failed:', e);
   }
   // Preload QR code image so popover has correct dimensions on first open
   if (props.qrcodeSrc) {

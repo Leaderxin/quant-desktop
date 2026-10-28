@@ -14,10 +14,11 @@ use std::sync::Arc;
 use calamine::{open_workbook_auto_from_rs, Data, Reader};
 use rust_xlsxwriter::{Color, Format, FormatAlign, Workbook};
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, State};
+use tauri::State;
 
 use crate::datasource::{search, DataSourceManager};
 use crate::db::{Database, WatchlistSnapshot};
+use crate::events::emit_or_warn;
 use crate::domain::StockBrief;
 use crate::import::{match_stock, parse_query, search_keyword};
 
@@ -74,6 +75,11 @@ pub async fn import_watchlist(
         return Ok(Vec::new());
     }
     if entries.len() > MAX_IMPORT_ROWS {
+        log::warn!(
+            "[import] rejected: {} rows exceeds the {} row cap",
+            entries.len(),
+            MAX_IMPORT_ROWS
+        );
         return Err(format!(
             "一次最多导入 {} 条（当前 {} 条），请拆分文件后再试",
             MAX_IMPORT_ROWS,
@@ -83,7 +89,10 @@ pub async fn import_watchlist(
 
     // 导入前拍一张快照：「已在自选」按**导入前**的状态判断，否则同一次导入里
     // 先加进去的那只，再出现一次就会被误报成「已存在」。
-    let before = db.get_watchlist_snapshot().map_err(|e| e.to_string())?;
+    let before = db.get_watchlist_snapshot().map_err(|e| {
+        log::warn!("[import] failed to read watchlist snapshot: {}", e);
+        e.to_string()
+    })?;
     let membership = membership_map(&before);
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(SEARCH_CONCURRENCY));
@@ -117,7 +126,10 @@ pub async fn import_watchlist(
     for task in tasks {
         match task.await {
             Ok(item) => resolved.push(item),
-            Err(e) => return Err(format!("导入任务异常: {}", e)),
+            Err(e) => {
+                log::warn!("[import] search task failed: {}", e);
+                return Err(format!("导入任务异常: {}", e));
+            }
         }
     }
     resolved.sort_by_key(|(idx, _, _)| *idx);
@@ -181,9 +193,22 @@ pub async fn import_watchlist(
         }
     }
 
+    // 每次导入留一行汇总：逐行结果只在界面上，用户回头说不清「到底导进去几条」，
+    // 这一行是事后唯一能对上的账。
+    let added = results.iter().filter(|r| r.status == "added").count();
+    let exists = results.iter().filter(|r| r.status == "exists").count();
+    let failed = results.iter().filter(|r| r.status == "failed").count();
+    log::info!(
+        "[import] {} row(s) → added {}, exists {}, failed {}",
+        results.len(),
+        added,
+        exists,
+        failed
+    );
+
     // 只在真的写入了东西时通知：全是「已存在/失败」时重拉一遍自选是白费。
     if added_any {
-        let _ = app_handle.emit("watchlist-changed", ());
+        emit_or_warn(&app_handle, "watchlist-changed", ());
     }
     Ok(results)
 }
@@ -198,15 +223,27 @@ pub async fn import_watchlist(
 pub fn save_import_template(path: String) -> Result<String, String> {
     let path = ensure_xlsx_extension(&path);
     if path.is_empty() {
+        log::warn!("[import] save template rejected: empty path");
         return Err("保存路径为空".to_string());
     }
     let path = std::path::PathBuf::from(&path);
     if let Some(dir) = path.parent() {
         if !dir.as_os_str().is_empty() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {}", e))?;
+            std::fs::create_dir_all(dir).map_err(|e| {
+                log::warn!("[import] failed to create template dir {:?}: {}", dir, e);
+                format!("创建目录失败: {}", e)
+            })?;
         }
     }
-    std::fs::write(&path, build_template()?).map_err(|e| format!("写入模板失败: {}", e))?;
+    let bytes = build_template().map_err(|e| {
+        log::warn!("[import] failed to build template: {}", e);
+        e
+    })?;
+    std::fs::write(&path, bytes).map_err(|e| {
+        log::warn!("[import] failed to write template {:?}: {}", path, e);
+        format!("写入模板失败: {}", e)
+    })?;
+    log::info!("[import] template written to {:?}", path);
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -266,20 +303,32 @@ fn ensure_xlsx_extension(path: &str) -> String {
 /// 两处各写一遍迟早分叉成「CSV 能导、Excel 导不了」这种最难解释的差异。
 #[tauri::command]
 pub fn read_spreadsheet(bytes: Vec<u8>) -> Result<Vec<Vec<String>>, String> {
-    let mut workbook = open_workbook_auto_from_rs(Cursor::new(bytes))
-        .map_err(|e| format!("无法识别的表格文件: {}", e))?;
+    let mut workbook = open_workbook_auto_from_rs(Cursor::new(bytes)).map_err(|e| {
+        log::warn!("[import] unrecognized spreadsheet: {}", e);
+        format!("无法识别的表格文件: {}", e)
+    })?;
     let sheet = workbook
         .sheet_names()
         .first()
         .cloned()
-        .ok_or_else(|| "表格里没有工作表".to_string())?;
-    let range = workbook
-        .worksheet_range(&sheet)
-        .map_err(|e| format!("读取工作表失败: {}", e))?;
-    Ok(range
+        .ok_or_else(|| {
+            log::warn!("[import] spreadsheet has no worksheet");
+            "表格里没有工作表".to_string()
+        })?;
+    let range = workbook.worksheet_range(&sheet).map_err(|e| {
+        log::warn!("[import] failed to read worksheet '{}': {}", sheet, e);
+        format!("读取工作表失败: {}", e)
+    })?;
+    let grid: Vec<Vec<String>> = range
         .rows()
         .map(|row| row.iter().map(cell_to_text).collect())
-        .collect())
+        .collect();
+    log::debug!(
+        "[import] read {} row(s) from worksheet '{}'",
+        grid.len(),
+        sheet
+    );
+    Ok(grid)
 }
 
 fn cell_to_text(cell: &Data) -> String {

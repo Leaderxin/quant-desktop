@@ -7,7 +7,10 @@ use crate::PortableMode;
 
 #[tauri::command]
 pub fn get_settings(db: State<'_, Arc<Database>>) -> Result<HashMap<String, String>, String> {
-    let pairs = db.get_all_settings().map_err(|e| e.to_string())?;
+    let pairs = db.get_all_settings().map_err(|e| {
+        log::warn!("[settings] get_settings failed: {}", e);
+        e.to_string()
+    })?;
     Ok(pairs.into_iter().collect())
 }
 
@@ -17,7 +20,11 @@ pub fn set_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    db.set_setting(&key, &value).map_err(|e| e.to_string())
+    db.set_setting(&key, &value).map_err(|e| {
+        // 只记键名不记值：值是 JSON 串，落进日志既冗长又可能被用户当成配置泄露。
+        log::warn!("[settings] set_setting('{}') failed: {}", key, e);
+        e.to_string()
+    })
 }
 
 /// 设置老板键（设置页 → 通用）。空串表示取消。
@@ -44,13 +51,20 @@ pub fn set_boss_key(
         .unwrap_or_default();
 
     if let Err(e) = crate::hotkey::apply(&app, &accelerator) {
+        log::warn!("[hotkey] failed to apply '{}': {}", accelerator, e);
         rollback_boss_key(&app, &previous);
         return Err(e);
     }
 
     if let Err(e) = db.set_setting(crate::db::keys::BOSS_KEY, &accelerator) {
+        log::warn!("[hotkey] failed to persist boss key: {}", e);
         rollback_boss_key(&app, &previous);
         return Err(e.to_string());
+    }
+    if accelerator.trim().is_empty() {
+        log::info!("[hotkey] boss key cleared");
+    } else {
+        log::info!("[hotkey] boss key set: {}", accelerator);
     }
     Ok(())
 }
@@ -74,7 +88,10 @@ pub fn switch_datasource(
     // 键名取自 db::keys —— 这里和 lib.rs 的启动恢复是同一个键的两端，
     // 任一处拼错都会表现为"切换了数据源但重启后变回去"。
     db.set_setting(crate::db::keys::ACTIVE_DATASOURCE, &name)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::warn!("[settings] failed to persist datasource '{}': {}", name, e);
+            e.to_string()
+        })?;
     manager.set_active(&name)
 }
 

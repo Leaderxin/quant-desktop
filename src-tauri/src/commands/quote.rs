@@ -20,9 +20,20 @@ pub async fn get_depth(
     market: String,
     manager: State<'_, Arc<DataSourceManager>>,
 ) -> Result<Depth, String> {
-    let source = manager.active_source()
-        .ok_or("No active data source")?;
-    source.fetch_depth(&code, &market).await.map_err(|e| e.to_string())
+    let source = manager.active_source().ok_or_else(|| {
+        crate::logging::warn_throttled("quote.depth.no-source", || {
+            "Depth fetch skipped: no active data source".to_string()
+        });
+        "No active data source".to_string()
+    })?;
+    source.fetch_depth(&code, &market).await.map_err(|e| {
+        // 深度面板打开时 3s 拉一次：断网时逐次记 warn 会把日志刷满，
+        // 同一个代码五分钟只记一条。失败原因仍原样交给面板显示。
+        crate::logging::warn_throttled(&format!("quote.depth:{}:{}", market, code), || {
+            format!("Depth fetch failed ({}:{}): {}", market, code, e)
+        });
+        e.to_string()
+    })
 }
 
 #[tauri::command]
@@ -34,9 +45,21 @@ pub async fn get_intraday(
     // 优先用活跃源；返回空时回退到备用源（如腾讯对北交所 bj 代码无分时数据）。
     let active_name = manager.active_name();
     if let Some(source) = manager.get_source(&active_name) {
-        if let Ok(data) = source.fetch_minute_data(&code, &market).await {
-            if !data.is_empty() {
-                return Ok(data);
+        match source.fetch_minute_data(&code, &market).await {
+            Ok(data) if !data.is_empty() => return Ok(data),
+            Ok(_) => log::debug!(
+                "Intraday empty from active source {} for {}:{}",
+                active_name, market, code
+            ),
+            Err(e) => {
+                // 活跃源报错以前被 `if let Ok` 吞掉，图表空白时日志里什么都没有
+                crate::logging::warn_throttled(
+                    &format!("quote.intraday:{}:{}", market, code),
+                    || format!(
+                        "Intraday fetch failed on active source {} ({}:{}): {}",
+                        active_name, market, code, e
+                    ),
+                );
             }
         }
     }
@@ -47,9 +70,13 @@ pub async fn get_intraday(
         match source.fetch_minute_data(&code, &market).await {
             Ok(data) if !data.is_empty() => return Ok(data),
             Ok(_) => {}
-            Err(e) => log::warn!("分时回退数据源 {} 失败: {}", name, e),
+            Err(e) => crate::logging::warn_throttled(
+                &format!("quote.intraday-fallback:{}:{}:{}", name, market, code),
+                || format!("分时回退数据源 {} 失败: {}", name, e),
+            ),
         }
     }
+    log::debug!("No intraday data for {}:{} from any source", market, code);
     Ok(vec![])
 }
 
@@ -66,13 +93,28 @@ pub async fn get_kline(
     let active_name = manager.active_name();
     let mut active_result: Vec<KLineData> = Vec::new();
     if let Some(source) = manager.get_source(&active_name) {
-        if let Ok(data) = source
+        match source
             .fetch_kline(&code, &market, &period, end_date.as_deref(), count)
             .await
         {
-            active_result = data;
-            if active_result.len() >= 2 {
-                return Ok(active_result);
+            Ok(data) => {
+                active_result = data;
+                if active_result.len() >= 2 {
+                    return Ok(active_result);
+                }
+                log::debug!(
+                    "Kline {} from active source {} for {}:{} has {} bar(s), trying fallback",
+                    period, active_name, market, code, active_result.len()
+                );
+            }
+            Err(e) => {
+                crate::logging::warn_throttled(
+                    &format!("quote.kline:{}:{}:{}", market, code, period),
+                    || format!(
+                        "Kline {} fetch failed on active source {} ({}:{}): {}",
+                        period, active_name, market, code, e
+                    ),
+                );
             }
         }
     }
@@ -86,7 +128,10 @@ pub async fn get_kline(
         {
             Ok(data) if !data.is_empty() => return Ok(data),
             Ok(_) => {}
-            Err(e) => log::warn!("K线回退数据源 {} 失败: {}", name, e),
+            Err(e) => crate::logging::warn_throttled(
+                &format!("quote.kline-fallback:{}:{}:{}:{}", name, market, code, period),
+                || format!("K线回退数据源 {} 失败: {}", name, e),
+            ),
         }
     }
     // 回退失败时返回活跃源的结果（可能为空或单根）。

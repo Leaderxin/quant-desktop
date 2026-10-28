@@ -9,7 +9,10 @@ use crate::db::Database;
 /// 症状是「点了没反应」，而另一处照旧正常，改动时看不出来。
 #[tauri::command]
 pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
-    crate::show_main_window(&app)
+    crate::show_main_window(&app).map_err(|e| {
+        log::warn!("[window] show_main_window failed: {}", e);
+        e
+    })
 }
 
 /// 显示/隐藏行情条窗口(设置页「显示行情条」开关)。
@@ -24,7 +27,10 @@ pub fn set_ticker_visible(
     db: State<'_, Arc<Database>>,
     visible: bool,
 ) -> Result<(), String> {
-    crate::set_ticker_visible(&app, &db, visible)
+    crate::set_ticker_visible(&app, &db, visible).map_err(|e| {
+        log::warn!("[window] set_ticker_visible({}) failed: {}", visible, e);
+        e
+    })
 }
 
 /// 同步窗口标题栏的主题（设置页与状态栏的主题开关）。
@@ -33,5 +39,8 @@ pub fn set_ticker_visible(
 /// 漏掉的那处症状是「启动时标题栏是对的、切换主题后不跟」，正好不容易被发现。
 #[tauri::command]
 pub fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
-    crate::set_app_theme(&app, &theme)
+    crate::set_app_theme(&app, &theme).map_err(|e| {
+        log::warn!("[window] set_window_theme({}) failed: {}", theme, e);
+        e
+    })
 }

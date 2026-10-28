@@ -47,6 +47,13 @@
   /* Semantic: error / danger (distinct from --color-up which means "price rose") */
   --color-error: #f85149;
   --color-error-bg: rgba(248, 81, 73, 0.08);
+  --color-error-border: rgba(248, 81, 73, 0.2);
+
+  /* 实心危险按钮（删除分组确认）。--color-error 直接当底色时白字只有 3.35:1，
+     所以填充色比它深一档（白字 4.6:1），hover 再深。 */
+  --color-danger-solid: #da3633;
+  --color-danger-solid-hover: #b62324;
+  --color-on-danger: #ffffff;
 
   /* Semantic: warning / caution (amber — distinct from error-red and up-red) */
   --color-warning: #d29922;
@@ -147,6 +154,11 @@
 
   --color-error: #d1242f;
   --color-error-bg: rgba(209, 36, 47, 0.06);
+  --color-error-border: rgba(209, 36, 47, 0.15);
+
+  --color-danger-solid: #cf222e;
+  --color-danger-solid-hover: #a40e26;
+  --color-on-danger: #ffffff;
 
   --color-warning: #9a6700;
   --color-warning-bg: rgba(154, 103, 0, 0.06);

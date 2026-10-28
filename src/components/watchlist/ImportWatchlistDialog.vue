@@ -85,6 +85,7 @@ async function downloadTemplate() {
     message.success('模板已保存');
   } catch (e) {
     message.error(`保存模板失败: ${e}`);
+    console.error('[ImportWatchlistDialog] save_import_template failed:', e);
   }
 }
 
@@ -124,6 +125,7 @@ async function readFile(file: File) {
   } catch (e) {
     rows.value = [];
     parseError.value = `读取文件失败: ${e}`;
+    console.error('[ImportWatchlistDialog] read file failed:', e);
   }
 }
 
@@ -155,6 +157,7 @@ async function doImport() {
     await watchlist.fetchWatchlist();
   } catch (e) {
     parseError.value = `导入失败: ${e}`;
+    console.error('[ImportWatchlistDialog] import_watchlist failed:', e);
   } finally {
     importing.value = false;
   }

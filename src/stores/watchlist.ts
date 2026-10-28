@@ -69,7 +69,7 @@ export const useWatchlistStore = defineStore('watchlist', () => {
       }
     } catch (e) {
       error.value = `获取自选列表失败: ${e}`;
-      console.error('Failed to fetch watchlist:', e);
+      console.error('[watchlist] Failed to fetch watchlist:', e);
     } finally {
       loading.value = false;
     }

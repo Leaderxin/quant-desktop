@@ -1,3 +1,5 @@
+// 必须在 App 之前引入：日志桥要赶在应用模块图求值之前装好。
+import './bootstrapLog';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';

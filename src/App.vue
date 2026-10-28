@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, onErrorCaptured } from 'vue';
-import { NConfigProvider, darkTheme, lightTheme, NMessageProvider, NDialogProvider, type GlobalThemeOverrides } from 'naive-ui';
+import { NConfigProvider, darkTheme, lightTheme, NMessageProvider, type GlobalThemeOverrides } from 'naive-ui';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { useQuoteStore } from '@/stores/quote';
@@ -143,18 +143,16 @@ function handleRetry() {
 <template>
   <NConfigProvider :theme="settings.theme === 'dark' ? darkTheme : lightTheme" :theme-overrides="themeOverrides">
     <NMessageProvider>
-      <!-- NDialogProvider 提供 useDialog()（自选分组删除确认用的就是它）。
-           放在 NMessageProvider 内部，两者都能被 AppLayout 子树取到。 -->
-      <NDialogProvider>
-        <AppLayout
-          :init-error="initError"
-          :init-ready="initReady"
-          :quote-error="quote.error"
-          :app-error="appError"
-          @retry="handleRetry"
-          @dismiss-app-error="appError = null"
-        />
-      </NDialogProvider>
+      <!-- 自选分组的删除确认是自建的 NModal 卡片（见 DeleteGroupDialog.vue），
+           不再依赖 NDialogProvider；全局只剩消息通道这一层。 -->
+      <AppLayout
+        :init-error="initError"
+        :init-ready="initReady"
+        :quote-error="quote.error"
+        :app-error="appError"
+        @retry="handleRetry"
+        @dismiss-app-error="appError = null"
+      />
     </NMessageProvider>
     <UpdateDialog />
   </NConfigProvider>

@@ -1,7 +1,8 @@
-use tauri::{Emitter, State};
+use tauri::State;
 use std::sync::Arc;
 use crate::db::{Database, WatchGroup, WatchlistSnapshot};
 use crate::datasource::DataSourceManager;
+use crate::events::emit_or_warn;
 
 /// 自选表的一次性全量状态:股票池 + 分组(含组内有序成员) + 默认分组。
 ///
@@ -10,7 +11,16 @@ use crate::datasource::DataSourceManager;
 /// 纯本地过滤。
 #[tauri::command]
 pub fn get_watchlist(db: State<'_, Arc<Database>>) -> Result<WatchlistSnapshot, String> {
-    db.get_watchlist_snapshot().map_err(|e| e.to_string())
+    db.get_watchlist_snapshot().map_err(|e| db_error("get_watchlist", e))
+}
+
+/// 命令层是所有写操作的入口：数据库错误在这里留一条日志。
+///
+/// 错误本身会作为字符串交给界面，但界面的 `console.error` 未必能被用户带回来
+/// —— 用户报「删不掉 / 加不上」时，日志文件里得有对应的一条。
+fn db_error(op: &str, e: rusqlite::Error) -> String {
+    log::warn!("[watchlist] {} failed: {}", op, e);
+    e.to_string()
 }
 
 /// 新增自选:股票入池(已在池中则复用) + 加入勾选的分组。
@@ -24,9 +34,14 @@ pub fn add_watch(
     name: String,
     group_ids: Option<Vec<i64>>,
 ) -> Result<(), String> {
-    db.add_watch(&code, &market, &name, group_ids.as_deref().unwrap_or(&[]))
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    let groups = group_ids.as_deref().unwrap_or(&[]);
+    db.add_watch(&code, &market, &name, groups)
+        .map_err(|e| db_error("add_watch", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::info!(
+        "[watchlist] added {}:{} ({}) groups={:?}",
+        market, code, name, groups
+    );
     Ok(())
 }
 
@@ -39,8 +54,9 @@ pub fn remove_watch(
     market: String,
 ) -> Result<(), String> {
     db.remove_watch(&code, &market)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("remove_watch", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::info!("[watchlist] removed {}:{} from all groups", market, code);
     Ok(())
 }
 
@@ -55,8 +71,14 @@ pub fn remove_watch_from_group(
 ) -> Result<bool, String> {
     let deleted = db
         .remove_watch_from_group(group_id, watch_id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("remove_watch_from_group", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    if deleted {
+        log::info!(
+            "[watchlist] removed watch {} from its last group {} — watch deleted",
+            watch_id, group_id
+        );
+    }
     Ok(deleted)
 }
 
@@ -70,8 +92,12 @@ pub fn set_watch_groups(
     group_ids: Vec<i64>,
 ) -> Result<(), String> {
     db.set_watch_groups(watch_id, &group_ids)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("set_watch_groups", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::debug!(
+        "[watchlist] set groups for watch {}: {:?}",
+        watch_id, group_ids
+    );
     Ok(())
 }
 
@@ -87,8 +113,8 @@ pub fn move_group_member_top(
     watch_id: i64,
 ) -> Result<(), String> {
     db.move_group_member_top(group_id, watch_id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("move_group_member_top", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -100,8 +126,8 @@ pub fn move_group_member_up(
     watch_id: i64,
 ) -> Result<(), String> {
     db.move_group_member_up(group_id, watch_id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("move_group_member_up", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -113,8 +139,8 @@ pub fn move_group_member_down(
     watch_id: i64,
 ) -> Result<(), String> {
     db.move_group_member_down(group_id, watch_id)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("move_group_member_down", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -126,8 +152,8 @@ pub fn reorder_group_members(
     watch_ids: Vec<i64>,
 ) -> Result<(), String> {
     db.reorder_group_members(group_id, &watch_ids)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("reorder_group_members", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -140,8 +166,11 @@ pub fn add_watch_group(
     db: State<'_, Arc<Database>>,
     name: String,
 ) -> Result<WatchGroup, String> {
-    let group = db.add_watch_group(&name).map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    let group = db
+        .add_watch_group(&name)
+        .map_err(|e| db_error("add_watch_group", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::info!("[watchlist] added group {} '{}'", group.id, group.name);
     Ok(group)
 }
 
@@ -152,8 +181,10 @@ pub fn rename_watch_group(
     id: i64,
     name: String,
 ) -> Result<(), String> {
-    db.rename_watch_group(id, &name).map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    db.rename_watch_group(id, &name)
+        .map_err(|e| db_error("rename_watch_group", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::info!("[watchlist] renamed group {} to '{}'", id, name);
     Ok(())
 }
 
@@ -165,8 +196,14 @@ pub fn delete_watch_group(
     db: State<'_, Arc<Database>>,
     id: i64,
 ) -> Result<usize, String> {
-    let rescued = db.delete_watch_group(id).map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    let rescued = db
+        .delete_watch_group(id)
+        .map_err(|e| db_error("delete_watch_group", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::info!(
+        "[watchlist] deleted group {} — {} orphan watch(es) moved to the fallback group",
+        id, rescued
+    );
     Ok(rescued)
 }
 
@@ -176,8 +213,9 @@ pub fn reorder_watch_groups(
     db: State<'_, Arc<Database>>,
     ids: Vec<i64>,
 ) -> Result<(), String> {
-    db.reorder_watch_groups(&ids).map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    db.reorder_watch_groups(&ids)
+        .map_err(|e| db_error("reorder_watch_groups", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -191,10 +229,10 @@ pub fn set_watch_ticker_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     db.set_watch_ticker_enabled(id, enabled)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| db_error("set_watch_ticker_enabled", e))?;
     // 复用已有的 watchlist-changed 事件：行情条窗口正是靠它刷新列表，
     // 因此开关一拨即在行情条生效，无需新增事件。
-    let _ = app_handle.emit("watchlist-changed", ());
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
@@ -207,8 +245,12 @@ pub fn set_ticker_enabled_bulk(
     enabled: bool,
 ) -> Result<(), String> {
     db.set_ticker_enabled_bulk(&ids, enabled)
-        .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+        .map_err(|e| db_error("set_ticker_enabled_bulk", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
+    log::debug!(
+        "[watchlist] ticker enabled={} for {} watch(es)",
+        enabled, ids.len()
+    );
     Ok(())
 }
 
@@ -219,8 +261,9 @@ pub fn reorder_ticker(
     db: State<'_, Arc<Database>>,
     ids: Vec<i64>,
 ) -> Result<(), String> {
-    db.reorder_ticker(&ids).map_err(|e| e.to_string())?;
-    let _ = app_handle.emit("watchlist-changed", ());
+    db.reorder_ticker(&ids)
+        .map_err(|e| db_error("reorder_ticker", e))?;
+    emit_or_warn(&app_handle, "watchlist-changed", ());
     Ok(())
 }
 
