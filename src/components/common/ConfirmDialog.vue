@@ -140,49 +140,13 @@ watch(() => props.show, async (visible) => {
   color: var(--color-text-secondary);
 }
 
-/* ── 底部操作 ── */
+/* ── 底部操作 ──
+   按钮本身（.btn / .btn-ghost / .btn-danger）在 assets/styles/buttons.css，
+   与导入框的「取消」共用同一份。 */
 .confirm-foot {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-5);
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-  padding: 0 14px;
-  border-radius: var(--radius-md);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast),
-    color var(--transition-fast);
-}
-.btn:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-.btn-ghost {
-  border: 1px solid var(--color-border-1);
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-.btn-ghost:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text-primary);
-}
-.btn-danger {
-  border: 1px solid transparent;
-  background: var(--color-danger-solid);
-  color: var(--color-on-danger);
-}
-.btn-danger:hover {
-  background: var(--color-danger-solid-hover);
-}
-.btn-danger:focus-visible {
-  outline-color: var(--color-error);
 }
 </style>

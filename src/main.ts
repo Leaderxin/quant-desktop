@@ -6,6 +6,7 @@ import App from './App.vue';
 import './assets/styles/variables.css';
 import './assets/styles/dark.css';
 import './assets/styles/settings.css';
+import './assets/styles/buttons.css';
 
 // Disable default browser context menu
 document.addEventListener('contextmenu', (e) => e.preventDefault());

@@ -290,17 +290,25 @@ function rowTitle(r: ImportRowResult): string {
 
       <template #footer>
         <div class="footer-actions">
-          <NButton v-if="!done && !importing" quaternary @click="close">取消</NButton>
+          <button
+            v-if="!done && !importing"
+            type="button"
+            class="btn btn-ghost"
+            @click="close"
+          >
+            取消
+          </button>
           <NButton
             v-if="!done"
             type="primary"
+            size="small"
             :loading="importing"
             :disabled="!canImport"
             @click="doImport"
           >
             开始导入
           </NButton>
-          <NButton v-else type="primary" @click="close">完成</NButton>
+          <NButton v-else type="primary" size="small" @click="close">完成</NButton>
         </div>
       </template>
     </NCard>
@@ -511,6 +519,14 @@ function rowTitle(r: ImportRowResult): string {
 .footer-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--space-2);
+}
+
+/* naive 的 size 只管高度/内边距：small = 28px 高，但字号仍是 14px（只有 tiny
+   才是 12px）。弹框正文和描边的「取消」都是 12px，这里把 NButton 压到同一档，
+   两个按钮才像一套控件 —— 否则一高一低、字还一大一小。 */
+.footer-actions :deep(.n-button) {
+  font-size: var(--text-sm);
 }
 </style>
