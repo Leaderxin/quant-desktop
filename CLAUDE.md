@@ -97,7 +97,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 **`datasource/`** — `DataSource` trait：`fetch_realtime` / `fetch_indices` / `search` / `fetch_depth` / `fetch_minute_data` / `fetch_kline` / `health_check`。`DataSourceManager` 持有适配器注册表与 active 名，切换时用 `tokio::sync::Notify` 唤醒调度器立即刷新。
 
-- `INDEX_CODES` 是 14 个宽基指数的**候选池**，每轮一次性批量拉取，前端按 `index_codes` 过滤排序 —— 这样设置里勾选后立刻显示，不用等下一轮（交易中 2s，休市最长 30s）。`INDEX_POOL_NAMES` 是设置页用的名称表；新增代码必须**同时**在腾讯与新浪上验证。
+- `INDEX_CODES` 是 16 个宽基指数的**候选池**，每轮一次性批量拉取，前端按 `index_codes` 过滤排序 —— 这样设置里勾选后立刻显示，不用等下一轮（交易中 2s，休市最长 30s）。`INDEX_POOL_NAMES` 是设置页用的名称表；新增代码必须**同时**在腾讯与新浪上验证。
 - 量/额归一：个股原始单位是手、万元，进共享管道前 `normalize_volume(×100)`、`normalize_turnover(×10000)` 转成股、元。
 - `sina.rs`（备用）：GBK、`var hq_str_`。指数必须用**股票格式**接口（不带 `s_` 前缀）——紧凑格式对 `s_sz399006` 的量额是错的；上证指数成交额在所有格式下都只有 1/100，需 `saturating_mul(100)`；指数数据已是股/元，不再乘。搜索只认精确代码；深度借腾讯；分时/K 线走 `money.finance.sina.com.cn`。
 - `tencent.rs`（默认）：GBK、`v_sh600519=` + `~` 分隔；分时 `ifzq.gtimg.cn`、K 线 `web.ifzq.gtimg.cn`、深度取内嵌字段（位置 9–28）。
