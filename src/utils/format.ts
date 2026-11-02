@@ -17,8 +17,9 @@ export function getPricePrecision(price: number): number {
  * 格式化「较昨日同期」的成交额增量。输入单位是元，输出到亿：
  * `+1234亿` / `-987亿`，不足 1 亿按「持平」。
  *
- * 符号必须留在文字里，不能只靠颜色：涨跌配色可切换（cn/us），而放量/缩量
- * 不是涨跌，用红绿反而会读成方向。
+ * 符号必须留在文字里：界面会按应用配色给数字上色（放量=涨色、缩量=跌色，
+ * 随「红涨绿跌 / 红跌绿涨」设置翻转），但颜色不是唯一信号 —— 色觉障碍读不出，
+ * 而且「持平」不该靠某一种颜色来表达。
  */
 export function formatTurnoverDelta(delta: number | null | undefined, fallback = ''): string {
   if (delta == null || isNaN(delta)) return fallback;

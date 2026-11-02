@@ -85,11 +85,14 @@ onUnmounted(() => {
         <span class="turnover">
           <span class="turnover-label">两市成交额</span>
           <span class="turnover-value tabular-nums">{{ turnoverText }}</span>
-          <!-- 较昨日同一时点：正=放量、负=缩量。中性配色 —— 放量/缩量不是涨跌，
-               套红绿会被读成方向，而且涨跌配色切到 us 后含义还会翻过来 -->
+          <!-- 较昨日同一时点：正=放量、负=缩量。颜色取涨跌令牌（--color-up /
+               --color-down），于是跟着「红涨绿跌 / 红跌绿涨」设置自动翻转 -->
           <span v-if="turnoverDelta !== null" class="turnover-delta">
             <span class="turnover-delta-label">较昨同期</span>
-            <span class="turnover-delta-value tabular-nums">{{ turnoverDeltaText }}</span>
+            <span
+              class="turnover-delta-value tabular-nums"
+              :class="{ 'is-up': turnoverDelta > 0, 'is-down': turnoverDelta < 0 }"
+            >{{ turnoverDeltaText }}</span>
           </span>
         </span>
 
@@ -265,7 +268,9 @@ onUnmounted(() => {
 }
 
 /* 较昨日同期 —— 与成交额同排但降一级：主数字仍是成交额本身。
-   不套涨跌色：放量/缩量不是涨跌，红绿会被读成方向，且切到 us 配色后会反过来。 */
+   颜色只落在数字上，且取涨跌令牌：放量用「涨」色、缩量用「跌」色，
+   设置里切「红涨绿跌 / 红跌绿涨」时这里跟着翻，不另立一套语义。
+   符号仍留在文字里 —— 颜色不是唯一信号（色觉障碍、红绿色弱都读不出）。 */
 .turnover-delta {
   display: inline-flex;
   align-items: baseline;
@@ -278,6 +283,12 @@ onUnmounted(() => {
 }
 .turnover-delta-value {
   color: var(--color-text-secondary);
+}
+.turnover-delta-value.is-up {
+  color: var(--color-up);
+}
+.turnover-delta-value.is-down {
+  color: var(--color-down);
 }
 
 /* 涨跌分布条 */

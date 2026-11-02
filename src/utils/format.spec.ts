@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { formatIndexCode, formatTurnoverDelta } from './format';
 
-// 「较昨同期」的增量是唯一一个只有符号能表达方向的地方 —— 它不套涨跌色
-// （放量/缩量不是涨跌，且切到 us 配色后红绿会反过来），所以正负号一旦丢了，
-// 界面就只剩一个看不出方向的数量。这里把「符号 + 取整到亿 + 持平阈值」钉住。
+// 「较昨同期」的增量界面会按应用配色上色（放量=涨色、缩量=跌色，随 cn/us
+// 翻转），但符号仍必须留在文字里 —— 颜色不是唯一信号。这里把「符号 + 取整到亿
+// + 持平阈值」钉住。
 describe('formatTurnoverDelta', () => {
   it('符号留在文字里', () => {
     expect(formatTurnoverDelta(1234e8)).toBe('+1234亿');
