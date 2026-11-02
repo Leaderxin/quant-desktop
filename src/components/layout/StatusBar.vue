@@ -327,10 +327,18 @@ onMounted(async () => {
   color: var(--color-text-primary);
   background: var(--color-bg-elevated);
 }
-/* 设置页打开时入口保持高亮，让用户知道当前在哪、从哪儿回去 */
+/* 设置页打开时入口保持高亮，让用户知道当前在哪、从哪儿回去。
+   只换文字/图标颜色，不加任何底色（悬停也不加）：状态栏只有 28px，无论
+   强调色还是中性色，一块底都会变成紧贴 11px 文字的小色块，比它要表达的
+   状态更抢眼。点完设置后鼠标通常还停在按钮上，所以 hover 也得一起压掉，
+   否则会一直看到一块灰底。 */
 .sb-settings-btn.active {
   color: var(--color-accent);
-  background: var(--color-accent-dim);
+  background: transparent;
+}
+.sb-settings-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 .sb-settings-label {
   color: inherit;

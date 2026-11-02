@@ -51,7 +51,7 @@ const activeSection = computed(
   <div class="settings-page">
     <header class="settings-header">
       <button class="back-btn" type="button" @click="emit('close')">
-        <ChevronLeft :size="13" aria-hidden="true" />
+        <ChevronLeft :size="14" aria-hidden="true" />
         返回
       </button>
       <h1>设置</h1>
@@ -92,17 +92,21 @@ const activeSection = computed(
 .settings-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   height: var(--header-height);
   padding: 0 var(--space-4);
   flex-shrink: 0;
   background: var(--color-surface-1);
   border-bottom: 1px solid var(--color-border-0);
 }
+/* 「返回」是正文级控件，不是辅助说明：11px 会把它压成脚注大小，和旁边
+   14px 的标题差出两档，看起来像两个不相干的元素。统一到 13px 正文，
+   与标题只差一档；层级改由字重（400 / 600）和颜色（secondary / primary）
+   表达，这也是应用内其他地方区分主次的做法。 */
 .back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   height: 24px;
   padding: 0 8px 0 6px;
   border: none;
@@ -110,7 +114,8 @@ const activeSection = computed(
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
+  font-size: var(--text-base);
+  line-height: 1;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
