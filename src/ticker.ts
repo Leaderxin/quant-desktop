@@ -1,4 +1,6 @@
 // src/ticker.ts — independent Vue app for ticker bar window
+// 必须在 TickerBar 之前引入：日志桥要赶在应用模块图求值之前装好。
+import './bootstrapLog';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -16,4 +18,6 @@ app.mount('#app');
 // Hide ticker window from taskbar — called from frontend as a safety net,
 // since the underlying ITaskbarList::DeleteTab COM call requires the window
 // to be fully visible (already processed by the window manager) to take effect.
-getCurrentWindow().setSkipTaskbar(true);
+getCurrentWindow()
+  .setSkipTaskbar(true)
+  .catch((e) => console.warn('[ticker] setSkipTaskbar failed:', e));

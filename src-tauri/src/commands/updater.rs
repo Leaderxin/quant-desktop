@@ -2,7 +2,7 @@ use crate::datasource::market_clock::MarketSession;
 use crate::domain::UpdateInfo;
 use crate::PortableMode;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use tauri_plugin_updater::UpdaterExt;
 
 /// Core update-check logic (no State dependency). Callable from the tray menu
@@ -212,7 +212,8 @@ pub async fn install_update(
                     Some(t) if t > 0 => (cumulative as f64 / t as f64) * 100.0,
                     _ => 0.0,
                 };
-                let _ = handle.emit(
+                crate::events::emit_or_warn(
+                    &handle,
                     "update-download-progress",
                     serde_json::json!({
                         "downloaded": cumulative,

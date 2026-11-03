@@ -12,6 +12,7 @@ import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/forma
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
 import ImportWatchlistDialog from './ImportWatchlistDialog.vue';
+import DeleteStockDialog from './DeleteStockDialog.vue';
 import GroupTabs from './GroupTabs.vue';
 import MarketTag from './MarketTag.vue';
 import StockDetail from '@/components/detail/StockDetail.vue';
@@ -192,8 +193,9 @@ const ctxIndex = computed(() =>
 );
 
 /**
- * 「从本组移除」在只剩这一个分组时，后端会连股票一起删掉。菜单文案随之切换成
- * 「删除自选」—— 不让用户在毫无提示的情况下丢数据。
+ * 「从本组移除」在只剩这一个分组时与「删除自选」是同一件事（后端会连股票
+ * 一起删掉），菜单里直接不出现这一项 —— 两条同名菜单项只会让人以为其中一个
+ * 更轻。删除的确认交给「删除自选」那条统一做。
  */
 const isOnlyGroup = computed(() => {
   if (!ctxItem.value) return false;
@@ -254,11 +256,10 @@ const ctxOptions = computed<DropdownOption[]>(() => [
   { type: 'divider', key: 'd1' },
   { label: '添加到分组', key: 'groups', icon: iconFolder, children: groupOptions.value },
   { type: 'divider', key: 'd2' },
-  {
-    label: isOnlyGroup.value ? '删除自选' : '从本组移除',
-    key: 'remove',
-    icon: iconRemove,
-  },
+  // 只剩一个分组时「从本组移除」就是删除，不重复列出（见 isOnlyGroup 注释）
+  ...(isOnlyGroup.value
+    ? []
+    : [{ label: '从本组移除', key: 'remove', icon: iconRemove }]),
   { label: '删除自选', key: 'delete', icon: iconDelete },
 ]);
 
@@ -277,6 +278,25 @@ function toggleMembership(groupId: number, checked: boolean) {
   void watchlist.setWatchGroups(item.id, next);
 }
 
+/**
+ * 右键菜单里的「删除自选」不可逆，先过一道确认框。
+ *
+ * 确认框里要说明它会从哪些分组里消失 —— 多归属下用户往往正看着某一个分组，
+ * 「删除自选」删的是股票池里的整条记录，不只是当前分组里的那一行。
+ */
+const pendingDelete = ref<WatchItem | null>(null);
+
+/** 待删自选当前所属的分组，确认框用它说明会从哪些分组里消失。 */
+const pendingGroups = computed(() =>
+  pendingDelete.value ? watchlist.groupsOf(pendingDelete.value.id) : [],
+);
+
+async function confirmDelete() {
+  const item = pendingDelete.value;
+  pendingDelete.value = null;
+  if (item) await watchlist.removeStock(item.code, item.market);
+}
+
 async function handleCtxSelect(key: string) {
   const item = ctxItem.value;
   showCtxMenu.value = false;
@@ -293,15 +313,12 @@ async function handleCtxSelect(key: string) {
     case 'top': await watchlist.moveTop(item.id); break;
     case 'up': await watchlist.moveUp(item.id); break;
     case 'down': await watchlist.moveDown(item.id); break;
-    case 'remove': {
-      const wasOnly = watchlist.groupsOf(item.id).length <= 1;
+    case 'remove':
+      // 这一项只在「还有别的分组」时出现（见 isOnlyGroup），只是移除归属
       await watchlist.removeFromActiveGroup(item.id);
-      // 后端在「移出最后一个分组」时会连股票一起删掉，如实告知而不是静默消失
-      if (wasOnly) message.info(`已删除 ${item.name}`);
       break;
-    }
     case 'delete':
-      await watchlist.removeStock(item.code, item.market);
+      pendingDelete.value = item;
       break;
   }
 }
@@ -381,6 +398,12 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 
     <AddStockDialog v-model:show="showAddDialog" />
     <ImportWatchlistDialog v-model:show="showImportDialog" />
+    <DeleteStockDialog
+      :stock-name="pendingDelete?.name ?? null"
+      :groups="pendingGroups"
+      @close="pendingDelete = null"
+      @confirm="confirmDelete"
+    />
 
     <NDropdown
       :show="showCtxMenu"

@@ -20,6 +20,8 @@ async function fetchDepth(showLoading = false) {
   try {
     depth.value = await invoke<Depth>('get_depth', { code: props.code, market: props.market });
   } catch (e) {
+    // 不在前端重复记日志：get_depth 失败在后端已按 5 分钟节流记过 warn，
+    // 这里每 3s 轮询一次，跟着记只会把同一句话刷满日志文件。
     error.value = String(e);
   } finally {
     if (showLoading) loading.value = false;

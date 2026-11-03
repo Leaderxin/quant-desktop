@@ -312,14 +312,16 @@ pub async fn search_cn(manager: &super::DataSourceManager, keyword: &str) -> Vec
     // ── Tier 1: Sina suggest API (name + fuzzy code search) ──
     match suggest_search(keyword).await {
         Ok(results) if !results.is_empty() => return results,
-        Ok(_) => log::info!("Sina suggest returned empty for '{}', trying Tencent", keyword),
+        // 空结果不算异常（模糊查询本来就常落空），只在 debug 下留痕：
+        // 这是搜索框每次输入停顿都会走到的路径，info 会把日志刷满。
+        Ok(_) => log::debug!("Sina suggest returned empty for '{}', trying Tencent", keyword),
         Err(e) => log::warn!("Sina suggest failed: {}, falling back to Tencent", e),
     }
 
     // ── Tier 2: Tencent smartbox API (name + fuzzy code search) ──
     match tencent_suggest_search(keyword).await {
         Ok(results) if !results.is_empty() => return results,
-        Ok(_) => log::info!(
+        Ok(_) => log::debug!(
             "Tencent smartbox returned empty for '{}', falling back to DataSource",
             keyword
         ),

@@ -5,22 +5,17 @@ pub mod cache;
 pub mod commands;
 pub mod hotkey;
 pub mod import;
+pub mod events;
+pub mod logging;
 
-use std::fs::File;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use simplelog::{CombinedLogger, WriteLogger, TermLogger, LevelFilter, Config, TerminalMode, ColorChoice};
+use simplelog::{CombinedLogger, WriteLogger, TermLogger, TerminalMode, ColorChoice};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
-// `Emitter` serves the tray menu: the "设置" item emits `open-settings` to the
-// main window in every build, and "检查更新" emits update events — the latter
-// is compile-gated out of store builds (the Microsoft Store distributes
-// updates itself). The check_update/install_update IPC commands stay compiled
-// and registered in store builds, guarded at runtime — see commands/updater.rs.
-use tauri::Emitter;
 use db::{keys, Database};
 use datasource::DataSourceManager;
 use cache::QuoteCache;
@@ -245,19 +240,22 @@ pub fn set_ticker_visible(
 /// so both failures degrade to a terminal-only logger instead of panicking. A
 /// Store build writes through MSIX file-system virtualization, and a panic
 /// during `setup` is a silent crash — no window, and no log explaining why.
+///
+/// 文件用追加模式、超过 2MB 先轮转，时间戳用本机时区 —— 三者都是「事后能查」
+/// 的前提，具体见 `logging` 模块。
 fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogger>> {
+    let level = logging::requested_level();
+    let config = logging::config();
     let mut loggers: Vec<Box<dyn simplelog::SharedLogger>> = vec![TermLogger::new(
-        LevelFilter::Info,
-        Config::default(),
+        level,
+        config.clone(),
         TerminalMode::Mixed,
         ColorChoice::Auto,
     )];
 
-    match std::fs::create_dir_all(app_dir)
-        .and_then(|()| File::create(app_dir.join("quant-desktop.log")))
-    {
+    match logging::open_log_file(app_dir) {
         Ok(log_file) => {
-            loggers.push(WriteLogger::new(LevelFilter::Info, Config::default(), log_file));
+            loggers.push(WriteLogger::new(level, config, log_file));
         }
         // Not `log::warn!` — the logger is what we are still building.
         Err(e) => eprintln!("QuantDesktop: file logging disabled, {app_dir:?} unusable: {e}"),
@@ -291,9 +289,17 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // 先装 panic hook：setup 里任何 `expect` 都要在日志文件里留下证据。
+            // release 包是 GUI 进程，stderr 不可见，否则崩溃看起来就是「双击没反应」。
+            logging::install_panic_hook();
+
             // Data directory:
             // - Portable mode (portable.dat exists next to exe) → <exe_dir>/data/
             // - Normal mode → %APPDATA%/quant-desktop/
+            //
+            // 取不到系统数据目录时退回临时目录而不是 panic：日志得有地方落，
+            // 应用也还能起来；真正的警告在 logger 就绪后补记。
+            let mut data_dir_fallback = false;
             let (app_dir, is_portable) = std::env::current_exe()
                 .ok()
                 .and_then(|exe| {
@@ -307,15 +313,13 @@ pub fn run() {
                 })
                 .unwrap_or_else(|| {
                     let dir = dirs::data_dir()
-                        .expect("Failed to get system data directory")
+                        .unwrap_or_else(|| {
+                            data_dir_fallback = true;
+                            std::env::temp_dir()
+                        })
                         .join("quant-desktop");
                     (dir, false)
                 });
-
-            // Detect local proxy (Clash/V2Ray) for updater downloads.
-            // Store builds have no updater, so this is compiled out.
-            #[cfg(not(feature = "store"))]
-            detect_and_set_proxy();
 
             // Initialize logger — writes to both stderr (dev) and quant-desktop.log (file).
             // Every step degrades instead of panicking; see build_loggers.
@@ -327,6 +331,23 @@ pub fn run() {
                 "Data directory: {:?} (portable: {})",
                 app_dir, is_portable
             );
+            log::info!(
+                "Log level: {:?} (override with {})",
+                logging::requested_level(),
+                logging::LEVEL_ENV
+            );
+            if data_dir_fallback {
+                log::warn!(
+                    "System data directory unavailable — using {:?}",
+                    app_dir
+                );
+            }
+
+            // Detect local proxy (Clash/V2Ray) for updater downloads.
+            // Store builds have no updater, so this is compiled out.
+            // 放在 logger 之后：探测结果本身就要记日志，之前它在日志里永远是空的。
+            #[cfg(not(feature = "store"))]
+            detect_and_set_proxy();
 
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
             log::info!("Database opened successfully");
@@ -355,7 +376,7 @@ pub fn run() {
             // Initialize cache and restore from SQLite
             let cache = Arc::new(QuoteCache::new(db.clone()));
             cache.restore_from_db();
-            log::info!("Quote cache initialized and restored from DB");
+            log::info!("Quote cache initialized");
 
             // Manage state
             app.manage(db.clone());
@@ -433,7 +454,7 @@ pub fn run() {
                             }
                             // 主窗口的 webview 是常驻的(隐藏不等于卸载)，AppLayout
                             // 挂载时就注册了监听，所以隐藏状态下这次 emit 也收得到。
-                            let _ = app.emit("open-settings", ());
+                            events::emit_or_warn(app, "open-settings", ());
                         }
                         "toggle_ticker" => {
                             let was_visible = app
@@ -460,15 +481,23 @@ pub fn run() {
                                 match crate::commands::updater::do_check_update(&handle).await
                                 {
                                     Ok(Some(info)) => {
-                                        let _ = handle.emit("update-available", &info);
+                                        events::emit_or_warn(&handle, "update-available", &info);
                                     }
                                     Ok(None) => {
                                         log::info!("[updater] Manual check: already up to date");
-                                        let _ = handle.emit("update-check-complete", "up-to-date");
+                                        events::emit_or_warn(
+                                            &handle,
+                                            "update-check-complete",
+                                            "up-to-date",
+                                        );
                                     }
                                     Err(e) => {
                                         log::warn!("[updater] Manual check failed: {}", e);
-                                        let _ = handle.emit("update-check-complete", "error");
+                                        events::emit_or_warn(
+                                            &handle,
+                                            "update-check-complete",
+                                            "error",
+                                        );
                                     }
                                 }
                             });
@@ -826,6 +855,7 @@ pub fn run() {
             commands::updater::check_update,
             commands::updater::install_update,
             commands::updater::is_trading_session,
+            commands::log::log_event,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start application");

@@ -20,28 +20,45 @@ pub fn get_autostart(app: AppHandle) -> bool {
     #[cfg(not(all(feature = "store", target_os = "windows")))]
     {
         use tauri_plugin_autostart::ManagerExt;
-        app.autolaunch().is_enabled().unwrap_or(false)
+        match app.autolaunch().is_enabled() {
+            Ok(enabled) => enabled,
+            Err(e) => {
+                log::warn!("[autostart] is_enabled failed: {}", e);
+                false
+            }
+        }
     }
 }
 
 /// Enable or disable OS-level autostart.
 #[tauri::command]
 pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
-    #[cfg(all(feature = "store", target_os = "windows"))]
-    {
-        let _ = &app;
-        startup_task::set_enabled(enabled)
-    }
-    #[cfg(not(all(feature = "store", target_os = "windows")))]
-    {
-        use tauri_plugin_autostart::ManagerExt;
-        let manager = app.autolaunch();
-        if enabled {
-            manager.enable().map_err(|e| e.to_string())
-        } else {
-            manager.disable().map_err(|e| e.to_string())
+    let result: Result<(), String> = {
+        #[cfg(all(feature = "store", target_os = "windows"))]
+        {
+            let _ = &app;
+            startup_task::set_enabled(enabled)
         }
+        #[cfg(not(all(feature = "store", target_os = "windows")))]
+        {
+            use tauri_plugin_autostart::ManagerExt;
+            let manager = app.autolaunch();
+            if enabled {
+                manager.enable().map_err(|e| e.to_string())
+            } else {
+                manager.disable().map_err(|e| e.to_string())
+            }
+        }
+    };
+
+    match &result {
+        Ok(()) => log::info!(
+            "[autostart] {}",
+            if enabled { "enabled" } else { "disabled" }
+        ),
+        Err(e) => log::warn!("[autostart] failed to set enabled={}: {}", enabled, e),
     }
+    result
 }
 
 /// MSIX packaged-app startup task (Windows store builds only).

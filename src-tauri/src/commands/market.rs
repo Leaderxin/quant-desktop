@@ -39,23 +39,33 @@ pub async fn get_market_overview(
         client.fetch_turnover_delta(),
     );
 
+    // 概览面板每隔一分钟刷新一次；网络不通时这四块会一起失败，逐次记 warn
+    // 会把日志刷成同一句话的复读机。每类失败五分钟只记一条。
     let turnover = turnover.unwrap_or_else(|e| {
-        log::warn!("[market] 成交额获取失败,降级为 0: {}", e);
+        crate::logging::warn_throttled("market.turnover", || {
+            format!("[market] 成交额获取失败,降级为 0: {}", e)
+        });
         0.0
     });
 
     let (up, down, flat) = breadth.unwrap_or_else(|e| {
-        log::warn!("[market] 涨跌家数获取失败,降级为 0: {}", e);
+        crate::logging::warn_throttled("market.breadth", || {
+            format!("[market] 涨跌家数获取失败,降级为 0: {}", e)
+        });
         (0, 0, 0)
     });
 
     let industry = industry.unwrap_or_else(|e| {
-        log::warn!("[market] 行业板块获取失败,降级为空: {}", e);
+        crate::logging::warn_throttled("market.industry", || {
+            format!("[market] 行业板块获取失败,降级为空: {}", e)
+        });
         Vec::new()
     });
 
     let concept = concept.unwrap_or_else(|e| {
-        log::warn!("[market] 概念板块获取失败,降级为空: {}", e);
+        crate::logging::warn_throttled("market.concept", || {
+            format!("[market] 概念板块获取失败,降级为空: {}", e)
+        });
         Vec::new()
     });
 

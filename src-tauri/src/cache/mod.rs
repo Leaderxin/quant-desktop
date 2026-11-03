@@ -29,7 +29,17 @@ impl QuoteCache {
 
     /// Restore cache from SQLite (called on startup)
     pub fn restore_from_db(&self) {
-        if let Ok(cached) = self.db.get_cached_quotes() {
+        let cached = match self.db.get_cached_quotes() {
+            Ok(cached) => cached,
+            Err(e) => {
+                // 恢复失败不影响运行（首次启动也没有缓存），但必须留痕 ——
+                // 否则「启动后行情空白一下」在日志里完全看不出原因。
+                log::warn!("Failed to restore quote cache from DB: {}", e);
+                return;
+            }
+        };
+        let count = cached.len();
+        {
             let mut quotes = self.quotes.lock().unwrap_or_else(|e| e.into_inner());
             let now = std::time::Instant::now();
             for q in cached {
@@ -42,6 +52,10 @@ impl QuoteCache {
                     },
                 );
             }
+        }
+        // 放出锁再写日志：日志后端可能因为轮转而做文件 IO，不该占着缓存锁。
+        if count > 0 {
+            log::info!("Restored {} cached quotes from DB", count);
         }
     }
 
@@ -383,7 +397,11 @@ impl Scheduler {
                         return Some(FetchOutcome { prices_changed: changed });
                     }
                     Err(e) => {
-                        log::warn!("Quote fetch failed (will retry): {}", e);
+                        // 交易时段每 2s 一次；断网时逐次记 warn 会把日志刷满，
+                        // 五分钟只留一条（被抑制的仍可在 QUANT_LOG=debug 下看到）。
+                        crate::logging::warn_throttled("scheduler.quotes", || {
+                            format!("Quote fetch failed (will retry): {}", e)
+                        });
                         let cached = cache.get_all_quotes();
                         if !cached.is_empty() {
                             if let Err(e) = app_handle.emit("quotes-updated", &cached) {
@@ -453,7 +471,9 @@ impl Scheduler {
                         log::debug!("Indices unchanged, skipping emit");
                     }
                 }
-                Err(e) => log::warn!("Index fetch failed: {}", e),
+                Err(e) => crate::logging::warn_throttled("scheduler.indices", || {
+                    format!("Index fetch failed: {}", e)
+                }),
             }
         }
     }

@@ -43,10 +43,12 @@ pub fn shared_client() -> &'static Client {
 ///
 /// 新增代码必须在**腾讯与新浪两套接口上都实测有数据**再往里加 —— 两边的指数格式
 /// 不同(腾讯 `s_` 简版 11 字段 / 新浪剥掉 `s_` 走股票格式 30+ 字段),一个能取到
-/// 不代表另一个也能。已实测(2026-09):下列 14 个双源均可用。
+/// 不代表另一个也能。已实测(2026-11):下列 16 个双源均可用(中证A500 与 深证100
+/// 为本轮新增,代码 `sh000510` / `sz399330`,两源名称与量额一致)。
 pub const INDEX_CODES: &str = concat!(
     "s_sh000001,s_sz399001,s_sz399006,s_sh000688,s_sh000698,s_sh000905,s_sh000680,",
-    "s_sh000016,s_sh000300,s_sh000852,s_sh000906,s_bj899050,s_sz399106,s_sz399005"
+    "s_sh000016,s_sh000300,s_sh000852,s_sh000906,s_bj899050,s_sz399106,s_sz399005,",
+    "s_sh000510,s_sz399330"
 );
 
 /// 指数候选池的代码与中文名，供设置页的候选列表展示。
@@ -72,6 +74,8 @@ pub const INDEX_POOL_NAMES: &[(&str, &str)] = &[
     ("s_bj899050", "北证50"),
     ("s_sz399106", "深证综指"),
     ("s_sz399005", "中小100"),
+    ("s_sh000510", "中证A500"),
+    ("s_sz399330", "深证100"),
 ];
 
 /// 指数区默认勾选的指数,即 1.5.x 版本硬编码的那 7 个。
@@ -354,7 +358,7 @@ mod tests {
         let codes: Vec<&str> = INDEX_CODES.split(',').collect();
         let names: Vec<&str> = INDEX_POOL_NAMES.iter().map(|(c, _)| *c).collect();
         assert_eq!(codes, names, "INDEX_POOL_NAMES 的顺序与内容必须与 INDEX_CODES 一致");
-        assert_eq!(codes.len(), 14);
+        assert_eq!(codes.len(), 16);
 
         // 默认勾选的 7 个必须是候选池的子集，且保持原有先后
         for code in DEFAULT_INDEX_CODES {

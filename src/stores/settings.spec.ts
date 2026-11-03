@@ -139,10 +139,14 @@ describe('派生配置的解析与兜底', () => {
       market_overview_visible: '0',
       ticker_visible: '0',
       ticker_transparent: '1',
+      ticker_click_wakes: '0',
     });
     expect(store.marketOverviewVisible).toBe(false);
     expect(store.tickerVisible).toBe(false);
     expect(store.tickerTransparent).toBe(true);
+    expect(store.tickerClickWakes).toBe(false);
+    // 点击唤醒默认开 —— 这是行情条一直以来的行为
+    expect((await load({})).tickerClickWakes).toBe(true);
   });
 
   it('color_scheme 只认 cn/us，其余退回 cn', async () => {
@@ -219,6 +223,23 @@ describe('写入与跨窗口同步', () => {
     expect(store.tickerVisible).toBe(false);
     expect(emitMock).toHaveBeenCalledWith('settings-changed', {
       key: 'ticker_visible',
+      value: '0',
+    });
+  });
+
+  it('setTickerClickWakes 写 "0"/"1" 并广播到行情条', async () => {
+    const store = await load({ ticker_click_wakes: '1' });
+    expect(store.tickerClickWakes).toBe(true);
+
+    invokeMock.mockResolvedValueOnce(undefined);
+    await store.setTickerClickWakes(false);
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', {
+      key: 'ticker_click_wakes',
+      value: '0',
+    });
+    expect(store.tickerClickWakes).toBe(false);
+    expect(emitMock).toHaveBeenCalledWith('settings-changed', {
+      key: 'ticker_click_wakes',
       value: '0',
     });
   });
