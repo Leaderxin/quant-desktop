@@ -1,4 +1,4 @@
-import { ref, watch, type Ref, type MaybeRef, unref } from 'vue';
+import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { KLineData, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
@@ -223,6 +223,39 @@ export function useChart(options: {
   // ---- 副图指标 ----
 
   /**
+   * 副图高度。klinecharts 的 pane 高度是**固定像素**，主图吃掉剩余空间；
+   * 默认 100px 在小视口下会占到图区三分之一以上，喧宾夺主。这里按图区高度的
+   * 28% 计算并夹在 48–80px：大窗口不会无限长高，小窗口也保得住主图的面积。
+   */
+  const SUB_PANE_RATIO = 0.28;
+  const SUB_PANE_MIN = 48;
+  const SUB_PANE_MAX = 80;
+
+  function subPaneHeight(): number {
+    const total = options.chartRef.value?.clientHeight ?? 0;
+    if (!(total > 0)) return 72;
+    return Math.round(Math.min(SUB_PANE_MAX, Math.max(SUB_PANE_MIN, total * SUB_PANE_RATIO)));
+  }
+
+  function applySubPaneHeight() {
+    if (!chart.value) return;
+    chart.value.setPaneOptions({ id: SUB_PANE_ID, height: subPaneHeight() });
+  }
+
+  /** 图区高度随详情面板/窗口变化时同步副图比例（不监听会一直停留在初始像素值） */
+  let paneResizeObserver: ResizeObserver | null = null;
+
+  function observePaneResize() {
+    const el = options.chartRef.value;
+    if (!el || typeof ResizeObserver === 'undefined' || paneResizeObserver) return;
+    paneResizeObserver = new ResizeObserver(() => {
+      // 等 klinecharts 自己的 ResizeObserver 先按新高度排完，下一帧再改副图
+      requestAnimationFrame(applySubPaneHeight);
+    });
+    paneResizeObserver.observe(el);
+  }
+
+  /**
    * VOL 副图自定义外观（成交量 + MA5/10/20 均量线，柱子配色随主题）。
    * 注意：不覆盖内置 `figures` —— v10 内置 VOL 的 volume 柱用了一个 styles 回调函数
    * 从 `indicator.styles.bars[0]` 取色，若用静态 figure 覆盖会丢失取色逻辑导致柱子不显示。
@@ -249,6 +282,8 @@ export function useChart(options: {
     // VOL 需带自定义外观（v10 overrideIndicator 仅对已存在指标生效，故在创建时一次性传入）。
     const create = name === 'VOL' ? volIndicatorConfig() : { name, paneId: SUB_PANE_ID };
     chart.value.createIndicator(create as any);
+    // 切换指标可能重建 pane（回到默认 100px），每次创建后都按当前图高再定一次
+    applySubPaneHeight();
   }
 
   // ---- 主图叠加指标 ----
@@ -341,6 +376,7 @@ export function useChart(options: {
     }
 
     if (!chart.value) return;
+    observePaneResize();
 
     if (period !== 'minute') {
       // 叠加主图指标（MA/BOLL）到蜡烛 pane
@@ -354,18 +390,27 @@ export function useChart(options: {
           syncSubIndicator(currentSub);
         }
       }
+      applySubPaneHeight();
     }
   }
 
   function disposeChart() {
     stopAutoRefresh();
     barSubscriber = null;
+    paneResizeObserver?.disconnect();
+    paneResizeObserver = null;
     if (abortController) {
       abortController.abort();
       abortController = null;
     }
     disposeChartCore();
   }
+
+  // 组件卸载时 useChartCore 只销毁图表实例，这里补上自己起的 ResizeObserver
+  onUnmounted(() => {
+    paneResizeObserver?.disconnect();
+    paneResizeObserver = null;
+  });
 
   // ---- 主题/副图监听 ----
 

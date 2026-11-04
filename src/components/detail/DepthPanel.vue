@@ -229,4 +229,21 @@ function barWidth(vol: number, max: number): string {
 
 .bid-price { color: var(--color-up); }
 .ask-price { color: var(--color-down); }
+
+/* 矮视口（1080p @150% 全屏）压缩行高，让五档盘口与右侧图表同屏 */
+@media (max-height: 820px) {
+  .depth-panel {
+    padding: 8px 12px;
+  }
+  .depth-title {
+    margin-bottom: 4px;
+  }
+  .depth-side-header {
+    padding: 1px 0 3px;
+    margin-bottom: 1px;
+  }
+  .depth-row {
+    height: 20px;
+  }
+}
 </style>

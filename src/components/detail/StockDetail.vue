@@ -87,6 +87,14 @@ useMinuteKUnavailable(activePeriod);
 
 <style scoped>
 .stock-detail {
+  /* 详情是看盘界面的下半部分：高度按视口取一个确定值，剩下的让给自选表。
+     不能由内容撑开 —— 内容里的图表一旦按内容算高度，小视口下整块就会超出
+     .main-content 的 overflow:hidden，底部副图直接被裁掉。
+     52vh 在 1280×720（1080p @150%）下约 374px，自选表还能留 2 行。 */
+  flex: 0 1 auto;
+  height: clamp(240px, 52vh, 560px);
+  display: flex;
+  flex-direction: column;
   border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
   background: var(--color-surface-1);
   padding: 12px 16px;
@@ -95,7 +103,8 @@ useMinuteKUnavailable(activePeriod);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  flex-shrink: 0;
+  margin-bottom: 10px;
 }
 .detail-title {
   display: flex;
@@ -129,18 +138,25 @@ useMinuteKUnavailable(activePeriod);
 }
 .detail-close:hover { color: var(--color-text-primary); }
 .detail-content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   gap: 16px;
 }
 .detail-left {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex-shrink: 0;
+  gap: 10px;
+  flex: 0 0 300px;
+  min-width: 280px;
+  min-height: 0;
+  /* 窗口被压到极短（市场概览展开 + 详情同时开着）时左列滚动而不是被裁 */
+  overflow-y: auto;
 }
 .detail-right {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -151,11 +167,28 @@ useMinuteKUnavailable(activePeriod);
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .chart-toolbar-group {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 矮视口（1080p @150% 全屏约 720px）收紧留白，把空间让给图表 */
+@media (max-height: 820px) {
+  .stock-detail {
+    padding: 8px 16px 10px;
+  }
+  .detail-header {
+    margin-bottom: 6px;
+  }
+  .detail-content {
+    gap: 12px;
+  }
+  .detail-left {
+    gap: 8px;
+  }
 }
 </style>

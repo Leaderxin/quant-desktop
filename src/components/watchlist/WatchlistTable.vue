@@ -525,6 +525,11 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 
 :deep(.watchlist-table) {
   flex: 1;
+  /* 详情面板有固定高度，表格必须能缩到 0 而不是撑住 min-content，否则二者合力
+     再次超出容器（详情底部被裁）。overflow:hidden 防止极短窗口下被压到 0 时
+     表头（sticky 层）溢出到详情标题上方。 */
+  min-height: 0;
+  overflow: hidden;
   margin-top: var(--space-1);
 }
 /* P&L color classes (used via render functions) */

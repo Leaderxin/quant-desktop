@@ -137,7 +137,12 @@ const statCards = computed(() => [
   border-top: 1px solid var(--color-border, rgba(255,255,255,0.08));
   background: var(--color-surface-1);
   padding: 12px 16px;
-  max-height: calc(100vh - 140px);
+  /* 确定高度（而不是 max-height）才能让图表 flex 到剩余空间。上限同时受两条约束：
+     560px 是桌面上的舒适高度，100vh - 160px 保证小视口下不压到状态栏。
+     内容极短时由 overflow-y 兜底滚动，图表本身不再溢出。 */
+  height: min(560px, calc(100vh - 160px));
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
@@ -146,6 +151,7 @@ const statCards = computed(() => [
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
   margin-bottom: 12px;
 }
 
@@ -179,6 +185,8 @@ const statCards = computed(() => [
 .detail-close:hover { color: var(--color-text-primary); }
 
 .detail-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -189,6 +197,7 @@ const statCards = computed(() => [
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .summary-card {
@@ -226,7 +235,10 @@ const statCards = computed(() => [
 .card-value.down { color: var(--color-down); }
 
 .chart-section {
-  min-height: 420px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .chart-toolbar {
@@ -235,11 +247,28 @@ const statCards = computed(() => [
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .chart-toolbar-group {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 矮视口收紧留白，摘要卡与标题各让出几像素给图表 */
+@media (max-height: 820px) {
+  .index-detail {
+    padding: 8px 16px 10px;
+  }
+  .detail-header {
+    margin-bottom: 8px;
+  }
+  .detail-body {
+    gap: 8px;
+  }
+  .summary-card {
+    padding: 6px 8px;
+  }
 }
 </style>
