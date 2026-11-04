@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import type { WatchItem, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useQuoteStore } from '@/stores/quote';
 import { useMinuteKUnavailable } from '@/composables/minutePeriod';
+import { useEscapeKey } from '@/composables/useEscapeKey';
 import { formatCode, cnCategory } from '@/utils/format';
 import MarketTag from '@/components/watchlist/MarketTag.vue';
 import StockSummary from './StockSummary.vue';
@@ -30,6 +31,9 @@ const activeMainOverlay = ref<MainOverlayType>('MA');
 
 // 新浪数据源不支持 1 分钟：若正在查看 1 分钟时切到新浪，自动回落到 5 分钟。
 useMinuteKUnavailable(activePeriod);
+
+// Esc 关闭详情（面板挂载期间才监听）
+useEscapeKey(() => emit('close'));
 </script>
 
 <template>
