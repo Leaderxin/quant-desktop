@@ -709,6 +709,9 @@ pub fn run() {
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
 
+                #[cfg(target_os = "linux")]
+                let _ = ticker.set_resizable(true);
+
                 // Capture monitor bounds and ticker size for clamping on move
                 let mon = ticker.primary_monitor().ok().flatten();
                 let (mon_w, mon_h) = mon
