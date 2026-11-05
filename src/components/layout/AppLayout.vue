@@ -4,12 +4,30 @@ import IndexBar from '@/components/index/IndexBar.vue';
 import MarketOverviewPanel from '@/components/market/MarketOverviewPanel.vue';
 import WatchlistTable from '@/components/watchlist/WatchlistTable.vue';
 import StatusBar from './StatusBar.vue';
-import SettingsPage from '@/components/settings/SettingsPage.vue';
-import { onMounted, onUnmounted, provide, ref } from 'vue';
+import { defineAsyncComponent, onMounted, onUnmounted, provide, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSettingsStore } from '@/stores/settings';
 import { CircleAlert, RefreshCw, TriangleAlert } from '@lucide/vue';
+import { prefetchWhenIdle } from '@/utils/prefetch';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
+import SettingsFallback from '@/components/settings/SettingsFallback.vue';
+
+// 设置页低频、体量大（NModal/NSelect/NSwitch 等只有它用），不进首屏。
+// 空闲预取后，托盘「设置」或状态栏入口点开时一般已经就绪。
+// 它替换掉整块看盘界面，所以加载中/失败都必须有可见占位，不能白屏。
+const loadSettingsPage = () => import('@/components/settings/SettingsPage.vue');
+const SettingsPage = defineAsyncComponent({
+  loader: loadSettingsPage,
+  loadingComponent: SettingsFallback,
+  errorComponent: SettingsFallback,
+  delay: 150,
+  timeout: 15000,
+  onError(_error, retry, fail, attempts) {
+    // chunk 加载偶发失败时先自动重试两次，仍失败才落到错误占位
+    if (attempts <= 2) retry();
+    else fail();
+  },
+});
 
 const settings = useSettingsStore();
 
@@ -41,6 +59,7 @@ provide(CLEAR_INDEX_DETAIL_KEY, {
 let unlistenOpenSettings: UnlistenFn | null = null;
 
 onMounted(async () => {
+  prefetchWhenIdle(loadSettingsPage);
   try {
     unlistenOpenSettings = await listen('open-settings', () => {
       showSettings.value = true;

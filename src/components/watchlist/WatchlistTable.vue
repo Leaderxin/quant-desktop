@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, inject, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, defineComponent, h, inject, onMounted, ref } from 'vue';
 import { NButton, NDataTable, NDropdown, useMessage } from 'naive-ui';
 import type { DataTableColumns, DropdownOption } from 'naive-ui';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -15,8 +15,23 @@ import ImportWatchlistDialog from './ImportWatchlistDialog.vue';
 import DeleteStockDialog from './DeleteStockDialog.vue';
 import GroupTabs from './GroupTabs.vue';
 import MarketTag from './MarketTag.vue';
-import StockDetail from '@/components/detail/StockDetail.vue';
+import DetailLoading from '@/components/detail/DetailLoading.vue';
+import { prefetchWhenIdle } from '@/utils/prefetch';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
+
+/**
+ * 详情面板懒加载：它（经 KLineChart）把 klinecharts 整包带进来，约 235KB，
+ * 只在点开某一行时才用得上。空闲时预取，避免首次点击等 chunk。
+ */
+const loadStockDetail = () => import('@/components/detail/StockDetail.vue');
+
+const StockDetail = defineAsyncComponent({
+  loader: loadStockDetail,
+  loadingComponent: defineComponent({
+    render: () => h(DetailLoading, { variant: 'stock' }),
+  }),
+  delay: 120,
+});
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
@@ -35,6 +50,7 @@ onMounted(() => {
   indexDetailCoord?.registerClearStockFn?.(() => {
     selectedRow.value = null;
   });
+  prefetchWhenIdle(loadStockDetail);
 });
 
 const selectedRow = ref<WatchItem | null>(null);
