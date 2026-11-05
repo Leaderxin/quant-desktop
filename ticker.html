@@ -5,15 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ticker</title>
   <style>
-    body {
+    html body {
       margin: 0;
       padding: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    #app {
+      height: 100vh;
       overflow: hidden;
       background: var(--color-surface-1, #161b22);
       border-radius: 7px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
     }
-    [data-theme="light"] body {
+    [data-theme="light"] #app {
       background: var(--color-surface-1, #f6f8fa);
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
     }
@@ -25,8 +30,8 @@
       已经开了 transparent: true，否则 webview 会画一层不透明底，这里怎么改
       都透不过去。
     */
-    body.ticker-transparent,
-    [data-theme="light"] body.ticker-transparent {
+    body.ticker-transparent #app,
+    [data-theme="light"] body.ticker-transparent #app {
       background: transparent;
       border-radius: 0;
       box-shadow: none;
