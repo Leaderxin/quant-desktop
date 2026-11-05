@@ -120,7 +120,8 @@ impl SinaAdapter {
             market: market.to_string(),
             name,
             price,
-            change: (change * 100.0).round() / 100.0,
+            // 同腾讯：ETF/LOF/可转债的涨跌额要留到 0.001
+            change: (change * 10000.0).round() / 10000.0,
             change_pct: (change_pct * 100.0).round() / 100.0,
             open,
             high,

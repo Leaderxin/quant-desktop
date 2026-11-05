@@ -8,7 +8,7 @@ import { useMarketStore } from '@/stores/market';
 import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
 import { Inbox, Plus, Upload } from '@lucide/vue';
-import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
+import { formatPrice, formatVolume, formatCode, cnCategory, getQuotePrecision } from '@/utils/format';
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
 import ImportWatchlistDialog from './ImportWatchlistDialog.vue';
@@ -96,7 +96,7 @@ function buildColumn(key: ColumnKey): DataTableColumns<WatchItem>[number] {
         render: (row) => {
           const q = quoteStore.getQuote(row.code, row.market);
           if (!q) return '--';
-          return coloredPct(row, formatPrice(q.price));
+          return coloredPct(row, formatPrice(q.price, '--', getQuotePrecision(row.code, q.price)));
         },
       };
     case 'change_pct':
@@ -114,7 +114,8 @@ function buildColumn(key: ColumnKey): DataTableColumns<WatchItem>[number] {
         render: (row) => {
           const q = quoteStore.getQuote(row.code, row.market);
           if (!q) return '--';
-          return coloredPct(row, `${q.change >= 0 ? '+' : ''}${formatPrice(q.change)}`);
+          // ETF/LOF 固定 3 位：涨跌额与价格同精度，整分变化也显示 +0.010 而不是 +0.01
+          return coloredPct(row, `${q.change >= 0 ? '+' : ''}${formatPrice(q.change, '--', getQuotePrecision(row.code, q.change))}`);
         },
       };
     case 'volume':

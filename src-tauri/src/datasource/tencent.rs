@@ -142,7 +142,9 @@ impl TencentAdapter {
             market: market.to_string(),
             name,
             price,
-            change: (change * 100.0).round() / 100.0,
+            // ETF/LOF/可转债的最小变动价位是 0.001：留 4 位只压浮点噪声，不再把
+            // 涨跌额截到分 —— 截断后前端拿不到 0.013 这种三位精度
+            change: (change * 10000.0).round() / 10000.0,
             change_pct,
             open,
             high,
@@ -603,6 +605,28 @@ mod tests {
         assert_eq!(q.code, "sz000852");
         assert_eq!(q.name, "石化机械");
         assert_eq!(q.price, 6.06);
+    }
+
+    #[test]
+    fn parse_quote_line_keeps_three_decimal_change_for_etf() {
+        // ETF 的涨跌额是 0.001 的整数倍；旧实现四舍五入到分会把 0.013 截成 0.01。
+        let mut fields: Vec<&str> = vec![
+            "51", "科创人工智能ETF广发", "588760", "0.742", "0.729", "0.727", "581842",
+        ];
+        for _ in 0..25 {
+            fields.push("0");
+        }
+        fields.push("1.78");  // 32 change_pct
+        fields.push("0.748"); // 33 high
+        fields.push("0.720"); // 34 low
+        fields.push("0");     // 35
+        fields.push("0");     // 36
+        fields.push("34829"); // 37 turnover(万元)
+        fields.push("1.84");  // 38 turnover_rate
+        let line = format!("v_sh588760=\"{}\"", fields.join("~"));
+
+        let q = TencentAdapter::parse_quote_line(&line).unwrap();
+        assert!((q.change - 0.013).abs() < 1e-9, "change = {}", q.change);
     }
 
     #[test]

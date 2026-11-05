@@ -41,10 +41,33 @@ export function formatIndexCode(code: string): string {
 
 /**
  * 格式化价格字符串
+ *
+ * `precision` 显式给出时优先（自选表的 ETF/LOF 要固定 3 位，见 getQuotePrecision）；
+ * 否则按数值本身自适配。
  */
-export function formatPrice(price: number | null | undefined, fallback = '--'): string {
+export function formatPrice(
+  price: number | null | undefined,
+  fallback = '--',
+  precision?: number,
+): string {
   if (price == null || isNaN(price)) return fallback;
-  return price.toFixed(getPricePrecision(price));
+  return price.toFixed(precision ?? getPricePrecision(price));
+}
+
+/**
+ * 报价显示精度 —— 按**标的类别**而不是数值决定。
+ *
+ * ETF/LOF 的最小变动价位是 0.001，必须固定 3 位：1.230 这类整分价格按数值判断
+ * 只会得到 2 位，同一只 ETF 的精度会在盘中随价格跳变。其余标的沿用
+ * getPricePrecision 的值自适配（可转债 3 位、股票 2 位）。
+ *
+ * @param code 带交易所前缀的代码（sh588760 / sz159929）
+ * @param value 值自适配时参考的数值；涨跌额用涨跌额本身
+ */
+export function getQuotePrecision(code: string, value?: number): number {
+  const category = cnCategory(code);
+  if (category === 'ETF' || category === 'LOF') return 3;
+  return getPricePrecision(value ?? 0);
 }
 
 /**
