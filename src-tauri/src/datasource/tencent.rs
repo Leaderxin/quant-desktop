@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
 use crate::domain::AppError;
@@ -75,15 +74,11 @@ fn parse_kline_bar(arr: &[serde_json::Value], span_minutes: Option<u32>) -> Opti
     })
 }
 
-pub struct TencentAdapter {
-    client: Client,
-}
+pub struct TencentAdapter;
 
 impl TencentAdapter {
     pub fn new() -> Self {
-        Self {
-            client: super::shared_client().clone(),
-        }
+        Self
     }
 
     fn code_to_tencent(code: &str, market: &str) -> String {
@@ -216,7 +211,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, tenc_codes.join(","));
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -242,7 +237,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -273,7 +268,7 @@ impl DataSource for TencentAdapter {
             let tc_code = Self::code_to_tencent(trimmed, market);
             let url = format!("{}{}", TENCENT_URL, tc_code);
             let resp = headers::with_browser_headers(
-                self.client.get(&url),
+                super::shared_client().get(&url),
                 "https://gu.qq.com",
             )
                 .send()
@@ -317,7 +312,7 @@ impl DataSource for TencentAdapter {
         let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m1,,242", tc_code);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -407,7 +402,7 @@ impl DataSource for TencentAdapter {
             );
             log::debug!("Tencent mkline URL: {}", url);
 
-            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
+            let resp = headers::with_browser_headers(super::shared_client().get(&url), "https://gu.qq.com")
                 .send()
                 .await
                 .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {}", e)))?;
@@ -451,7 +446,7 @@ impl DataSource for TencentAdapter {
         );
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -500,7 +495,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, tc_code);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()

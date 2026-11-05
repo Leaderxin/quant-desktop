@@ -16,9 +16,15 @@ static SHARED_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Get or initialize the shared reqwest::Client.
 /// All adapters should call this and clone the handle.
+///
+/// `.no_proxy()` 是刻意的：这个 client 只访问境内行情接口，它们全在
+/// `detect_and_set_proxy` 的 `NO_PROXY` 名单里。关掉代理自动探测后，
+/// client 何时构造就不再影响它读到什么代理环境变量 —— 启动顺序可以自由调整。
+/// 需要走代理的请求（更新检查）由 updater 插件自己的 client 负责。
 pub fn shared_client() -> &'static Client {
     SHARED_CLIENT.get_or_init(|| {
         Client::builder()
+            .no_proxy()
             .timeout(Duration::from_secs(10))
             .user_agent(concat!(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",

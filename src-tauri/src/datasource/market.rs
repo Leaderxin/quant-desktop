@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{FixedOffset, Timelike, Utc};
-use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::{SectorItem, AppError};
 use super::headers;
@@ -24,7 +23,6 @@ use super::headers;
 /// ⚠️ 域名坑:`push2.eastmoney.com` 在本环境被拦截(clist 返回 HTTP 000),
 /// 必须用 `push2delay` / `push2ex` 这两个可用域名。
 pub struct MarketOverviewClient {
-    client: Client,
     /// 前一交易日的分时曲线。它是**静态**的(昨天不会变),每天只值得拉一次;
     /// 当日那条每次轮询都要新值,走 `MINUTE_QUERY` 的小响应。
     prev_day: Mutex<Option<Arc<PrevDayCurves>>>,
@@ -81,7 +79,6 @@ pub fn industry_prefetch_size(top_n: usize) -> usize {
 impl MarketOverviewClient {
     pub fn new() -> Self {
         Self {
-            client: super::shared_client().clone(),
             prev_day: Mutex::new(None),
         }
     }
@@ -90,7 +87,7 @@ impl MarketOverviewClient {
     /// 取 上证指数(sh000001) + 深证综指(sz399106) 的成交额相加。
     pub async fn fetch_total_turnover(&self) -> Result<f64, AppError> {
         let resp = headers::with_browser_headers(
-            self.client.get(SINA_INDEX_URL),
+            super::shared_client().get(SINA_INDEX_URL),
             "https://finance.sina.com.cn",
         )
             .send()
@@ -187,7 +184,7 @@ impl MarketOverviewClient {
     }
 
     async fn get_json(&self, url: &str, what: &str) -> Option<serde_json::Value> {
-        let resp = headers::with_browser_headers(self.client.get(url), "https://gu.qq.com")
+        let resp = headers::with_browser_headers(super::shared_client().get(url), "https://gu.qq.com")
             .send()
             .await
             .map_err(|e| log::debug!("[market] {}请求失败: {:#}", what, e))
@@ -208,7 +205,7 @@ impl MarketOverviewClient {
     pub async fn fetch_market_breadth(&self) -> Result<(u32, u32, u32), AppError> {
         let url = format!("{}/getTopicZDFenBu?ut={}&dpt=wz.ztzt", EASTMONEY_PUSH2EX, BREADTH_UT);
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://quote.eastmoney.com/",
         )
             .send()
@@ -289,7 +286,7 @@ impl MarketOverviewClient {
             EASTMONEY_PUSH2DELAY, pz, po, fs
         );
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://quote.eastmoney.com/",
         )
             .send()

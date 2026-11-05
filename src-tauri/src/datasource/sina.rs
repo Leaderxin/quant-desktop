@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
 use crate::domain::AppError;
@@ -25,15 +24,11 @@ fn sina_scale(period: &str) -> Result<u32, AppError> {
     }
 }
 
-pub struct SinaAdapter {
-    client: Client,
-}
+pub struct SinaAdapter;
 
 impl SinaAdapter {
     pub fn new() -> Self {
-        Self {
-            client: super::shared_client().clone(),
-        }
+        Self
     }
 
     /// Convert code to Sina format: "sh600519" or "sz000001"
@@ -213,7 +208,7 @@ impl SinaAdapter {
         );
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://finance.sina.com.cn",
         )
             .send()
@@ -298,7 +293,7 @@ impl DataSource for SinaAdapter {
         let url = format!("{}{}", SINA_URL, sina_codes.join(","));
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://finance.sina.com.cn",
         )
             .send()
@@ -335,7 +330,7 @@ impl DataSource for SinaAdapter {
         let url = format!("{}{}", SINA_URL, stock_codes.join(","));
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://finance.sina.com.cn",
         )
             .send()
@@ -371,7 +366,7 @@ impl DataSource for SinaAdapter {
             let sina_code = Self::code_to_sina(trimmed, market);
             let url = format!("{}{}", SINA_URL, sina_code);
             let resp = headers::with_browser_headers(
-                self.client.get(&url),
+                super::shared_client().get(&url),
                 "https://finance.sina.com.cn",
             )
                 .send()
@@ -415,7 +410,7 @@ impl DataSource for SinaAdapter {
         );
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://finance.sina.com.cn",
         )
             .send()
@@ -516,7 +511,7 @@ impl DataSource for SinaAdapter {
         let url = format!("http://qt.gtimg.cn/q={}", tc_code);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
