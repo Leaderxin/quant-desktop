@@ -74,3 +74,16 @@ calamine = "0.37"
 windows = { version = "0.61", optional = true, features = ["ApplicationModel"] }
 
 
+
+# Release 体积优先：LTO + 单 codegen unit + 去符号，exe/NSIS 安装包更小，
+# 冷启动时 Windows Defender 的扫描与加载也更快。编译时间会翻倍左右，只影响
+# release 构建。
+#
+# 刻意不加 `panic = "abort"`：调度器等后台任务依赖 panic 隔离（单个任务 panic
+# 不应结束整个进程，见 cache/mod.rs 的 spawn 注释），abort 会把这个容错设计
+# 换掉，而体积收益只有个位数百分比。
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = "s"
+strip = true
