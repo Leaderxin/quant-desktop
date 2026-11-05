@@ -343,12 +343,6 @@ pub fn run() {
                 );
             }
 
-            // Detect local proxy (Clash/V2Ray) for updater downloads.
-            // Store builds have no updater, so this is compiled out.
-            // 放在 logger 之后：探测结果本身就要记日志，之前它在日志里永远是空的。
-            #[cfg(not(feature = "store"))]
-            detect_and_set_proxy();
-
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
             log::info!("Database opened successfully");
 
@@ -387,19 +381,11 @@ pub fn run() {
             ));
             app.manage(PortableMode(is_portable));
 
-            // Start background polling.
-            //
-            // 没有「基准轮询间隔」这个参数：节奏完全由 market_clock(交易时段) 与
-            // 自适应状态机(probe → normal → idle) 决定。历史上曾传过一个
-            // refresh_interval 设置值，但 Scheduler 从未引用它 —— 一个在设置表里、
-            // 在启动流程里读写、却对行为毫无影响的死键，已连同 `init_defaults` 里的
-            // 默认值一起删除。老库里残留的那行无害，不需要清理。
-            crate::cache::Scheduler::spawn(
-                ds_manager,
-                cache,
-                db.clone(),
-                app.handle().clone(),
-            );
+            // 启动顺序：托盘 → 主窗口 show → 代理探测 → 调度器 → 行情条 → 老板键。
+            // 代理探测（本机实测 ~265ms）与调度器启动都不影响首屏，故意放在
+            // main.show() 之后；但两者之间顺序有依赖 —— `detect_and_set_proxy`
+            // 必须在 `Scheduler::spawn` 之前完成，否则调度器的首个请求可能读到
+            // 尚未设置的代理环境变量。
 
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
@@ -705,6 +691,26 @@ pub fn run() {
                 let _ = main.set_focus();
             }
 
+            // Detect local proxy (Clash/V2Ray) for updater downloads.
+            // Store builds have no updater, so this is compiled out.
+            // 放在 logger 之后：探测结果本身就要记日志，之前它在日志里永远是空的。
+            #[cfg(not(feature = "store"))]
+            detect_and_set_proxy();
+
+            // Start background polling.
+            //
+            // 没有「基准轮询间隔」这个参数：节奏完全由 market_clock(交易时段) 与
+            // 自适应状态机(probe → normal → idle) 决定。历史上曾传过一个
+            // refresh_interval 设置值，但 Scheduler 从未引用它 —— 一个在设置表里、
+            // 在启动流程里读写、却对行为毫无影响的死键，已连同 `init_defaults` 里的
+            // 默认值一起删除。老库里残留的那行无害，不需要清理。
+            crate::cache::Scheduler::spawn(
+                ds_manager,
+                cache,
+                db.clone(),
+                app.handle().clone(),
+            );
+
             // Ticker window: save position on move (clamped), restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
@@ -862,17 +868,19 @@ pub fn run() {
 }
 
 /// Auto-detect local proxy (Clash/V2Ray) and set env vars for updater downloads.
-/// NO_PROXY excludes domestic stock API hosts so quotes/K-line still go direct.
 ///
 /// # Safety
 ///
-/// `std::env::set_var` is NOT thread-safe per Rust's documentation. This function
-/// MUST be called during startup, on the main thread, BEFORE any background tasks
-/// (scheduler, updater checks, etc.) are spawned. Concurrent reads of the affected
-/// env vars from other threads while this function runs is undefined behavior.
+/// `std::env::set_var` is NOT thread-safe per Rust's documentation. Call this only
+/// from `setup` on the main thread, and keep it BEFORE `Scheduler::spawn` and before
+/// the updater's first request (which builds its own proxy-aware client).
+///
+/// 共享的行情 HTTP client 用 `.no_proxy()` 构建（见 `datasource::shared_client`），
+/// 不读这些环境变量，所以把它挪到 `main.show()` 之后是安全的。不要再让行情适配器
+/// 在构造时初始化共享 client —— 那会把「代理设置」与「client 构造顺序」重新绑定。
 #[cfg(not(feature = "store"))]
 fn detect_and_set_proxy() {
-    use std::net::TcpStream;
+    use std::net::{SocketAddr, TcpStream};
     use std::time::Duration;
 
     // Skip if proxy already set
@@ -884,21 +892,37 @@ fn detect_and_set_proxy() {
         return;
     }
 
-    let ports = [7890u16, 10809, 10808, 7891, 1080, 8118, 8080];
-    for &port in &ports {
-        let addr = format!("127.0.0.1:{}", port);
-        if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(1)).is_ok() {
-            let proxy = format!("http://{}", addr);
-            std::env::set_var("HTTPS_PROXY", &proxy);
-            std::env::set_var("HTTP_PROXY", &proxy);
-            // Exclude domestic stock APIs from proxy
-            std::env::set_var(
-                "NO_PROXY",
-                "sinajs.cn,sina.com.cn,gtimg.cn,gu.qq.com,qq.com,eastmoney.com,localhost,127.0.0.1",
-            );
-            log::info!("[proxy] {} (stock APIs excluded)", proxy);
-            return;
-        }
+    // 端口按优先级排列。**并行**探测：逐个 connect_timeout 在「端口被防火墙静默
+    // 丢弃」的机器上每个都要等满超时 —— 实测 Win10 无代理时 7 个端口串起来是 8 秒。
+    // 本地回环上有代理时连接是毫秒级的，150ms 足够区分。
+    const PORTS: [u16; 7] = [7890, 10809, 10808, 7891, 1080, 8118, 8080];
+    let detected = std::thread::scope(|scope| {
+        let handles: Vec<_> = PORTS
+            .iter()
+            .map(|&port| {
+                scope.spawn(move || {
+                    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+                    TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .zip(PORTS)
+            .find_map(|(handle, port)| handle.join().ok().filter(|ok| *ok).map(|_| port))
+    });
+
+    if let Some(port) = detected {
+        let proxy = format!("http://127.0.0.1:{}", port);
+        std::env::set_var("HTTPS_PROXY", &proxy);
+        std::env::set_var("HTTP_PROXY", &proxy);
+        // Exclude domestic stock APIs from proxy
+        std::env::set_var(
+            "NO_PROXY",
+            "sinajs.cn,sina.com.cn,gtimg.cn,gu.qq.com,qq.com,eastmoney.com,localhost,127.0.0.1",
+        );
+        log::info!("[proxy] {} (stock APIs excluded)", proxy);
+        return;
     }
     log::info!("[proxy] No local proxy detected");
 }
