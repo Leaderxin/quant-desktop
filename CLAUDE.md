@@ -65,9 +65,13 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 [vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
+CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `http://ipc.localhost`，其余平台 `ipc:`）；缺了它每次 invoke 都会先 fetch 失败再退回 postMessage，日志里成串 `IPC custom protocol failed`。
+
 ### Rust 后端（`src-tauri/src/`）
 
 **`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。窗口位置/大小落库并在下次启动时按显示器边界校验后恢复。
+
+- 启动路径上**不要做串行网络等待**：`detect_and_set_proxy` 的 7 个本地端口必须并行、超时 ≤150ms（Win10 上端口被静默丢弃时，串行的 1s 超时会逐个等满）。它与 `Scheduler::spawn` 都在 `main.show()` 之后，但必须「先探测、后调度器」。共享行情 client 用 `.no_proxy()` 且必须惰性获取 —— **适配器不要在构造时初始化它**。
 
 三个必须单点实现的窗口 helper（托盘与设置页共用，各写一份必漂）：
 
@@ -152,7 +156,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 - 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
 - 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
 - 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
-- 详情面板高度是**确定值**，不是由内容撑开：`StockDetail` 用 `clamp(240px, 52vh, 560px)`（剩下留给自选表），`IndexDetail` 用 `min(560px, 100vh - 160px)`；图表容器 `flex: 1` 填满剩余空间。`chart.css` 里**不要再给图区写死高度** —— 写死会在 1080p @150%（CSS 视口约 720px）这类矮窗口里把副图顶出容器、被 `.main-content` 的 `overflow: hidden` 裁掉。矮视口（`max-height: 820px`）还会收紧摘要卡、盘口行高与详情内边距。两个详情面板都通过 `useEscapeKey` 支持 Esc 关闭（只在面板挂载期间监听）。
+- 详情面板高度必须是**确定值**（按视口 clamp），图表容器 `flex: 1` 填满剩余空间；`chart.css` 里**不要给图区写死高度** —— 1080p @150% 这类矮窗口会把副图顶出容器、被 `.main-content` 的 `overflow: hidden` 裁掉。详情与设置页用 `defineAsyncComponent` 懒加载；**StockDetail 与 IndexDetail 两个入口必须同时异步**，否则 klinecharts 会经静态链回到首屏。
 - Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
 - Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
 
