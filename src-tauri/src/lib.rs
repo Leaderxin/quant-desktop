@@ -536,6 +536,12 @@ pub fn run() {
                 )
                 .tooltip("QuantDesktop")
                 .menu(&menu)
+                // 左键只切换主窗口，菜单留给右键。tray-icon 在 Windows 上的默认值是
+                // `menu_on_left_click = true`：每次 WM_LBUTTONUP 之后都会先派发
+                // click 事件、再 TrackPopupMenu。于是关窗口那一次会「窗口隐藏了、
+                // 菜单留在屏幕上」；显示那次看起来正常，只是因为 show_main_window
+                // 把窗口拉到前台顺带把菜单顶掉了。Linux(gtk) 忽略这个开关，不受影响。
+                .show_menu_on_left_click(false)
                 .on_menu_event({
                     let db = db.clone();
                     move |app, event| {
