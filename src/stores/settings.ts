@@ -49,8 +49,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const themeMode = computed<ThemeMode>(() => parseThemeMode(settings.value['theme']));
   /** 系统深浅。**只在跟随系统下可信** —— 显式主题会把窗口主题钉住，而钉住会连
    *  WebView 的 `prefers-color-scheme` 一起冻在应用自己的主题上（见 utils/theme.ts）。
-   *  Linux 上钉的是进程级的 GTK 偏好；system 模式下 Rust 侧会先解 pin 再按 portal
-   *  的系统值设回（见 lib.rs 的 set_app_theme），所以这里读到的仍是系统真值。 */
+   *  Linux 上钉的是进程级的 GTK 偏好；system 模式下 Rust 侧会按 portal 的系统值
+   *  设回（见 lib.rs 的 set_app_theme），所以这里读到的仍是系统真值。 */
   const systemDark = ref(systemPrefersDark());
   /** 实际生效的主题。所有渲染判断（naive-ui 主题、图表配色、图标）读的都是它 ——
    *  「system」是个模式不是一种颜色，谁把它当颜色用，谁就静默落到亮色分支。 */
@@ -284,7 +284,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }, { immediate: true });
 
   // 2) 模式变了 → 交给原生层，然后**重新**读一次系统深浅。
-  //    顺序不能反：解 pin 之前 matchMedia 读回来的是应用自己钉的值，先读就会把
+  //    顺序不能反：原生层处理之前 matchMedia 读回来的是应用自己钉的值，先读就会把
   //    「刚从显式切到跟随系统」解析成旧主题（下一帧会自愈，但那一下是闪变）。
   //    不用 immediate：store 刚建立时设置表还空着，那一刻发 IPC 等于拿兜底模式去
   //    改窗口主题 —— 而启动时 Rust 已经按库里的值设过、且早于 `main.show()`。

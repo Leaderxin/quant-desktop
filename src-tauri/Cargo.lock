@@ -2960,6 +2960,7 @@ dependencies = [
  "async-trait",
  "calamine",
  "chrono",
+ "dbus",
  "dirs 7.0.0",
  "encoding_rs",
  "log",

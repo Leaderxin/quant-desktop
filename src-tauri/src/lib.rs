@@ -92,6 +92,45 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
     let _ = window; // suppress unused warning on non-Windows
 }
 
+/// 直接向 xdg-desktop-portal 读系统配色方案（Linux 专用）。
+///
+/// 为什么不复用 `window.theme()`：窗口被 pin 过之后它返回的是 pin 值；而解 pin
+/// （`set_theme(None)`）在 Linux 上会把进程级 GTK 偏好强制改成浅色，WebKitGTK
+/// 会先按浅色重绘一帧 —— 这就是切换「跟随系统」时闪白的根因（issue #37）。
+/// 所以必须在碰 GTK 之前把系统值读出来，之后只做一次 `set_theme(Some(..))`。
+///
+/// 与 tao 的 `platform_impl/linux/portal.rs` 是同一条 D-Bus 调用。dbus 已经在
+/// 依赖树里（tao 的 `dbus` feature，tauri 默认开启），这里只是直接依赖它。
+///
+/// 返回 `None` 表示 portal 不可用（无 xdg-desktop-portal / dbus 连不上），
+/// 调用方退回 tao 的旧路径。
+#[cfg(target_os = "linux")]
+fn linux_portal_theme() -> Option<tauri::Theme> {
+    use dbus::arg::Variant;
+    use dbus::blocking::Connection;
+    use std::time::Duration;
+
+    let connection = Connection::new_session().ok()?;
+    let proxy = connection.with_proxy(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        Duration::from_secs(2),
+    );
+    let result: (Variant<Variant<u32>>,) = proxy
+        .method_call(
+            "org.freedesktop.portal.Settings",
+            "Read",
+            ("org.freedesktop.appearance", "color-scheme"),
+        )
+        .ok()?;
+
+    Some(match result.0 .0 .0 {
+        1 => tauri::Theme::Dark,
+        2 => tauri::Theme::Light,
+        _ => tauri::Theme::Light, // 0 = 无偏好
+    })
+}
+
 /// 把主题同步到窗口的标题栏。
 ///
 /// `<html data-theme>` 只管网页内容 —— **标题栏是操作系统画的**，两者互不相干，
@@ -120,7 +159,10 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
 /// 系统；而 WebKitGTK 的 `prefers-color-scheme` 读的正是这个 GTK 设置。更糟的是
 /// 它是**进程级**的：建窗时 tao 从 xdg-desktop-portal 读到的系统偏好会被这里一句
 /// `None` 覆盖掉，症状就是深色桌面上应用永远浅色（issue #35）。所以 Linux 的
-/// system 模式走下面函数体里的「解 pin → 读 portal → 设回去」，不能直传 `None`。
+/// system 模式必须**绕开 `set_theme(None)`**：先用 [`linux_portal_theme`] 直接读
+/// portal 的系统值，再 `set_theme(Some(..))` 设回去。先解 pin 再读的话，GTK 会被
+/// 强制改成浅色，WebKitGTK 先按浅色重绘一帧，深色桌面上就是切换「跟随系统」时
+/// 闪一下白（issue #37）。
 ///
 /// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画。Windows 上
 /// 窗口主题是每窗口独立的，ticker 的 matchMedia 永远是系统真值；Linux 上 GTK 设置
@@ -154,18 +196,31 @@ pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> 
             if !THEME_PINNED.swap(false, Ordering::Relaxed) {
                 return Ok(());
             }
-            // 先清 pin（tao 的 preferred_theme），此时 window.theme() 会回落到
-            // portal 读到的系统值；再按它把 GTK 偏好设回去。之后系统主题变化仍由
-            // tao 的 portal 监听（SettingChanged → SetTheme）继续同步。
-            //
-            // 最后一次 set_theme(Some(..)) 会重新 pin 住 preferred_theme，但那只
-            // 影响 window.theme() 的返回值（portal 监听不看它），而我们也只在清
-            // 掉 pin 之后读一次，没有依赖它的地方。
+
+            // 先直接读 portal，再一次性设回去。**不要先 set_theme(None)**：
+            // 那会把进程级 GTK 偏好强制改成浅色，WebKitGTK 先按浅色重绘一帧，
+            // 再被下面这句设回深色 —— 深色桌面上就是切换「跟随系统」时闪一下白
+            // （issue #37）。这条路径不经过 None，`preferred_theme` 会停在系统值
+            // 上；它只影响 `window.theme()` 的返回值，而系统主题变化由 tao 的
+            // portal 监听直接改 GTK，不看 `preferred_theme`，所以没有副作用。
+            if let Some(system) = linux_portal_theme() {
+                log::debug!("Linux: system theme resolved to {system:?}");
+                if let Err(e) = window.set_theme(Some(system)) {
+                    THEME_PINNED.store(true, Ordering::Relaxed);
+                    return Err(e.to_string());
+                }
+                return Ok(());
+            }
+
+            // portal 不可用（无 xdg-desktop-portal / dbus 连不上）：退回 tao 的
+            // 旧路径（解 pin → 读 portal → 设回去）。这条路径会经过「强制浅色」，
+            // 可能闪一下，但没有别的信息来源。
+            log::debug!("Linux: portal theme unavailable, falling back to tao");
             let result = window
                 .set_theme(None)
                 .and_then(|_| window.theme())
                 .and_then(|system| {
-                    log::debug!("Linux: system theme resolved to {system:?}");
+                    log::debug!("Linux: system theme resolved to {system:?} (tao fallback)");
                     window.set_theme(Some(system))
                 });
             if let Err(e) = result {
@@ -177,19 +232,18 @@ pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> 
             return Ok(());
         }
 
-        // 显式主题：记下本进程 pin 过，切回 system 时才知道要解 pin。
+        // 显式主题：记下本进程 pin 过，切回 system 时才知道要去问 portal。
         THEME_PINNED.store(true, Ordering::Relaxed);
     }
 
     window.set_theme(theme).map_err(|e| e.to_string())
 }
 
-/// Linux 上本进程是否把 GTK 主题 pin 成了显式值。
+/// Linux 上本进程上一次是否把 GTK 主题 pin 成了显式值。
 ///
-/// system 模式要先解 pin 才知道系统偏好，而 tao 在 Linux 上没有「解 pin 回系统」
-/// 这个操作（`set_theme(None)` 会强制 `set_gtk_application_prefer_dark_theme(false)`）。
-/// 所以必须自己记着有没有 pin 过：启动时没 pin 过就什么都别做，否则会把 tao
-/// 建窗时从 portal 写好的偏好又改回浅色。只在 Linux 编译。
+/// 启动时没 pin 过就什么都不用做：tao 建窗时已经按 portal 把 GTK 偏好设好了，
+/// 这里再动它反而会出问题（旧实现里那句 `set_theme(None)` 会强制浅色，见 #35）。
+/// 切成显式主题时置位，切回 system 时据此决定要不要去问 portal。只在 Linux 编译。
 #[cfg(target_os = "linux")]
 static THEME_PINNED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);

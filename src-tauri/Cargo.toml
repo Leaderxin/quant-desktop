@@ -73,6 +73,13 @@ calamine = "0.38"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", optional = true, features = ["ApplicationModel"] }
 
+# Linux 的「跟随系统」直接向 xdg-desktop-portal 读系统配色方案（见
+# `lib.rs::linux_portal_theme`）。dbus 本来就在 Linux 构建的依赖树里
+# （tao 的 `dbus` feature，tauri 默认开启），这里只是把它声明成直接依赖，
+# 不会增加编译量。
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "0.9"
+
 
 
 # Release 体积优先：LTO + 单 codegen unit + 去符号，exe/NSIS 安装包更小，
