@@ -15,11 +15,11 @@ fn sina_scale(period: &str) -> Result<u32, AppError> {
         "weekly" => Ok(1200),
         "monthly" => Ok(7200),
         "1min" => Err(AppError::Unsupported(
-            "新浪数据源不支持1分钟K线，请切换到腾讯数据源查看".into(),
+            "备用源不支持1分钟K线，请切换到主数据源查看".into(),
         )),
         other => super::minute_span(other)
             .ok_or_else(|| AppError::Unsupported(
-                "新浪数据源不支持该周期，请切换到腾讯数据源查看".into(),
+                "备用源不支持该周期，请切换到主数据源查看".into(),
             )),
     }
 }
@@ -278,7 +278,7 @@ impl DataSource for SinaAdapter {
     }
 
     fn display_name(&self) -> &str {
-        "新浪财经"
+        "备用源"
     }
 
     async fn fetch_realtime(

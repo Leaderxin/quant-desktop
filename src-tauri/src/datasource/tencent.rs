@@ -197,7 +197,7 @@ impl TencentAdapter {
 impl DataSource for TencentAdapter {
     fn name(&self) -> &str { "tencent" }
 
-    fn display_name(&self) -> &str { "腾讯证券" }
+    fn display_name(&self) -> &str { "主数据源" }
 
     async fn fetch_realtime(
         &self,

@@ -28,7 +28,7 @@ function mockBackend(settings: Record<string, string>) {
       case 'get_settings':
         return settings;
       case 'list_datasources':
-        return [['tencent', '腾讯证券']];
+        return [['tencent', '主数据源']];
       case 'list_index_pool':
         return [['s_sh000001', '上证指数'], ['s_sz399001', '深证成指']];
       case 'get_autostart':
