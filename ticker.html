@@ -5,15 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ticker</title>
   <style>
-    body {
+    /*
+      底板(背景/圆角/阴影)画在 #app 上，html/body 只负责视口。
+
+      两个容易改坏的点：
+      1. `html body` 的两段选择器不是多余的：variables.css 里的全局
+         `body { background-color: var(--color-surface-0) }` 由 JS 注入，
+         比这段内联 <style> 更晚，同为 0,0,1 特异性时它会赢 —— 底板会一直是
+         surface-0(根背景色)。用 `html body` 提到 0,0,2 才压得住。
+      2. #app 必须 100vh：窗口比内容高时(例如 Linux 上 GTK 尺寸提示把窗口
+         钉住的那一截)，空白区域也得是底板色；body 已经是透明的，不铺满就会
+         露出一块桌面。
+    */
+    html body {
       margin: 0;
       padding: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    #app {
+      height: 100vh;
       overflow: hidden;
       background: var(--color-surface-1, #161b22);
       border-radius: 7px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
     }
-    [data-theme="light"] body {
+    [data-theme="light"] #app {
       background: var(--color-surface-1, #f6f8fa);
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
     }
@@ -25,8 +42,8 @@
       已经开了 transparent: true，否则 webview 会画一层不透明底，这里怎么改
       都透不过去。
     */
-    body.ticker-transparent,
-    [data-theme="light"] body.ticker-transparent {
+    body.ticker-transparent #app,
+    [data-theme="light"] body.ticker-transparent #app {
       background: transparent;
       border-radius: 0;
       box-shadow: none;

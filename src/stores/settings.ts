@@ -48,7 +48,9 @@ export const useSettingsStore = defineStore('settings', () => {
   /** 模式：设置页选的那个，唯一真源是设置表。 */
   const themeMode = computed<ThemeMode>(() => parseThemeMode(settings.value['theme']));
   /** 系统深浅。**只在跟随系统下可信** —— 显式主题会把窗口主题钉住，而钉住会连
-   *  WebView 的 `prefers-color-scheme` 一起冻在应用自己的主题上（见 utils/theme.ts）。 */
+   *  WebView 的 `prefers-color-scheme` 一起冻在应用自己的主题上（见 utils/theme.ts）。
+   *  Linux 上钉的是进程级的 GTK 偏好；system 模式下 Rust 侧会先解 pin 再按 portal
+   *  的系统值设回（见 lib.rs 的 set_app_theme），所以这里读到的仍是系统真值。 */
   const systemDark = ref(systemPrefersDark());
   /** 实际生效的主题。所有渲染判断（naive-ui 主题、图表配色、图标）读的都是它 ——
    *  「system」是个模式不是一种颜色，谁把它当颜色用，谁就静默落到亮色分支。 */
@@ -305,8 +307,10 @@ export const useSettingsStore = defineStore('settings', () => {
    * `settings-changed` 后走的也是同一条路（它读不到本窗口的 store）。
    *
    * **不再单独广播 `theme-changed`**：那是两态时代的产物 —— 它带的是解析好的实际
-   * 主题，而现在每个窗口都能自己解析（行情条窗口的主题从没被钉过，它的 matchMedia
-   * 永远是真系统值），多一条通道只会多一份「两边说法不一致」的机会。
+   * 主题，而现在每个窗口都能自己解析（Linux 的 GTK 偏好是进程级的、会跟着主窗口
+   * 一起被 pin，但 system 模式下 Rust 侧会按 portal 值设回，见 lib.rs 的
+   * set_app_theme；行情条读到的仍是系统真值），多一条通道只会多一份「两边说法
+   * 不一致」的机会。
    */
   async function setThemeMode(mode: ThemeMode) {
     await setSetting('theme', mode);
