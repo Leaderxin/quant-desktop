@@ -45,7 +45,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "~2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -54,7 +54,7 @@ encoding_rs = "0.8"
 log = "0.4"
 simplelog = "0.12"
 thiserror = "2"
-dirs = "5"
+dirs = "7"
 tauri-plugin-updater = "2"
 raw-window-handle = "0.6"
 # 原生「另存为」对话框（自选导入模板保存用）。
@@ -64,14 +64,14 @@ raw-window-handle = "0.6"
 # @tauri-apps/plugin-dialog 必须跟着钉在 ~2.7 —— tauri build 启动时会核对
 # 两侧的 major/minor（v1.6.3 tag 第一次 release 就是这样挂的）。
 tauri-plugin-dialog = "~2.7"
-rust_xlsxwriter = "0.101"
-calamine = "0.37"
+rust_xlsxwriter = "0.102"
+calamine = "0.38"
 
 # WinRT StartupTask API for the store build's autostart (Windows only, pulled in
 # by the `store` feature). Same version as the copy already in the dependency
 # tree via tauri, so this adds no extra compilation.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", optional = true, features = ["ApplicationModel"] }
+windows = { version = "0.62", optional = true, features = ["ApplicationModel"] }
 
 
 
