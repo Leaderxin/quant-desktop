@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, inject, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, defineComponent, h, inject, onMounted, ref } from 'vue';
 import { NButton, NDataTable, NDropdown, useMessage } from 'naive-ui';
 import type { DataTableColumns, DropdownOption } from 'naive-ui';
 import { useWatchlistStore } from '@/stores/watchlist';
@@ -8,15 +8,30 @@ import { useMarketStore } from '@/stores/market';
 import { useSettingsStore } from '@/stores/settings';
 import type { WatchItem } from '@/types';
 import { Inbox, Plus, Upload } from '@lucide/vue';
-import { formatPrice, formatVolume, formatCode, cnCategory } from '@/utils/format';
+import { formatPrice, formatVolume, formatCode, cnCategory, getQuotePrecision } from '@/utils/format';
 import { columnLabel, type ColumnKey } from '@/utils/prefs';
 import AddStockDialog from './AddStockDialog.vue';
 import ImportWatchlistDialog from './ImportWatchlistDialog.vue';
 import DeleteStockDialog from './DeleteStockDialog.vue';
 import GroupTabs from './GroupTabs.vue';
 import MarketTag from './MarketTag.vue';
-import StockDetail from '@/components/detail/StockDetail.vue';
+import DetailLoading from '@/components/detail/DetailLoading.vue';
+import { prefetchWhenIdle } from '@/utils/prefetch';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
+
+/**
+ * 详情面板懒加载：它（经 KLineChart）把 klinecharts 整包带进来，约 235KB，
+ * 只在点开某一行时才用得上。空闲时预取，避免首次点击等 chunk。
+ */
+const loadStockDetail = () => import('@/components/detail/StockDetail.vue');
+
+const StockDetail = defineAsyncComponent({
+  loader: loadStockDetail,
+  loadingComponent: defineComponent({
+    render: () => h(DetailLoading, { variant: 'stock' }),
+  }),
+  delay: 120,
+});
 
 const watchlist = useWatchlistStore();
 const quoteStore = useQuoteStore();
@@ -35,6 +50,7 @@ onMounted(() => {
   indexDetailCoord?.registerClearStockFn?.(() => {
     selectedRow.value = null;
   });
+  prefetchWhenIdle(loadStockDetail);
 });
 
 const selectedRow = ref<WatchItem | null>(null);
@@ -96,7 +112,7 @@ function buildColumn(key: ColumnKey): DataTableColumns<WatchItem>[number] {
         render: (row) => {
           const q = quoteStore.getQuote(row.code, row.market);
           if (!q) return '--';
-          return coloredPct(row, formatPrice(q.price));
+          return coloredPct(row, formatPrice(q.price, '--', getQuotePrecision(row.code, q.price)));
         },
       };
     case 'change_pct':
@@ -114,7 +130,8 @@ function buildColumn(key: ColumnKey): DataTableColumns<WatchItem>[number] {
         render: (row) => {
           const q = quoteStore.getQuote(row.code, row.market);
           if (!q) return '--';
-          return coloredPct(row, `${q.change >= 0 ? '+' : ''}${formatPrice(q.change)}`);
+          // ETF/LOF 固定 3 位：涨跌额与价格同精度，整分变化也显示 +0.010 而不是 +0.01
+          return coloredPct(row, `${q.change >= 0 ? '+' : ''}${formatPrice(q.change, '--', getQuotePrecision(row.code, q.change))}`);
         },
       };
     case 'volume':
@@ -525,6 +542,11 @@ defineExpose({ clearSelection: () => { selectedRow.value = null; } });
 
 :deep(.watchlist-table) {
   flex: 1;
+  /* 详情面板有固定高度，表格必须能缩到 0 而不是撑住 min-content，否则二者合力
+     再次超出容器（详情底部被裁）。overflow:hidden 防止极短窗口下被压到 0 时
+     表头（sticky 层）溢出到详情标题上方。 */
+  min-height: 0;
+  overflow: hidden;
   margin-top: var(--space-1);
 }
 /* P&L color classes (used via render functions) */

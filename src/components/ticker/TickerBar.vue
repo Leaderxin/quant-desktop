@@ -55,7 +55,7 @@ const OPEN_ERROR_MS = 5000;
 const perPage = computed(() => settings.tickerItemsPerPage);
 
 /**
- * 透明背景是窗口级的视觉效果，而底板画在 body 上（见 ticker.html），
+ * 透明背景是窗口级的视觉效果，而底板画在 #app 上（见 ticker.html），
  * 不在 Vue 组件里 —— 所以开关要落到 document.body 的 class 上。
  */
 watch(

@@ -75,9 +75,10 @@ mod startup_task {
     const TASK_ID: &str = "QuantDesktop";
 
     fn get_task() -> windows::core::Result<StartupTask> {
-        // IAsyncOperation::get() blocks on an event handle — safe from any
-        // thread, including the IPC thread these commands run on.
-        StartupTask::GetAsync(&HSTRING::from(TASK_ID))?.get()
+        // IAsyncOperation::join() blocks on an event handle — safe from any
+        // thread, including the IPC thread these commands run on. (windows
+        // 0.62 removed the older `get()` blocker.)
+        StartupTask::GetAsync(&HSTRING::from(TASK_ID))?.join()
     }
 
     pub fn is_enabled() -> bool {
@@ -98,7 +99,7 @@ mod startup_task {
             let state = task
                 .RequestEnableAsync()
                 .map_err(|e| e.to_string())?
-                .get()
+                .join()
                 .map_err(|e| e.to_string())?;
             match state {
                 StartupTaskState::Enabled | StartupTaskState::EnabledByPolicy => Ok(()),

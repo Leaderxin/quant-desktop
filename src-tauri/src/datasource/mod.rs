@@ -16,9 +16,15 @@ static SHARED_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Get or initialize the shared reqwest::Client.
 /// All adapters should call this and clone the handle.
+///
+/// `.no_proxy()` 是刻意的：这个 client 只访问境内行情接口，它们全在
+/// `detect_and_set_proxy` 的 `NO_PROXY` 名单里。关掉代理自动探测后，
+/// client 何时构造就不再影响它读到什么代理环境变量 —— 启动顺序可以自由调整。
+/// 需要走代理的请求（更新检查）由 updater 插件自己的 client 负责。
 pub fn shared_client() -> &'static Client {
     SHARED_CLIENT.get_or_init(|| {
         Client::builder()
+            .no_proxy()
             .timeout(Duration::from_secs(10))
             .user_agent(concat!(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",
@@ -253,6 +259,10 @@ pub trait DataSource: Send + Sync {
 /// Data source manager — registration, switching, unified dispatch
 pub struct DataSourceManager {
     sources: HashMap<String, Box<dyn DataSource>>,
+    /// 注册顺序。`HashMap` 的迭代顺序每个进程随机 —— 直接迭代它的话，
+    /// 设置页与顶栏下拉里「备用源」可能排到「主数据源」前面，且每次启动
+    /// 顺序都可能不同。对外列表一律按注册顺序给出。
+    order: Vec<String>,
     active: RwLock<String>,
     pub wakeup: Notify,
 }
@@ -261,6 +271,7 @@ impl DataSourceManager {
     pub fn new() -> Self {
         Self {
             sources: HashMap::new(),
+            order: Vec::new(),
             active: RwLock::new(String::new()),
             wakeup: Notify::new(),
         }
@@ -271,6 +282,9 @@ impl DataSourceManager {
         let name = source.name().to_string();
         if self.sources.is_empty() {
             *self.active.write().unwrap_or_else(|e| e.into_inner()) = name.clone();
+        }
+        if !self.sources.contains_key(&name) {
+            self.order.push(name.clone());
         }
         self.sources.insert(name, source);
     }
@@ -319,19 +333,27 @@ impl DataSourceManager {
         self.sources.get(name).map(|s| s.as_ref())
     }
 
-    /// Iterate over all registered data sources (name, source)
+    /// Iterate over all registered data sources (name, source), in registration order
     pub fn all_sources(&self) -> Vec<(String, &dyn DataSource)> {
-        self.sources
+        self.order
             .iter()
-            .map(|(k, v)| (k.clone(), v.as_ref()))
+            .filter_map(|name| {
+                self.sources
+                    .get(name)
+                    .map(|source| (name.clone(), source.as_ref()))
+            })
             .collect()
     }
 
-    /// List all registered data sources (id, display_name)
+    /// List all registered data sources (id, display_name), in registration order
     pub fn list_sources(&self) -> Vec<(&str, &str)> {
-        self.sources
+        self.order
             .iter()
-            .map(|(k, v)| (k.as_str(), v.display_name()))
+            .filter_map(|name| {
+                self.sources
+                    .get(name)
+                    .map(|source| (name.as_str(), source.display_name()))
+            })
             .collect()
     }
 }
@@ -379,6 +401,59 @@ mod tests {
         assert_eq!(cn_category("bj920185"), "GP-A");
         assert_eq!(cn_category("bj899050"), "ZS");
         assert_eq!(cn_category(""), "");
+    }
+
+    /// 下拉框按注册顺序展示。`HashMap` 迭代顺序每个进程随机，曾经会让
+    /// 「备用源」排到「主数据源」前面，且每次启动都可能换位置。
+    #[test]
+    fn list_sources_keeps_registration_order() {
+        struct Dummy(&'static str, &'static str);
+
+        #[async_trait]
+        impl DataSource for Dummy {
+            fn name(&self) -> &str {
+                self.0
+            }
+
+            fn display_name(&self) -> &str {
+                self.1
+            }
+
+            async fn fetch_realtime(
+                &self,
+                _codes: &[String],
+                _market: &str,
+            ) -> Result<Vec<Quote>, AppError> {
+                Ok(vec![])
+            }
+
+            async fn fetch_indices(&self) -> Result<Vec<IndexQuote>, AppError> {
+                Ok(vec![])
+            }
+
+            async fn search(
+                &self,
+                _keyword: &str,
+                _market: &str,
+            ) -> Result<Vec<StockBrief>, AppError> {
+                Ok(vec![])
+            }
+
+            async fn health_check(&self) -> Result<bool, AppError> {
+                Ok(true)
+            }
+        }
+
+        let mut manager = DataSourceManager::new();
+        manager.register(Box::new(Dummy("tencent", "主数据源")));
+        manager.register(Box::new(Dummy("sina", "备用源")));
+
+        let names: Vec<&str> = manager
+            .list_sources()
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+        assert_eq!(names, vec!["主数据源", "备用源"]);
     }
 }
 

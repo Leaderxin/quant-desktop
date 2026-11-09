@@ -92,6 +92,45 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
     let _ = window; // suppress unused warning on non-Windows
 }
 
+/// 直接向 xdg-desktop-portal 读系统配色方案（Linux 专用）。
+///
+/// 为什么不复用 `window.theme()`：窗口被 pin 过之后它返回的是 pin 值；而解 pin
+/// （`set_theme(None)`）在 Linux 上会把进程级 GTK 偏好强制改成浅色，WebKitGTK
+/// 会先按浅色重绘一帧 —— 这就是切换「跟随系统」时闪白的根因（issue #37）。
+/// 所以必须在碰 GTK 之前把系统值读出来，之后只做一次 `set_theme(Some(..))`。
+///
+/// 与 tao 的 `platform_impl/linux/portal.rs` 是同一条 D-Bus 调用。dbus 已经在
+/// 依赖树里（tao 的 `dbus` feature，tauri 默认开启），这里只是直接依赖它。
+///
+/// 返回 `None` 表示 portal 不可用（无 xdg-desktop-portal / dbus 连不上），
+/// 调用方退回 tao 的旧路径。
+#[cfg(target_os = "linux")]
+fn linux_portal_theme() -> Option<tauri::Theme> {
+    use dbus::arg::Variant;
+    use dbus::blocking::Connection;
+    use std::time::Duration;
+
+    let connection = Connection::new_session().ok()?;
+    let proxy = connection.with_proxy(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+        Duration::from_secs(2),
+    );
+    let result: (Variant<Variant<u32>>,) = proxy
+        .method_call(
+            "org.freedesktop.portal.Settings",
+            "Read",
+            ("org.freedesktop.appearance", "color-scheme"),
+        )
+        .ok()?;
+
+    Some(match result.0 .0 .0 {
+        1 => tauri::Theme::Dark,
+        2 => tauri::Theme::Light,
+        _ => tauri::Theme::Light, // 0 = 无偏好
+    })
+}
+
 /// 把主题同步到窗口的标题栏。
 ///
 /// `<html data-theme>` 只管网页内容 —— **标题栏是操作系统画的**，两者互不相干，
@@ -114,8 +153,21 @@ fn apply_tool_window_style(window: &tauri::WebviewWindow) {
 /// 合起来就是：显式主题会把 webview 的深浅判定一起钉死。所以「跟随系统」必须真的
 /// 把窗口交还给系统（`None`），前端那条 `matchMedia` 订阅才有意义。
 ///
-/// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画；它也从没被
-/// 钉过，前端读到的永远是系统真值。
+/// ⚠ **Linux/GTK 是例外**：tao 把 `set_theme(None)` 实现成
+/// `set_gtk_application_prefer_dark_theme(false)`（见 tao 的
+/// platform_impl/linux/event_loop.rs），也就是**强制浅色**，而不是解 pin 交还给
+/// 系统；而 WebKitGTK 的 `prefers-color-scheme` 读的正是这个 GTK 设置。更糟的是
+/// 它是**进程级**的：建窗时 tao 从 xdg-desktop-portal 读到的系统偏好会被这里一句
+/// `None` 覆盖掉，症状就是深色桌面上应用永远浅色（issue #35）。所以 Linux 的
+/// system 模式必须**绕开 `set_theme(None)`**：先用 [`linux_portal_theme`] 直接读
+/// portal 的系统值，再 `set_theme(Some(..))` 设回去。先解 pin 再读的话，GTK 会被
+/// 强制改成浅色，WebKitGTK 先按浅色重绘一帧，深色桌面上就是切换「跟随系统」时
+/// 闪一下白（issue #37）。
+///
+/// 只作用于 main：ticker 是 `decorations: false`，根本没有标题栏可画。Windows 上
+/// 窗口主题是每窗口独立的，ticker 的 matchMedia 永远是系统真值；Linux 上 GTK 设置
+/// 是进程级的、会跟着一起被 pin，但 ticker 的主题由自己的 `themeMode` 解析，
+/// 不依赖那里的系统值。
 ///
 /// 启动时必须在 `main.show()` **之前**调。窗口是先 show 出来、webview 才加载完的，
 /// 若等前端跑到这里才变色，暗色主题下会先闪一帧白色标题栏。设置页的开关走
@@ -132,8 +184,69 @@ pub fn set_app_theme(app: &tauri::AppHandle, theme: &str) -> Result<(), String> 
         "light" => Some(tauri::Theme::Light),
         _ => None,
     };
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::sync::atomic::Ordering;
+
+        if theme.is_none() {
+            // 见函数头注释：tao 的 None 在 Linux 上是「强制浅色」，不是「跟随系统」。
+            // 没 pin 过就什么都不用做：建窗时 tao 已经按 portal 把 GTK 偏好设好了，
+            // 这里再 set_theme(None) 只会把它改回浅色（issue #35）。
+            if !THEME_PINNED.swap(false, Ordering::Relaxed) {
+                return Ok(());
+            }
+
+            // 先直接读 portal，再一次性设回去。**不要先 set_theme(None)**：
+            // 那会把进程级 GTK 偏好强制改成浅色，WebKitGTK 先按浅色重绘一帧，
+            // 再被下面这句设回深色 —— 深色桌面上就是切换「跟随系统」时闪一下白
+            // （issue #37）。这条路径不经过 None，`preferred_theme` 会停在系统值
+            // 上；它只影响 `window.theme()` 的返回值，而系统主题变化由 tao 的
+            // portal 监听直接改 GTK，不看 `preferred_theme`，所以没有副作用。
+            if let Some(system) = linux_portal_theme() {
+                log::debug!("Linux: system theme resolved to {system:?}");
+                if let Err(e) = window.set_theme(Some(system)) {
+                    THEME_PINNED.store(true, Ordering::Relaxed);
+                    return Err(e.to_string());
+                }
+                return Ok(());
+            }
+
+            // portal 不可用（无 xdg-desktop-portal / dbus 连不上）：退回 tao 的
+            // 旧路径（解 pin → 读 portal → 设回去）。这条路径会经过「强制浅色」，
+            // 可能闪一下，但没有别的信息来源。
+            log::debug!("Linux: portal theme unavailable, falling back to tao");
+            let result = window
+                .set_theme(None)
+                .and_then(|_| window.theme())
+                .and_then(|system| {
+                    log::debug!("Linux: system theme resolved to {system:?} (tao fallback)");
+                    window.set_theme(Some(system))
+                });
+            if let Err(e) = result {
+                // 恢复标志让下次切到 system 重试：否则 GTK 可能停在强制浅色上，
+                // 而这里以为已经交还给系统了。
+                THEME_PINNED.store(true, Ordering::Relaxed);
+                return Err(e.to_string());
+            }
+            return Ok(());
+        }
+
+        // 显式主题：记下本进程 pin 过，切回 system 时才知道要去问 portal。
+        THEME_PINNED.store(true, Ordering::Relaxed);
+    }
+
     window.set_theme(theme).map_err(|e| e.to_string())
 }
+
+/// Linux 上本进程上一次是否把 GTK 主题 pin 成了显式值。
+///
+/// 启动时没 pin 过就什么都不用做：tao 建窗时已经按 portal 把 GTK 偏好设好了，
+/// 这里再动它反而会出问题（旧实现里那句 `set_theme(None)` 会强制浅色，见 #35）。
+/// 切成显式主题时置位，切回 system 时据此决定要不要去问 portal。只在 Linux 编译。
+#[cfg(target_os = "linux")]
+static THEME_PINNED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Runtime flag indicating whether the app is in portable mode
 /// (triggered by the presence of `portable.dat` next to the executable).
@@ -343,12 +456,6 @@ pub fn run() {
                 );
             }
 
-            // Detect local proxy (Clash/V2Ray) for updater downloads.
-            // Store builds have no updater, so this is compiled out.
-            // 放在 logger 之后：探测结果本身就要记日志，之前它在日志里永远是空的。
-            #[cfg(not(feature = "store"))]
-            detect_and_set_proxy();
-
             let db = Arc::new(Database::open(app_dir).expect("Failed to open database"));
             log::info!("Database opened successfully");
 
@@ -387,19 +494,11 @@ pub fn run() {
             ));
             app.manage(PortableMode(is_portable));
 
-            // Start background polling.
-            //
-            // 没有「基准轮询间隔」这个参数：节奏完全由 market_clock(交易时段) 与
-            // 自适应状态机(probe → normal → idle) 决定。历史上曾传过一个
-            // refresh_interval 设置值，但 Scheduler 从未引用它 —— 一个在设置表里、
-            // 在启动流程里读写、却对行为毫无影响的死键，已连同 `init_defaults` 里的
-            // 默认值一起删除。老库里残留的那行无害，不需要清理。
-            crate::cache::Scheduler::spawn(
-                ds_manager,
-                cache,
-                db.clone(),
-                app.handle().clone(),
-            );
+            // 启动顺序：托盘 → 主窗口 show → 代理探测 → 调度器 → 行情条 → 老板键。
+            // 代理探测（本机实测 ~265ms）与调度器启动都不影响首屏，故意放在
+            // main.show() 之后；但两者之间顺序有依赖 —— `detect_and_set_proxy`
+            // 必须在 `Scheduler::spawn` 之前完成，否则调度器的首个请求可能读到
+            // 尚未设置的代理环境变量。
 
             // ── System Tray ──
             let show_item = MenuItemBuilder::with_id("show", "显示主界面").build(app)?;
@@ -437,6 +536,12 @@ pub fn run() {
                 )
                 .tooltip("QuantDesktop")
                 .menu(&menu)
+                // 左键只切换主窗口，菜单留给右键。tray-icon 在 Windows 上的默认值是
+                // `menu_on_left_click = true`：每次 WM_LBUTTONUP 之后都会先派发
+                // click 事件、再 TrackPopupMenu。于是关窗口那一次会「窗口隐藏了、
+                // 菜单留在屏幕上」；显示那次看起来正常，只是因为 show_main_window
+                // 把窗口拉到前台顺带把菜单顶掉了。Linux(gtk) 忽略这个开关，不受影响。
+                .show_menu_on_left_click(false)
                 .on_menu_event({
                     let db = db.clone();
                     move |app, event| {
@@ -705,9 +810,60 @@ pub fn run() {
                 let _ = main.set_focus();
             }
 
+            // Detect local proxy (Clash/V2Ray) for updater downloads.
+            // Store builds have no updater, so this is compiled out.
+            // 放在 logger 之后：探测结果本身就要记日志，之前它在日志里永远是空的。
+            #[cfg(not(feature = "store"))]
+            detect_and_set_proxy();
+
+            // Start background polling.
+            //
+            // 没有「基准轮询间隔」这个参数：节奏完全由 market_clock(交易时段) 与
+            // 自适应状态机(probe → normal → idle) 决定。历史上曾传过一个
+            // refresh_interval 设置值，但 Scheduler 从未引用它 —— 一个在设置表里、
+            // 在启动流程里读写、却对行为毫无影响的死键，已连同 `init_defaults` 里的
+            // 默认值一起删除。老库里残留的那行无害，不需要清理。
+            crate::cache::Scheduler::spawn(
+                ds_manager,
+                cache,
+                db.clone(),
+                app.handle().clone(),
+            );
+
             // Ticker window: save position on move (clamped), restore on startup
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
+
+                // Linux/GTK：非 resizable 窗口的 min/max 尺寸提示会被钉成同一个值
+                // (gtk_window_compute_hints() 里 MAX_SIZE = MIN_SIZE)，tao 的
+                // set_inner_size 只能把窗口撑大、收不回内容高度，行情条底部就会
+                // 永久多出一截。前端 useTickerWindowHeight 正是靠 setSize 跟着内容
+                // 走的，所以这里必须放开 resizable。
+                //
+                // 代价是 Linux 上窗口不再禁止用户/WM 拖拽改尺寸。无边框小条实际
+                // 很难触发；即便被拉动，下次内容高度变化时 setSize(230, …) 也会把
+                // 宽度钉回去。
+                #[cfg(target_os = "linux")]
+                let _ = ticker.set_resizable(true);
+
+                // Windows：无边框窗口开着原生阴影时，DWM 会在窗口最顶上留 1px
+                // 白边（tao 在 Win10 上把 top inset 设成 0，白边正好压在客户区
+                // 第一行后面）。底板在 body 上时它被不透明画布盖住，看不出；
+                // 现在圆角处的画布是透明的，左上/右上角就会露出这条白边。
+                // 行情条的圆角由页面自己画，不需要原生阴影，直接关掉。
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = ticker.set_shadow(false);
+                    // 关掉原生阴影后，WM_NCCALCSIZE 不再扣掉 shadow insets，客户区
+                    // 会从配置的 230×40 涨到原来的 outer 尺寸（左右/下各多一圈）。
+                    // 下面的 show() 就在同一个 setup 块末尾，而前端要等设置/自选
+                    // 拉完才按内容高度 setSize —— 中间会闪一帧更宽更高的底板。
+                    // 这里先按配置尺寸收回去（窗口还没 show，看不到中间态）。
+                    let _ = ticker.set_size(tauri::LogicalSize::new(
+                        crate::datasource::TICKER_WIDTH as f64,
+                        crate::datasource::TICKER_HEIGHT as f64,
+                    ));
+                }
 
                 // Capture monitor bounds and ticker size for clamping on move
                 let mon = ticker.primary_monitor().ok().flatten();
@@ -862,17 +1018,19 @@ pub fn run() {
 }
 
 /// Auto-detect local proxy (Clash/V2Ray) and set env vars for updater downloads.
-/// NO_PROXY excludes domestic stock API hosts so quotes/K-line still go direct.
 ///
 /// # Safety
 ///
-/// `std::env::set_var` is NOT thread-safe per Rust's documentation. This function
-/// MUST be called during startup, on the main thread, BEFORE any background tasks
-/// (scheduler, updater checks, etc.) are spawned. Concurrent reads of the affected
-/// env vars from other threads while this function runs is undefined behavior.
+/// `std::env::set_var` is NOT thread-safe per Rust's documentation. Call this only
+/// from `setup` on the main thread, and keep it BEFORE `Scheduler::spawn` and before
+/// the updater's first request (which builds its own proxy-aware client).
+///
+/// 共享的行情 HTTP client 用 `.no_proxy()` 构建（见 `datasource::shared_client`），
+/// 不读这些环境变量，所以把它挪到 `main.show()` 之后是安全的。不要再让行情适配器
+/// 在构造时初始化共享 client —— 那会把「代理设置」与「client 构造顺序」重新绑定。
 #[cfg(not(feature = "store"))]
 fn detect_and_set_proxy() {
-    use std::net::TcpStream;
+    use std::net::{SocketAddr, TcpStream};
     use std::time::Duration;
 
     // Skip if proxy already set
@@ -884,21 +1042,37 @@ fn detect_and_set_proxy() {
         return;
     }
 
-    let ports = [7890u16, 10809, 10808, 7891, 1080, 8118, 8080];
-    for &port in &ports {
-        let addr = format!("127.0.0.1:{}", port);
-        if TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(1)).is_ok() {
-            let proxy = format!("http://{}", addr);
-            std::env::set_var("HTTPS_PROXY", &proxy);
-            std::env::set_var("HTTP_PROXY", &proxy);
-            // Exclude domestic stock APIs from proxy
-            std::env::set_var(
-                "NO_PROXY",
-                "sinajs.cn,sina.com.cn,gtimg.cn,gu.qq.com,qq.com,eastmoney.com,localhost,127.0.0.1",
-            );
-            log::info!("[proxy] {} (stock APIs excluded)", proxy);
-            return;
-        }
+    // 端口按优先级排列。**并行**探测：逐个 connect_timeout 在「端口被防火墙静默
+    // 丢弃」的机器上每个都要等满超时 —— 实测 Win10 无代理时 7 个端口串起来是 8 秒。
+    // 本地回环上有代理时连接是毫秒级的，150ms 足够区分。
+    const PORTS: [u16; 7] = [7890, 10809, 10808, 7891, 1080, 8118, 8080];
+    let detected = std::thread::scope(|scope| {
+        let handles: Vec<_> = PORTS
+            .iter()
+            .map(|&port| {
+                scope.spawn(move || {
+                    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+                    TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .zip(PORTS)
+            .find_map(|(handle, port)| handle.join().ok().filter(|ok| *ok).map(|_| port))
+    });
+
+    if let Some(port) = detected {
+        let proxy = format!("http://127.0.0.1:{}", port);
+        std::env::set_var("HTTPS_PROXY", &proxy);
+        std::env::set_var("HTTP_PROXY", &proxy);
+        // Exclude domestic stock APIs from proxy
+        std::env::set_var(
+            "NO_PROXY",
+            "sinajs.cn,sina.com.cn,gtimg.cn,gu.qq.com,qq.com,eastmoney.com,localhost,127.0.0.1",
+        );
+        log::info!("[proxy] {} (stock APIs excluded)", proxy);
+        return;
     }
     log::info!("[proxy] No local proxy detected");
 }

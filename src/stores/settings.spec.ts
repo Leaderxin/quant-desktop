@@ -28,7 +28,7 @@ function mockBackend(settings: Record<string, string>) {
       case 'get_settings':
         return settings;
       case 'list_datasources':
-        return [['tencent', '腾讯证券']];
+        return [['tencent', '主数据源']];
       case 'list_index_pool':
         return [['s_sh000001', '上证指数'], ['s_sz399001', '深证成指']];
       case 'get_autostart':
@@ -326,16 +326,16 @@ describe('主题：三态与跟随系统', () => {
     expect(emitMock).not.toHaveBeenCalledWith('theme-changed', expect.anything());
   });
 
-  it('切到「跟随系统」时，读的是原生层解 pin **之后**的系统值', async () => {
+  it('切到「跟随系统」时，读的是原生层处理**之后**的系统值', async () => {
     const sys = stubSystemTheme(false); // 此刻被钉成亮色，值不可信
     const store = await load({ theme: 'light' });
     invokeMock.mockClear();
 
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'set_window_theme') {
-        // 模拟 Rust 侧 set_theme(None)：窗口交还给系统之后 matchMedia 才变成真值。
-        // 刻意**不通知**监听者 —— 只有这样才分辨得出读的是解 pin 之后的值，
-        // 还是切模式之前就存下来的旧值（后者会让界面停在亮色）。
+        // 模拟原生层把窗口交还给系统（Windows/macOS 传 None，Linux 按 portal 设回）；
+        // 之后 matchMedia 才变成真值。刻意**不通知**监听者 —— 只有这样才分辨得出
+        // 读的是处理之后的系统值，还是切模式之前就存下来的旧值（后者会让界面停在亮色）。
         sys.mql.matches = true;
       }
       return undefined;

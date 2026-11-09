@@ -53,8 +53,10 @@ watch(() => [props.code, props.market], async () => {
 @import '@/assets/chart.css';
 
 .minute-chart {
+  /* 高度由详情面板分配；120px 是极短视口（1366×768 @150%）的兜底，
+     此时详情面板会被压到容器剩余高度，不能让图区把面板撑爆 */
   flex: 1;
-  min-height: 420px;
+  min-height: 120px;
   position: relative;
 }
 </style>

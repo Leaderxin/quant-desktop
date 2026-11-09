@@ -90,7 +90,7 @@
         "自选表列显示与顺序、默认排序、涨跌配色均可配置",
         "深色 / 浅色 / 跟随系统三种主题模式，主窗口、标题栏与行情条实时同步",
         "红涨绿跌与绿涨红跌两套配色方案",
-        "双数据源（腾讯证券 / 新浪财经）互备，接口异常自动回退",
+        "双数据源互备，接口异常自动回退",
         "按交易时段自适应轮询，节假日自动休眠",
         "行情写入本地 SQLite，重启立即恢复上次报价",
         "系统托盘常驻与开机自启"
@@ -105,7 +105,7 @@
           "name": "QuantDesktop 的行情数据从哪里来？可靠吗？",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成任何投资建议。"
+            "text": "行情数据来自公开网络，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成任何投资建议。"
           }
         },
         {
@@ -673,7 +673,7 @@
     <div class="underside__grid">
       <div class="underside__item reveal">
         <h4>双数据源</h4>
-        <p>腾讯证券（默认）+ 新浪财经（备用），顶栏一键切换、即时刷新，单源异常自动回退。</p>
+        <p>主数据源 + 备用源，顶栏一键切换、即时刷新，单源异常自动回退。</p>
       </div>
       <div class="underside__item reveal">
         <h4>离线缓存</h4>
@@ -711,7 +711,7 @@
         <tr><th scope="row">桌面框架</th><td>Tauri 2</td></tr>
         <tr><th scope="row">后端</th><td>Rust · tokio · rusqlite · reqwest</td></tr>
         <tr><th scope="row">前端</th><td>Vue 3 · Pinia · Naive UI · klinecharts</td></tr>
-        <tr><th scope="row">数据源</th><td>腾讯证券 · 新浪财经（可插拔适配器架构）</td></tr>
+        <tr><th scope="row">数据源</th><td>可插拔适配器架构</td></tr>
       </tbody>
     </table>
 
@@ -817,7 +817,7 @@
       <details class="faq__item reveal">
         <summary>行情数据从哪里来？可靠吗？</summary>
         <div class="faq__body">
-          来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。
+          行情数据来自公开网络，双数据源互为备份，接口异常自动回退。
           数据仅供个人参考，不构成任何投资建议。
         </div>
       </details>

@@ -15,7 +15,7 @@
 [![CI](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/Leaderxin/quant-desktop/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/Leaderxin/quant-desktop/total?style=flat-square)](https://github.com/Leaderxin/quant-desktop/releases)
 
-[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.6.4-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
+[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-v1.7.0-2ea44f?style=for-the-badge)](https://github.com/Leaderxin/quant-desktop/releases/latest)
 [![Microsoft Store](https://img.shields.io/badge/Microsoft_Store-%E4%B8%8B%E8%BD%BD-00A4EF?style=for-the-badge)](https://apps.microsoft.com/detail/9P46MZZDTTZ0)
 [![加入交流群](https://img.shields.io/badge/%E5%8A%A0%E5%85%A5%E4%BA%A4%E6%B5%81%E7%BE%A4-%E5%BE%AE%E4%BF%A1-07c160?style=for-the-badge)](#-贡献与交流)
 
@@ -219,7 +219,7 @@
 
 **更多细节**：
 
-- 🔌 **双数据源** —— 腾讯证券（默认）+ 新浪财经（备用），顶栏一键切换、即时刷新；单源接口异常自动回退
+- 🔌 **双数据源** —— 主数据源（默认）+ 备用源，顶栏一键切换、即时刷新；单源接口异常自动回退
 - 💾 **离线缓存** —— 行情数据写入本地 SQLite，重启立即恢复上次报价，打开就有数据，不用等网络
 - 🪟 **窗口位置记忆** —— 主窗口与行情条的位置、大小自动保存，重启原位恢复，跨显示器自动边界保护
 - 🫥 **托盘常驻** —— 关闭窗口不退出，安静缩到系统托盘；支持开机自启
@@ -258,7 +258,7 @@ QuantDesktop 基于 **Tauri 2 + Rust + Vue 3** 构建 —— 与开源项目 [CC
 | 桌面框架 | Tauri 2 |
 | 后端 | Rust · tokio · rusqlite · reqwest |
 | 前端 | Vue 3 · Pinia · Naive UI · klinecharts |
-| 数据源 | 腾讯证券 · 新浪财经（可插拔适配器架构） |
+| 数据源 | 主数据源 · 备用源（可插拔适配器架构） |
 
 ---
 
@@ -292,7 +292,7 @@ QuantDesktop 基于 **Tauri 2 + Rust + Vue 3** 构建 —— 与开源项目 [CC
 
 **Q：行情数据从哪里来？可靠吗？**
 
-来自腾讯证券与新浪财经的公开行情接口，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成投资建议。
+行情数据来自公开网络接口，双数据源互为备份，接口异常自动回退。数据仅供个人参考，不构成投资建议。
 
 **Q：真的完全免费吗？**
 
@@ -342,6 +342,6 @@ Windows 10 / 11、macOS（Intel + Apple Silicon）、Linux（Ubuntu 22.04+ / gli
 
 **如果 QuantDesktop 对你有用，欢迎点一个 ⭐ Star —— 这是持续开发的动力！**
 
-QuantDesktop v1.6.4 · 让看盘更安静一点
+QuantDesktop v1.7.0 · 让看盘更安静一点
 
 </div>

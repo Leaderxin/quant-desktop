@@ -52,4 +52,18 @@ const items = computed(() => [
   font-weight: 500;
   color: var(--color-text-primary, #e0e0e0);
 }
+
+/* 矮视口（1080p @150% 全屏）收紧卡片内边距与行距 */
+@media (max-height: 820px) {
+  .stock-summary {
+    padding: 8px 10px;
+    gap: 6px 8px;
+  }
+  .summary-label {
+    font-size: 10px;
+  }
+  .summary-value {
+    font-size: 12px;
+  }
+}
 </style>

@@ -1141,7 +1141,7 @@ impl TencentAdapter {
 impl DataSource for TencentAdapter {
     fn name(&self) -> &str { "tencent" }
 
-    fn display_name(&self) -> &str { "腾讯证券" }
+    fn display_name(&self) -> &str { "主数据源" }
 
     async fn fetch_realtime(
         &self,
@@ -1622,7 +1622,7 @@ git commit -m "feat: complete Phase 2 — improved experience features"
 After all tasks complete, verify end-to-end:
 
 1. **Stock Detail**: Run `npm run tauri dev`, add a stock to watchlist, click row → detail panel expands with summary + depth + chart
-2. **Tencent Data Source**: Open settings, switch to "腾讯证券" datasource, verify quotes load
+2. **Main Data Source**: Open settings, switch to "主数据源" datasource, verify quotes load
 3. **Sort/Filter**: Click column headers in watchlist table → data sorts ascending/descending
 4. **Window Memory**: Resize and move main window, close (hide), re-open → position and size are restored
 5. **Trading Hours**: Check scheduler logs/behavior during different sessions — faster polling during trading, slower otherwise

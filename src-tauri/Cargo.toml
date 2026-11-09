@@ -1,6 +1,6 @@
 [package]
 name = "quant-desktop"
-version = "1.6.4"
+version = "1.7.0"
 description = "A Tauri App"
 authors = ["Leaderxin"]
 edition = "2021"
@@ -45,7 +45,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "~2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -54,7 +54,7 @@ encoding_rs = "0.8"
 log = "0.4"
 simplelog = "0.12"
 thiserror = "2"
-dirs = "5"
+dirs = "7"
 tauri-plugin-updater = "2"
 raw-window-handle = "0.6"
 # 原生「另存为」对话框（自选导入模板保存用）。
@@ -64,13 +64,33 @@ raw-window-handle = "0.6"
 # @tauri-apps/plugin-dialog 必须跟着钉在 ~2.7 —— tauri build 启动时会核对
 # 两侧的 major/minor（v1.6.3 tag 第一次 release 就是这样挂的）。
 tauri-plugin-dialog = "~2.7"
-rust_xlsxwriter = "0.101"
-calamine = "0.37"
+rust_xlsxwriter = "0.102"
+calamine = "0.38"
 
 # WinRT StartupTask API for the store build's autostart (Windows only, pulled in
 # by the `store` feature). Same version as the copy already in the dependency
 # tree via tauri, so this adds no extra compilation.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", optional = true, features = ["ApplicationModel"] }
+windows = { version = "0.62", optional = true, features = ["ApplicationModel"] }
+
+# Linux 的「跟随系统」直接向 xdg-desktop-portal 读系统配色方案（见
+# `lib.rs::linux_portal_theme`）。dbus 本来就在 Linux 构建的依赖树里
+# （tao 的 `dbus` feature，tauri 默认开启），这里只是把它声明成直接依赖，
+# 不会增加编译量。
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus = "0.9"
 
 
+
+# Release 体积优先：LTO + 单 codegen unit + 去符号，exe/NSIS 安装包更小，
+# 冷启动时 Windows Defender 的扫描与加载也更快。编译时间会翻倍左右，只影响
+# release 构建。
+#
+# 刻意不加 `panic = "abort"`：调度器等后台任务依赖 panic 隔离（单个任务 panic
+# 不应结束整个进程，见 cache/mod.rs 的 spawn 注释），abort 会把这个容错设计
+# 换掉，而体积收益只有个位数百分比。
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = "s"
+strip = true

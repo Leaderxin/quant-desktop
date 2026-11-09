@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { computed, ref, inject, onMounted } from 'vue';
+import { computed, defineAsyncComponent, defineComponent, h, ref, inject, onMounted } from 'vue';
 import { useQuoteStore } from '@/stores/quote';
 import { useSettingsStore } from '@/stores/settings';
 import type { IndexQuote } from '@/types';
 import IndexCard from './IndexCard.vue';
-import IndexDetail from '@/components/detail/IndexDetail.vue';
+import DetailLoading from '@/components/detail/DetailLoading.vue';
+import { prefetchWhenIdle } from '@/utils/prefetch';
 import { CLEAR_INDEX_DETAIL_KEY } from '@/utils/keys';
+
+/**
+ * 指数详情同样懒加载：它复用 KLineChart，会把 klinecharts 带进首屏。
+ * 两个入口（这里与 WatchlistTable）都必须异步，否则 klinecharts 仍会被静态链加载。
+ */
+const loadIndexDetail = () => import('@/components/detail/IndexDetail.vue');
+
+const IndexDetail = defineAsyncComponent({
+  loader: loadIndexDetail,
+  loadingComponent: defineComponent({
+    render: () => h(DetailLoading, { variant: 'index' }),
+  }),
+  delay: 120,
+});
 
 const quote = useQuoteStore();
 const settings = useSettingsStore();
@@ -19,6 +34,7 @@ onMounted(() => {
   indexDetailCoord?.registerClearIndexFn(() => {
     selectedIndex.value = null;
   });
+  prefetchWhenIdle(loadIndexDetail);
 });
 
 /**

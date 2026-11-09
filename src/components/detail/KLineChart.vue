@@ -55,8 +55,9 @@ watch(() => [props.code, props.market, props.period], async () => {
 @import '@/assets/chart.css';
 
 .kline-chart {
+  /* 高度由详情面板分配；120px 兜底极短视口，主图与副图各自保底 30px+ */
   flex: 1;
-  min-height: 420px;
+  min-height: 120px;
   position: relative;
 }
 </style>

@@ -58,7 +58,7 @@ const dsOptions = computed(() =>
           />
         </SettingsRow>
 
-        <SettingsRow title="数据源" description="行情数据来自哪家服务商，和顶部栏的下拉是同一个设置；行情异常时可换一家试试">
+        <SettingsRow title="数据源" description="主数据源与备用源互为备份，和顶部栏的下拉是同一个设置；行情异常时可换一个试试">
           <NSelect
             size="small"
             style="width: 120px"

@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use reqwest::Client;
 use encoding_rs::GBK;
 use crate::domain::*;
 use crate::domain::AppError;
@@ -75,15 +74,11 @@ fn parse_kline_bar(arr: &[serde_json::Value], span_minutes: Option<u32>) -> Opti
     })
 }
 
-pub struct TencentAdapter {
-    client: Client,
-}
+pub struct TencentAdapter;
 
 impl TencentAdapter {
     pub fn new() -> Self {
-        Self {
-            client: super::shared_client().clone(),
-        }
+        Self
     }
 
     fn code_to_tencent(code: &str, market: &str) -> String {
@@ -142,7 +137,9 @@ impl TencentAdapter {
             market: market.to_string(),
             name,
             price,
-            change: (change * 100.0).round() / 100.0,
+            // ETF/LOF/可转债的最小变动价位是 0.001：留 4 位只压浮点噪声，不再把
+            // 涨跌额截到分 —— 截断后前端拿不到 0.013 这种三位精度
+            change: (change * 10000.0).round() / 10000.0,
             change_pct,
             open,
             high,
@@ -200,7 +197,7 @@ impl TencentAdapter {
 impl DataSource for TencentAdapter {
     fn name(&self) -> &str { "tencent" }
 
-    fn display_name(&self) -> &str { "腾讯证券" }
+    fn display_name(&self) -> &str { "主数据源" }
 
     async fn fetch_realtime(
         &self,
@@ -214,7 +211,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, tenc_codes.join(","));
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -240,7 +237,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, index_codes);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -271,7 +268,7 @@ impl DataSource for TencentAdapter {
             let tc_code = Self::code_to_tencent(trimmed, market);
             let url = format!("{}{}", TENCENT_URL, tc_code);
             let resp = headers::with_browser_headers(
-                self.client.get(&url),
+                super::shared_client().get(&url),
                 "https://gu.qq.com",
             )
                 .send()
@@ -315,7 +312,7 @@ impl DataSource for TencentAdapter {
         let url = format!("http://ifzq.gtimg.cn/appstock/app/kline/mkline?param={},m1,,242", tc_code);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -405,7 +402,7 @@ impl DataSource for TencentAdapter {
             );
             log::debug!("Tencent mkline URL: {}", url);
 
-            let resp = headers::with_browser_headers(self.client.get(&url), "https://gu.qq.com")
+            let resp = headers::with_browser_headers(super::shared_client().get(&url), "https://gu.qq.com")
                 .send()
                 .await
                 .map_err(|e| AppError::network("tencent", format!("分钟K线请求失败: {}", e)))?;
@@ -449,7 +446,7 @@ impl DataSource for TencentAdapter {
         );
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -498,7 +495,7 @@ impl DataSource for TencentAdapter {
         let url = format!("{}{}", TENCENT_URL, tc_code);
 
         let resp = headers::with_browser_headers(
-            self.client.get(&url),
+            super::shared_client().get(&url),
             "https://gu.qq.com",
         )
             .send()
@@ -603,6 +600,28 @@ mod tests {
         assert_eq!(q.code, "sz000852");
         assert_eq!(q.name, "石化机械");
         assert_eq!(q.price, 6.06);
+    }
+
+    #[test]
+    fn parse_quote_line_keeps_three_decimal_change_for_etf() {
+        // ETF 的涨跌额是 0.001 的整数倍；旧实现四舍五入到分会把 0.013 截成 0.01。
+        let mut fields: Vec<&str> = vec![
+            "51", "科创人工智能ETF广发", "588760", "0.742", "0.729", "0.727", "581842",
+        ];
+        for _ in 0..25 {
+            fields.push("0");
+        }
+        fields.push("1.78");  // 32 change_pct
+        fields.push("0.748"); // 33 high
+        fields.push("0.720"); // 34 low
+        fields.push("0");     // 35
+        fields.push("0");     // 36
+        fields.push("34829"); // 37 turnover(万元)
+        fields.push("1.84");  // 38 turnover_rate
+        let line = format!("v_sh588760=\"{}\"", fields.join("~"));
+
+        let q = TencentAdapter::parse_quote_line(&line).unwrap();
+        assert!((q.change - 0.013).abs() < 1e-9, "change = {}", q.change);
     }
 
     #[test]

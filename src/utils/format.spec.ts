@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatIndexCode, formatTurnoverDelta } from './format';
+import { formatIndexCode, formatTurnoverDelta, formatPrice, getQuotePrecision } from './format';
 
 // 「较昨同期」的增量界面会按应用配色上色（放量=涨色、缩量=跌色，随 cn/us
 // 翻转），但符号仍必须留在文字里 —— 颜色不是唯一信号。这里把「符号 + 取整到亿
@@ -32,5 +32,25 @@ describe('formatIndexCode', () => {
     expect(formatIndexCode('s_sz399001')).toBe('sz399001');
     expect(formatIndexCode('sh000001')).toBe('sh000001');
     expect(formatIndexCode('')).toBe('');
+  });
+});
+
+// ETF/LOF 的最小变动价位是 0.001，精度必须按**类别**定：按数值判断会让 0.740
+// 这类整分价格掉回 2 位，同一只 ETF 盘中精度来回跳。
+describe('getQuotePrecision / formatPrice', () => {
+  it('ETF/LOF 固定 3 位，整分价格也不降级', () => {
+    expect(getQuotePrecision('sh588760', 0.74)).toBe(3);
+    expect(getQuotePrecision('sz159929', 1.23)).toBe(3);
+    expect(getQuotePrecision('sh510300', 4)).toBe(3);
+    expect(formatPrice(0.74, '--', getQuotePrecision('sh588760', 0.74))).toBe('0.740');
+    expect(formatPrice(0.01, '--', getQuotePrecision('sh588760', 0.01))).toBe('0.010');
+    expect(formatPrice(-0.013, '--', getQuotePrecision('sh588760', -0.013))).toBe('-0.013');
+  });
+
+  it('股票 2 位，可转债仍按值自适配到 3 位', () => {
+    expect(getQuotePrecision('sh600519', 1257.12)).toBe(2);
+    expect(getQuotePrecision('sz000001', 0.01)).toBe(2);
+    expect(getQuotePrecision('sh113001', 123.456)).toBe(3);
+    expect(formatPrice(123.456, '--', getQuotePrecision('sh113001', 123.456))).toBe('123.456');
   });
 });
