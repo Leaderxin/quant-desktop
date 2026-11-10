@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MinuteData } from '@/types';
 import {
   beijingNow,
+  cumulativeAvgPrices,
   mapMinuteBars,
   sessionKeyOf,
   sessionPrevClose,
@@ -121,6 +122,57 @@ describe('mapMinuteBars', () => {
   it('空数据与全坏数据都返回空数组而不抛错', () => {
     expect(mapMinuteBars([])).toEqual([]);
     expect(mapMinuteBars([bar(''), bar('n/a')])).toEqual([]);
+  });
+});
+
+describe('cumulativeAvgPrices', () => {
+  it('按成交量加权累计，均价从开盘单调地跟着成交走', () => {
+    // 典型价 = (high + low + close) / 3；这里 high = low = close，退化为收盘价
+    const avg = cumulativeAvgPrices([
+      { close: 10, high: 10, low: 10, volume: 100 },
+      { close: 12, high: 12, low: 12, volume: 100 },
+      { close: 11, high: 11, low: 11, volume: 200 },
+    ]);
+    expect(avg).toEqual([10, 11, 11]);
+  });
+
+  it('用典型价而不是收盘价估算成交额', () => {
+    // 一根振幅很大的 bar：(10 + 14 + 12) / 3 = 12
+    expect(cumulativeAvgPrices([{ close: 12, high: 14, low: 10, volume: 100 }])).toEqual([12]);
+  });
+
+  it('开盘第一根就没有成交时退回该根收盘价，不产出 0', () => {
+    const avg = cumulativeAvgPrices([
+      { close: 10, high: 10, low: 10, volume: 0 },
+      { close: 12, high: 12, low: 12, volume: 100 },
+    ]);
+    expect(avg).toEqual([10, 12]);
+  });
+
+  it('盘中停牌（已有累计成交量后出现零量 bar）均价保持上一根的值', () => {
+    // 11:00 停牌：该 bar 不贡献成交额，均价停在 10，而不是跳到该根收盘价 12
+    const avg = cumulativeAvgPrices([
+      { close: 10, high: 10, low: 10, volume: 100 },
+      { close: 12, high: 12, low: 12, volume: 0 },
+    ]);
+    expect(avg).toEqual([10, 10]);
+  });
+
+  it('缺 high/low/volume 时退回收盘价与 0，不产出 NaN', () => {
+    expect(cumulativeAvgPrices([{ close: 8 }])).toEqual([8]);
+    expect(cumulativeAvgPrices([])).toEqual([]);
+  });
+});
+
+describe('mapMinuteBars 的均价字段', () => {
+  it('只按当前交易日的成交累计 —— 上一交易日的量不参与', () => {
+    const bars = mapMinuteBars([
+      { time: '2026-09-23 15:00', price: 99, open: 99, high: 99, low: 99, volume: 1_000_000, avg_price: 99 },
+      { time: '2026-09-24 09:30', price: 10, open: 10, high: 10, low: 10, volume: 100, avg_price: 10 },
+      { time: '2026-09-24 09:31', price: 12, open: 12, high: 12, low: 12, volume: 100, avg_price: 12 },
+    ]);
+
+    expect(bars.map((b) => b.avgPrice)).toEqual([10, 11]);
   });
 });
 

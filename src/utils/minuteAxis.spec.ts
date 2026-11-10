@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   SESSION_MINUTES,
   SESSION_TICKS,
+  adaptiveRange,
   inferBarMinutes,
   minuteAxisLayout,
   percentText,
   sessionFits,
   sessionTicks,
-  symmetricRange,
   tradingMinutesOfDay,
 } from './minuteAxis';
 
@@ -158,20 +158,30 @@ describe('sessionTicks', () => {
   });
 });
 
-describe('symmetricRange', () => {
-  it('半幅取收盘价相对昨收的最大偏离，两侧对称', () => {
-    const range = symmetricRange([{ close: 103 }, { close: 97 }, { close: 100 }], 100);
-    expect(range).toEqual({ from: 97, to: 103 });
+describe('adaptiveRange', () => {
+  it('上涨日：下沿只留 1% 保底，上沿跟到最高价 —— 曲线不再被挤在上半区', () => {
+    expect(adaptiveRange([{ close: 100 }, { close: 103 }, { close: 106 }], 100))
+      .toEqual({ from: 99, to: 106 });
   });
 
-  it('涨跌不到 1% 时兜底到昨收的 1%，免得开盘头一分钟被放大到满屏', () => {
-    const range = symmetricRange([{ close: 100.1 }, { close: 100.05 }], 100);
-    expect(range.from).toBeCloseTo(99, 6);
-    expect(range.to).toBeCloseTo(101, 6);
+  it('下跌日：上沿留 1%，下沿跟到最低价', () => {
+    expect(adaptiveRange([{ close: 100 }, { close: 97 }, { close: 94 }], 100))
+      .toEqual({ from: 94, to: 101 });
   });
 
-  it('已超过 1% 时按实际幅度走，不额外留白', () => {
-    expect(symmetricRange([{ close: 106 }], 100)).toEqual({ from: 94, to: 106 });
+  it('全天走平时两侧各留 1%，免得被放大到满屏', () => {
+    expect(adaptiveRange([{ close: 100.1 }, { close: 100.05 }], 100))
+      .toEqual({ from: 99, to: 101 });
+  });
+
+  it('均价线也参与取幅 —— 典型价累计的均价可能超出收盘价范围', () => {
+    expect(adaptiveRange([{ close: 100, avgPrice: 106 }], 100))
+      .toEqual({ from: 99, to: 106 });
+  });
+
+  it('均价缺失或非数字时只看收盘价', () => {
+    expect(adaptiveRange([{ close: 103, avgPrice: undefined }, { close: 97, avgPrice: NaN }], 100))
+      .toEqual({ from: 97, to: 103 });
   });
 });
 

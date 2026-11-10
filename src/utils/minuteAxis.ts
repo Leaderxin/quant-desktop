@@ -128,31 +128,46 @@ export function sessionTicks(plotWidth: number, barSpace: number, barMinutes: nu
   }));
 }
 
-// ---- 纵轴：以昨收为中心的对称区间 ----
+// ---- 纵轴：自适应区间 ----
 
 /**
- * 涨跌幅很小时的半幅下限（昨收的 1%）。开盘头一分钟涨跌往往不到 0.05%，
- * 不兜底的话纵轴会被放大到看不出任何幅度。
+ * 0% 两侧的保底幅度（昨收的 1%）。开盘头一分钟涨跌往往不到 0.05%，
+ * 不兜底的话纵轴会被放大到看不出任何幅度；单边行情下也靠它把 0% 线留在图内。
  */
 const MIN_RANGE_RATE = 0.01;
 
 /**
- * 以昨收为中心的对称价格区间 —— 分时图的标准画法：0.00% 落在正中，涨跌一眼看出对称。
- * 半幅取收盘价相对昨收的最大偏离（分时图画的是一条收盘价连线，所以只看 close），
- * 再兜一个最小半幅。
+ * 分时图纵轴区间：覆盖价格线与均价线，但不强制以昨收为中心对称。
+ *
+ * 早先是上下完全均分（0.00% 在正中），单边行情（尤其接近涨跌停）下曲线会整段压在
+ * 上半区或下半区，浪费一半画布。这里改成自适应：
+ * - 上沿取数据相对昨收的最大正偏离，下沿取最大负偏离；
+ * - 两侧各保底 MIN_RANGE_RATE（昨收的 1%）：0% 线仍有可见空间，全天走平时也不会被放大。
+ *
+ * 收盘价与均价一起参与取幅：均价由典型价累计，可能略微超出收盘价范围，不一起算会被
+ * 裁到图外。
  */
-export function symmetricRange(
-  bars: readonly { close: number }[],
+export function adaptiveRange(
+  bars: readonly { close: number; avgPrice?: unknown }[],
   prevClose: number,
-  minRate = MIN_RANGE_RATE,
+  minSideRate = MIN_RANGE_RATE,
 ): { from: number; to: number } {
-  let half = 0;
+  let up = 0;
+  let down = 0;
+  const consider = (value: unknown) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    const diff = value - prevClose;
+    if (diff > up) up = diff;
+    if (-diff > down) down = -diff;
+  };
   for (const bar of bars) {
-    const deviation = Math.abs(bar.close - prevClose);
-    if (deviation > half) half = deviation;
+    consider(bar.close);
+    consider(bar.avgPrice);
   }
-  half = Math.max(half, Math.abs(prevClose) * minRate);
-  return { from: prevClose - half, to: prevClose + half };
+  const floor = Math.abs(prevClose) * minSideRate;
+  up = Math.max(up, floor);
+  down = Math.max(down, floor);
+  return { from: prevClose - down, to: prevClose + up };
 }
 
 /** 价格相对昨收的涨跌幅文本，如 `+1.23%` / `-0.45%` */

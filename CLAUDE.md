@@ -41,7 +41,8 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 | `utils/changelog.spec.ts` | 更新说明解析：版本/日期/小节、CRLF、坏输入不抛错 |
 | `utils/dragSort.spec.ts` / `paging.spec.ts` | 拖拽落点（四向 × 前后）、轮播窗口（短列表不自转） |
 | `utils/watchGroups.spec.ts` | 删除分组确认框的两份名单（顺序、去重、目标不存在给空） |
-| `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界；网格槽位/偏移/刻度与窄宽回退 |
+| `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界、当日累计均价（含零成交量）；网格槽位/偏移/刻度与窄宽回退、自适应纵轴（单边行情不压半区、均价参与取幅） |
+| `utils/paneSize.spec.ts` | 副图高度按 28% 夹在 48–80px；高度未知时给兜底值 |
 | `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动 |
 | `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
 | `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
@@ -168,7 +169,7 @@ DataSource → Scheduler → QuoteCache（内存 + SQLite）
     → Pinia stores → Vue 组件（主窗口 + 行情条）
 ```
 
-按需请求：深度 3s、分时 5s、日 K 30s、周/月 K 60s。分时/K 线的关键约束（日期来自数据而非本机时钟、以 UTC+8 墙钟过滤未来 bar、网格按会话固定、composable 自己注册卸载）见 [minuteBars.ts](src/utils/minuteBars.ts)、[minuteAxis.ts](src/utils/minuteAxis.ts)、[useMinuteChart.ts](src/composables/useMinuteChart.ts) 的注释与 spec。
+按需请求：深度 3s、分时 5s、日 K 30s、周/月 K 60s。分时/K 线的关键约束（日期来自数据而非本机时钟、以 UTC+8 墙钟过滤未来 bar、网格按会话固定、composable 自己注册卸载）见 [minuteBars.ts](src/utils/minuteBars.ts)、[minuteAxis.ts](src/utils/minuteAxis.ts)、[useMinuteChart.ts](src/composables/useMinuteChart.ts) 的注释与 spec。分时图的均价线由前端按成交量累计 VWAP（`cumulativeAvgPrices`）—— 后端 `MinuteData.avg_price` 在两个适配器里填的都是 bar 的开盘价，不能直接画；成交量是独立副图 pane（`VOL`，`calcParams: []` 只留量柱），副图高度与 K 线同一套 28%/48–80px 规则。均价读数并进蜡烛 tooltip 的同一行（放在「量」后面），均价指标自己那行图例靠空 `shortName` + 无 `title` 的 figure 关掉 —— 否则 klinecharts 会把指标图例画在蜡烛图例下方的独立行。
 
 自选写操作：`invoke` → Rust → SQLite → 前端重拉；每个影响自选的命令都发 `watchlist-changed`，行情条靠它同步。数据源切换走 `Notify` 立即刷新。
 

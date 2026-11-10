@@ -1,11 +1,21 @@
 import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
 import { init, dispose } from 'klinecharts';
-import type { Chart, KLineData as KCLineData, Period } from 'klinecharts';
+import type { CandleTooltipLegendsCustomCallback, Chart, KLineData as KCLineData, Period } from 'klinecharts';
 import type { PeriodType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { getPricePrecision } from '@/utils/format';
 import { hexToRgba } from '@/utils/color';
 import { isMinuteK, minuteKSpan } from './minutePeriod';
+
+/**
+ * tooltip 里的价格文本：固定精度 + 千分位。
+ * klinecharts 自带的 `{open}` 等占位符会按 chart 的 thousandSeparator（`,`）格式化，
+ * 均价是我们自己算好塞进图例的，得用同样的口径才不会在同一行里出现 `1438.03` 与
+ * `1,438.03` 两种写法。
+ */
+function tooltipPriceText(value: number, precision: number): string {
+  return value.toFixed(precision).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 
 /**
  * 图表核心 — 创建/销毁、样式主题、精度自适应等公共逻辑。
@@ -36,11 +46,17 @@ export function useChartCore(options: {
     const up = rootStyle.getPropertyValue('--color-up').trim() || '#f85149';
     const down = rootStyle.getPropertyValue('--color-down').trim() || '#3fb950';
     const noChange = '#8b949e';
+    // 多条均线配色。MA5/10/20/60 按顺序取前四个；分时均价线固定取第 2 个（与 MA10 同色），
+    // 两张图的黄线含义对得上。
+    const lineColors = isDark
+      ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
+      : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A'];
     return {
       up,
       down,
       noChange,
       lineColor: isDark ? '#58a6ff' : '#0969da',
+      avgLineColor: lineColors[1],
       gridHColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)',
       gridVColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)',
       axisColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)',
@@ -58,14 +74,33 @@ export function useChartCore(options: {
       volumeBarUp: hexToRgba(up, isDark ? 0.5 : 0.55),
       volumeBarDown: hexToRgba(down, isDark ? 0.5 : 0.55),
       volumeBarNoChange: hexToRgba(noChange, isDark ? 0.45 : 0.5),
-      // 多条均线配色
-      lineColors: isDark
-        ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
-        : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A'],
+      lineColors,
     };
   }
 
   // ---- 样式应用 ----
+
+  /**
+   * 成交量指标（VOL）的实例配置。K 线与分时图的成交量副图共用同一套外观。
+   * 注意：不覆盖内置 `figures` —— v10 内置 VOL 的 volume 柱用 styles 回调从
+   * `indicator.styles.bars[0]` 取色，静态 figure 会丢掉取色逻辑导致柱子不显示；
+   * 只通过 `styles.bars[0]` 传柱子配色，保留内置 figures/calc。
+   * 分时图传 `calcParams: []`（只要量柱，不要均量线），K 线用默认的 [5, 10, 20]。
+   */
+  function volIndicatorConfig(paneId: string, calcParams: number[] = [5, 10, 20]) {
+    const colors = themeColors();
+    return {
+      name: 'VOL',
+      paneId,
+      shortName: '成交量',
+      calcParams,
+      styles: {
+        bars: [
+          { upColor: colors.volumeBarUp, downColor: colors.volumeBarDown, noChangeColor: colors.volumeBarNoChange },
+        ],
+      },
+    };
+  }
 
   function applyChartStyles() {
     if (!chart.value) return;
@@ -82,11 +117,32 @@ export function useChartCore(options: {
         bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'previous_close' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
-          labels: ['时间', '开', '高', '低', '收', '量', '额'],
+          // 均价并入蜡烛 tooltip 的同一行（放在「量」后面），不再让均价指标单独占一行。
+          // 指标自身的那行图例在 useMinuteChart 里通过「空短名 + 无 title 的 figure」关掉。
+          legend: {
+            template: ((data) => {
+              const current = data.current;
+              const precision = chart.value?.getSymbol()?.pricePrecision ?? 2;
+              const avgValue = current?.avgPrice;
+              const avg = typeof avgValue === 'number' ? tooltipPriceText(avgValue, precision) : '--';
+              return [
+                { title: '时间', value: '{time}' },
+                { title: '开', value: '{open}' },
+                { title: '高', value: '{high}' },
+                { title: '低', value: '{low}' },
+                { title: '收', value: '{close}' },
+                { title: '量', value: '{volume}' },
+                {
+                  title: { text: '均价', color: c.avgLineColor },
+                  value: { text: avg, color: c.avgLineColor },
+                },
+              ];
+            }) as CandleTooltipLegendsCustomCallback,
+          },
           title: { show: false },
           rect: { position: 'pointer', paddingLeft: 8, paddingTop: 4, paddingRight: 8, paddingBottom: 4, offsetLeft: 12, offsetTop: 8, offsetRight: 0, offsetBottom: 0, borderRadius: 4, borderSize: 0, backgroundColor: c.tooltipBg },
           text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' },
-        } as any, // labels/text 为遗留字段，不在 v10 CandleTooltipStyle 类型中
+        } as any, // text 为遗留字段，不在 v10 CandleTooltipStyle 类型中
         priceMark: {
           high: { show: false },
           low: { show: false },
@@ -260,6 +316,7 @@ export function useChartCore(options: {
     error,
     currentPeriod,
     themeColors,
+    volIndicatorConfig,
     applyChartStyles,
     applyCandlestickStyles,
     reapplyStyles,
