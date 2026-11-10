@@ -4,6 +4,7 @@ import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { KLineData, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { subPaneHeight } from '@/utils/paneSize';
+import { syncMovingAverage } from '@/utils/movingAverage';
 import { minuteKSpan } from './minutePeriod';
 import { useChartCore } from './useChartCore';
 
@@ -23,7 +24,7 @@ export function useChart(options: {
   mainOverlay?: MaybeRef<MainOverlayType>;
 }) {
   const settings = useSettingsStore();
-  const { chart, loading, error, currentPeriod, volIndicatorConfig, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
+  const { chart, loading, error, currentPeriod, themeColors, volIndicatorConfig, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
 
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -277,12 +278,21 @@ export function useChart(options: {
         chart.value.removeIndicator({ paneId: 'candle_pane', name: other });
       }
     }
-    const existing = chart.value.getIndicators({ paneId: 'candle_pane', name });
-    if (existing.length === 0) {
-      const config = name === 'MA'
-        ? { name, calcParams: [5, 10, 20, 60], paneId: 'candle_pane' }
-        : { name, paneId: 'candle_pane' };
-      chart.value.createIndicator(config, true);
+    if (name === 'MA') {
+      syncMovingAverage(
+        chart.value,
+        settings.movingAveragePeriods,
+        'candle_pane',
+        themeColors().lineColors,
+      );
+    } else if (chart.value.getIndicators({ paneId: 'candle_pane', name }).length === 0) {
+      chart.value.createIndicator({ name, paneId: 'candle_pane' }, true);
+    }
+  }
+
+  function syncActiveMainOverlay() {
+    if (currentPeriod.value !== 'minute') {
+      syncMainOverlay(unref(options.mainOverlay) ?? 'MA');
     }
   }
 
@@ -393,10 +403,15 @@ export function useChart(options: {
   // 须用 overrideIndicator 重新传入，否则量柱停留在旧配色
   watch(() => [settings.theme, settings.colorScheme], () => {
     reapplyStyles();
+    syncActiveMainOverlay();
     if (chart.value && unref(options.subIndicator) === 'VOL') {
       chart.value.overrideIndicator(volIndicatorConfig(SUB_PANE_ID) as any);
     }
   });
+
+  watch(() => settings.movingAveragePeriods, () => {
+    if ((unref(options.mainOverlay) ?? 'MA') === 'MA') syncActiveMainOverlay();
+  }, { deep: true });
 
   if (options.subIndicator) {
     watch(() => unref(options.subIndicator)!, (newVal) => {
@@ -416,6 +431,7 @@ export function useChart(options: {
    */
   function applyTheme() {
     reapplyStyles();
+    syncActiveMainOverlay();
     if (chart.value && unref(options.subIndicator) === 'VOL') {
       chart.value.overrideIndicator(volIndicatorConfig(SUB_PANE_ID) as any);
     }

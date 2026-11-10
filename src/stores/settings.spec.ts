@@ -134,6 +134,13 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerItemsPerPage).toBe(2);
   });
 
+  it('moving_average_periods 缺失或损坏时使用默认值，并保留自定义条数', async () => {
+    expect((await load({})).movingAveragePeriods).toEqual([5, 10, 20, 60]);
+    expect((await load({ moving_average_periods: '{' })).movingAveragePeriods).toEqual([5, 10, 20, 60]);
+    expect((await load({ moving_average_periods: '{"periods":[7,14]}' })).movingAveragePeriods)
+      .toEqual([7, 14]);
+  });
+
   it('布尔型设置只认 "1"/"0"，缺键时取各自默认值', async () => {
     const store = await load({
       market_overview_visible: '0',
@@ -201,6 +208,24 @@ describe('写入与跨窗口同步', () => {
     });
   });
 
+  it('setMovingAveragePeriods 归一化、持久化并广播配置', async () => {
+    const store = await load({});
+    invokeMock.mockResolvedValueOnce(undefined);
+
+    await store.setMovingAveragePeriods([7, 14, 28.5, 0, 99999]);
+
+    const value = JSON.stringify({ periods: [7, 14, 9999] });
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', {
+      key: 'moving_average_periods',
+      value,
+    });
+    expect(store.movingAveragePeriods).toEqual([7, 14, 9999]);
+    expect(emitMock).toHaveBeenCalledWith('settings-changed', {
+      key: 'moving_average_periods',
+      value,
+    });
+  });
+
   it('applyRemoteSetting 只改本地 —— 不回写、不回广播', async () => {
     const store = await load({});
     invokeMock.mockClear();
@@ -210,6 +235,18 @@ describe('写入与跨窗口同步', () => {
 
     expect(store.tickerItemsPerPage).toBe(4);
     // 回写或回广播会让主窗口与行情条互相通知，形成无限往返
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(emitMock).not.toHaveBeenCalled();
+  });
+
+  it('applyRemoteSetting 更新均线配置而不回写、不回广播', async () => {
+    const store = await load({});
+    invokeMock.mockClear();
+    emitMock.mockClear();
+
+    store.applyRemoteSetting('moving_average_periods', '{"periods":[9,21]}');
+
+    expect(store.movingAveragePeriods).toEqual([9, 21]);
     expect(invokeMock).not.toHaveBeenCalled();
     expect(emitMock).not.toHaveBeenCalled();
   });

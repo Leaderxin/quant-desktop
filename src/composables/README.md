@@ -26,13 +26,18 @@ useMinuteChart.ts  ←─ 分时图 (MinuteChart.vue)
 useChart.ts  ←─ K线图 (KLineChart.vue)
   ├─ invoke get_kline → K线数据 + 懒加载历史
   ├─ syncSubIndicator(VOL|MACD) → 副图切换
-  └─ MA 叠加 + VOL 自定义外观
+  ├─ syncMainOverlay(MA|BOLL) → 主图叠加切换
+  └─ VOL 自定义外观
+
+utils/movingAverage.ts  ←─ 主图均线
+  ├─ 配置解析、默认值与数量/周期边界
+  └─ syncMovingAverage() → 创建或更新 klinecharts MA 指标
 ```
 
 ### 关键数据流
 
-1. **挂载**: initChart → initChartCore → applyStyles → overrideIndicator(VOL) → syncSubIndicator → createIndicator(MA)
+1. **挂载**: initChart → initChartCore → applyStyles → syncSubIndicator → syncMainOverlay → syncMovingAverage
 2. **加载**: loadData → invoke → map + setDataLoader → getBars('init') 触发渲染 → syncPrecision → startAutoRefresh
 3. **周期切换**: watch([code,market,period]) → initChart + loadData → allData 重置
 4. **副图切换**: SubIndicatorSwitcher emit → watch(subIndicator) → syncSubIndicator → createIndicator({name}, {pane: SUB_PANE_ID}) → isStack=false 自动替换
-5. **主题切换**: watch(settings.theme) → reapplyStyles → themeColors() 重新计算全色板
+5. **主题/均线设置**: watch(settings.theme / movingAveragePeriods) → 重放样式或 MA calcParams → themeColors() 重新计算色板

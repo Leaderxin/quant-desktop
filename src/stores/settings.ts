@@ -18,6 +18,10 @@ import {
   type ThemeMode,
 } from '@/utils/prefs';
 import { resolveTheme, systemPrefersDark, watchSystemTheme, type ResolvedTheme } from '@/utils/theme';
+import {
+  normalizeMovingAveragePeriods,
+  parseMovingAveragePeriods,
+} from '@/utils/movingAverage';
 
 /** 设置项默认值（前端侧兜底）。后端 `init_defaults()` 会在首启时写入同名的键，
  *  这里的值只在键缺失（旧库、手工删键）时生效。 */
@@ -114,6 +118,9 @@ export const useSettingsStore = defineStore('settings', () => {
   /** 老板键；空串表示未设置（见 utils/prefs 的 parseAccelerator）。 */
   const bossKey = computed(() => parseAccelerator(settings.value['boss_key']));
 
+  const movingAveragePeriods = computed(() =>
+    parseMovingAveragePeriods(settings.value['moving_average_periods']));
+
   async function fetchSettings() {
     try {
       settings.value = await invoke<Record<string, string>>('get_settings');
@@ -174,6 +181,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSectorTopN(n: number) {
     await setSetting('sector_top_n', String(clampTopN(n)));
+  }
+
+  async function setMovingAveragePeriods(periods: unknown[]) {
+    const normalized = normalizeMovingAveragePeriods(periods);
+    await setSetting('moving_average_periods', JSON.stringify({ periods: normalized }));
   }
 
   /**
@@ -352,11 +364,13 @@ export const useSettingsStore = defineStore('settings', () => {
     indexCodes, marketOverviewVisible, sectorTopN, tickerVisible, tickerTransparent,
     tickerClickWakes,
     tickerItemsPerPage, watchlistColumns, watchlistDefaultSort, colorScheme, bossKey,
+    movingAveragePeriods,
     // 动作
     fetchSettings, setSetting, switchDatasource, setThemeMode, toggleAutoLaunch,
     applyColorScheme, applyRemoteSetting,
     setIndexCodes, setMarketOverviewVisible, setSectorTopN, setTickerVisible,
     setTickerTransparent, setTickerClickWakes, setTickerItemsPerPage, setWatchlistColumns,
     setWatchlistDefaultSort, setColorScheme, setBossKey,
+    setMovingAveragePeriods,
   };
 });

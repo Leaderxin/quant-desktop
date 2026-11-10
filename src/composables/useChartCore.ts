@@ -46,11 +46,10 @@ export function useChartCore(options: {
     const up = rootStyle.getPropertyValue('--color-up').trim() || '#f85149';
     const down = rootStyle.getPropertyValue('--color-down').trim() || '#3fb950';
     const noChange = '#8b949e';
-    // 多条均线配色。MA5/10/20/60 按顺序取前四个；分时均价线固定取第 2 个（与 MA10 同色），
-    // 两张图的黄线含义对得上。
+    // 多条均线配色按配置顺序使用；分时均价线固定取第 2 个，保持黄色口径。
     const lineColors = isDark
-      ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4']
-      : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A'];
+      ? ['#F1F1F1', '#FFD302', '#E454CE', '#32CD32', '#01C5C4', '#FF7F50', '#6495ED', '#DAA520', '#7FFFD4', '#FF69B4']
+      : ['#333333', '#CC8800', '#B8308F', '#1E8C4A', '#0A8A8A', '#C84B28', '#4169B1', '#996515', '#188A75', '#C33A79'];
     return {
       up,
       down,
@@ -114,7 +113,7 @@ export function useChartCore(options: {
       },
       candle: {
         type: 'area',
-        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'previous_close' },
+        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'current_open' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           // 均价并入蜡烛 tooltip 的同一行（放在「量」后面），不再让均价指标单独占一行。
@@ -150,7 +149,7 @@ export function useChartCore(options: {
         },
       },
       indicator: {
-        ohlc: { upColor: c.up, downColor: c.down, noChangeColor: c.noChange, compareRule: 'previous_close' },
+        ohlc: { upColor: c.up, downColor: c.down, noChangeColor: c.noChange, compareRule: 'current_open' },
         bars: [
           { upColor: c.indicatorBarUp, downColor: c.indicatorBarDown, noChangeColor: c.indicatorBarNoChange },
         ],
@@ -189,7 +188,7 @@ export function useChartCore(options: {
     chart.value.setStyles({
       candle: {
         type: 'candle_solid',
-        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'previous_close' },
+        bar: { upColor: c.up, downColor: c.down, upBorderColor: c.up, downBorderColor: c.down, upWickColor: c.up, downWickColor: c.down, noChangeColor: c.noChange, noChangeBorderColor: c.noChange, noChangeWickColor: c.noChange, compareRule: 'current_open' },
         area: { lineSize: 1.5, lineColor: '#58a6ff' },
         tooltip: {
           legend: {
