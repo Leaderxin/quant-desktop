@@ -31,6 +31,10 @@ pub mod keys {
     /// 点击行情条是否唤醒主窗口。默认开；关闭后点击只是纯展示，不叫出主界面。
     pub const TICKER_CLICK_WAKES: &str = "ticker_click_wakes";
     pub const TICKER_ITEMS_PER_PAGE: &str = "ticker_items_per_page";
+    /// 行情条迷你分时线的纵轴模式：off / price / limit / both。
+    pub const TICKER_CHART_MODE: &str = "ticker_chart_mode";
+    /// 行情条迷你分时线的画法：axis（带 x 轴线与刻度）/ plain（只有虚线与曲线）。
+    pub const TICKER_CHART_STYLE: &str = "ticker_chart_style";
     pub const WATCHLIST_COLUMNS: &str = "watchlist_columns";
     pub const WATCHLIST_DEFAULT_SORT: &str = "watchlist_default_sort";
     pub const COLOR_SCHEME: &str = "color_scheme";
@@ -47,6 +51,14 @@ pub mod keys {
     /// 行情条窗口位置(用户拖动后保存,越界则回落右下角默认位)。
     pub const TICKER_X: &str = "ticker_x";
     pub const TICKER_Y: &str = "ticker_y";
+
+    /// 行情条窗口的逻辑高度(前端按内容量出来后写回)。
+    ///
+    /// 不在 `DEFAULT_SETTINGS` 里:它是运行时状态,不是用户配置。启动和
+    /// `set_ticker_visible` 都先按它设尺寸,再恢复 `ticker_y` —— 否则窗口先以
+    /// 配置里的 40px 建出来、前端再按内容长高时,下边缘锚定会把这段高度差当成
+    /// 一次位移,每次重启都把行情条往上推同样的距离。
+    pub const TICKER_HEIGHT: &str = "ticker_height";
 
     /// 一次性迁移的完成标记。内部键,不对用户暴露,因而不在 `DEFAULT_SETTINGS` 里:
     /// 它必须"不存在"才能触发迁移,给它写默认值会让迁移永不执行。
@@ -355,6 +367,13 @@ impl Database {
         (keys::TICKER_TRANSPARENT, "0"),
         (keys::TICKER_CLICK_WAKES, "1"),
         (keys::TICKER_ITEMS_PER_PAGE, "2"),
+        // 行情条迷你分时线：off / price / limit / both。默认 both —— 价格线满不
+        // 透明、涨跌停线半透明叠在一起，一次读出两种信息。关掉后窗口恢复原来的
+        // 紧凑高度。
+        (keys::TICKER_CHART_MODE, "both"),
+        // 行情条分时线的画法。默认带 x 轴线与刻度：格子只有 75px 宽，没有轴线时
+        // 「横轴是一整个交易日」只能靠午间那段断口猜。
+        (keys::TICKER_CHART_STYLE, "axis"),
         // 自选列表
         (keys::WATCHLIST_COLUMNS, DEFAULT_WATCHLIST_COLUMNS_JSON),
         (keys::WATCHLIST_DEFAULT_SORT, ""),
@@ -1884,6 +1903,8 @@ mod tests {
                 "ticker_transparent",
                 "ticker_click_wakes",
                 "ticker_items_per_page",
+                "ticker_chart_mode",
+                "ticker_chart_style",
                 "watchlist_columns",
                 "watchlist_default_sort",
                 "color_scheme",
@@ -1948,6 +1969,38 @@ mod tests {
                 .unwrap_or_else(|| panic!("{} 不在默认值表里", key));
             assert!(v.parse::<u32>().is_ok(), "{} 的默认值 {:?} 应是正整数", key, v);
         }
+    }
+
+    /// 分时线模式的默认值必须是前端 `TICKER_CHART_MODES` 里的一项。
+    ///
+    /// 键名与取值都是 wire format：前端 `parseTickerChartMode` 认不出的值不会报错，
+    /// 只会静默退回 `price`，症状是「设置页分段控件显示的和实际画的不一致」。
+    #[test]
+    fn ticker_chart_mode_default_is_a_known_mode() {
+        let v = Database::DEFAULT_SETTINGS
+            .iter()
+            .find(|(k, _)| *k == keys::TICKER_CHART_MODE)
+            .map(|(_, v)| *v)
+            .expect("ticker_chart_mode 应在默认值表里");
+        assert!(
+            matches!(v, "off" | "price" | "limit" | "both"),
+            "ticker_chart_mode 默认值 {v:?} 不是前端认得的模式"
+        );
+    }
+
+    /// 画法这个键同理：拼错的值只会静默退回默认，症状是
+    /// 「设置页选了带刻度、实际画的是纯曲线」。
+    #[test]
+    fn ticker_chart_style_default_is_a_known_style() {
+        let v = Database::DEFAULT_SETTINGS
+            .iter()
+            .find(|(k, _)| *k == keys::TICKER_CHART_STYLE)
+            .map(|(_, v)| *v)
+            .expect("ticker_chart_style 应在默认值表里");
+        assert!(
+            matches!(v, "axis" | "plain"),
+            "ticker_chart_style 默认值 {v:?} 不是前端认得的画法"
+        );
     }
 
     #[test]

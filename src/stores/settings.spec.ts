@@ -134,6 +134,59 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerItemsPerPage).toBe(2);
   });
 
+  it('ticker_chart_mode 只认 off/price/limit/both，缺键或坏值退回 both', async () => {
+    expect((await load({ ticker_chart_mode: 'off' })).tickerChartMode).toBe('off');
+    expect((await load({ ticker_chart_mode: 'price' })).tickerChartMode).toBe('price');
+    expect((await load({ ticker_chart_mode: 'limit' })).tickerChartMode).toBe('limit');
+    expect((await load({ ticker_chart_mode: 'both' })).tickerChartMode).toBe('both');
+    expect((await load({ ticker_chart_mode: 'bogus' })).tickerChartMode).toBe('both');
+    expect((await load({})).tickerChartMode).toBe('both');
+  });
+
+  it('setTickerChartMode 写库并广播到行情条', async () => {
+    const store = await load({});
+    invokeMock.mockResolvedValueOnce(undefined);
+    emitMock.mockClear();
+
+    await store.setTickerChartMode('limit');
+
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', {
+      key: 'ticker_chart_mode',
+      value: 'limit',
+    });
+    expect(store.tickerChartMode).toBe('limit');
+    expect(emitMock).toHaveBeenCalledWith('settings-changed', {
+      key: 'ticker_chart_mode',
+      value: 'limit',
+    });
+  });
+
+  it('ticker_chart_style 只认 axis/plain，缺键或坏值退回 axis', async () => {
+    expect((await load({ ticker_chart_style: 'axis' })).tickerChartStyle).toBe('axis');
+    expect((await load({ ticker_chart_style: 'plain' })).tickerChartStyle).toBe('plain');
+    expect((await load({ ticker_chart_style: 'bogus' })).tickerChartStyle).toBe('axis');
+    expect((await load({})).tickerChartStyle).toBe('axis');
+  });
+
+  it('setTickerChartStyle 写库并广播到行情条', async () => {
+    const store = await load({});
+    invokeMock.mockResolvedValueOnce(undefined);
+    emitMock.mockClear();
+
+    await store.setTickerChartStyle('plain');
+
+    expect(invokeMock).toHaveBeenCalledWith('set_setting', {
+      key: 'ticker_chart_style',
+      value: 'plain',
+    });
+    expect(store.tickerChartStyle).toBe('plain');
+    // 行情条是另一个窗口，只能靠这条广播知道画法变了（它不回广播）。
+    expect(emitMock).toHaveBeenCalledWith('settings-changed', {
+      key: 'ticker_chart_style',
+      value: 'plain',
+    });
+  });
+
   it('布尔型设置只认 "1"/"0"，缺键时取各自默认值', async () => {
     const store = await load({
       market_overview_visible: '0',

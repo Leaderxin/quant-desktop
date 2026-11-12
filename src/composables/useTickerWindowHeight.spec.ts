@@ -1,15 +1,21 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, ref } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 
 /**
  * useTickerWindowHeight 的窗口同步行为测试。
  *
- * 与 market.spec.ts 同一思路：mock 掉 Tauri 边界（这里是 window 模块），
- * composable 与 Vue 本体都是真的。fake window 带一份会跟着 setSize /
- * setPosition 走的物理像素状态，用来验证「下边缘钉在原地」这条不变量 ——
- * setSize 以左上角为锚伸缩，而行情条贴在屏幕右下角，这两个事实冲突时
- * 必须由 composable 补偿。
+ * 与 market.spec.ts 同一思路：mock 掉 Tauri 边界（这里是 window 模块与
+ * `invoke`），composable 与 Vue 本体都是真的。fake window 带一份会跟着
+ * 改尺寸 / setPosition 走的物理像素状态，用来验证「下边缘钉在原地」这条
+ * 不变量 —— 改尺寸以左上角为锚伸缩，而行情条贴在屏幕右下角，这两个事实
+ * 冲突时必须由 composable 补偿。
+ *
+ * 改尺寸走 `set_ticker_size` 命令（后端顺手把 min/max 钉成同一个值，窗口
+ * 因此不可缩放），所以这里被驱动的是 invoke 而不是 window.setSize ——
+ * webview 已经没有 `core:window:allow-set-size` 权限，绕过命令去改尺寸
+ * 在真实环境里根本调不动。
  */
 
 const mocks = vi.hoisted(() => {
@@ -22,7 +28,6 @@ const mocks = vi.hoisted(() => {
     scale: 1.25,
   };
   const api = {
-    setSize: vi.fn(),
     outerSize: vi.fn(),
     scaleFactor: vi.fn(),
     outerPosition: vi.fn(),
@@ -32,15 +37,15 @@ const mocks = vi.hoisted(() => {
   return { state, api, getCurrentWindowThrows: false };
 });
 
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@tauri-apps/api/window', () => {
-  class LogicalSize {
-    constructor(public width: number, public height: number) {}
-  }
   class PhysicalPosition {
     constructor(public x: number, public y: number) {}
   }
   return {
-    LogicalSize,
     PhysicalPosition,
     getCurrentWindow: () => {
       // 模拟纯浏览器 / node 环境：__TAURI_INTERNALS__ 不存在时
@@ -97,6 +102,14 @@ function fakeEl(scrollHeight: number) {
   return { scrollHeight } as unknown as HTMLElement;
 }
 
+/** 只看 `set_ticker_size` 的调用参数（invoke 还承担写 ticker_height）。 */
+function sizeCalls() {
+  return vi
+    .mocked(invoke)
+    .mock.calls.filter(([cmd]) => cmd === 'set_ticker_size')
+    .map(([, args]) => args as { height: number });
+}
+
 const BOTTOM_EDGE = 1080; // 初始 y + height = 1030 + 50
 
 describe('useTickerWindowHeight', () => {
@@ -114,9 +127,15 @@ describe('useTickerWindowHeight', () => {
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
-    // fake window：物理状态跟着 setSize / setPosition 走，读到的永远是「现在」。
-    mocks.api.setSize.mockImplementation(async (size: { height: number }) => {
-      mocks.state.height = Math.round(size.height * mocks.state.scale);
+    // fake window：物理状态跟着改尺寸 / setPosition 走，读到的永远是「现在」。
+    // 改尺寸这一条走 invoke('set_ticker_size')，其余命令（写 ticker_height）
+    // 保持 resolve undefined。
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === 'set_ticker_size') {
+        const height = (args as { height?: number })?.height ?? 0;
+        mocks.state.height = Math.round(height * mocks.state.scale);
+      }
+      return undefined;
     });
     mocks.api.outerSize.mockImplementation(async () => ({ width: 288, height: mocks.state.height }));
     mocks.api.scaleFactor.mockImplementation(async () => mocks.state.scale);
@@ -150,14 +169,13 @@ describe('useTickerWindowHeight', () => {
     FakeResizeObserver.instances[0].callback();
     flushRaf();
     await flushAsync();
-    expect(mocks.api.setSize).not.toHaveBeenCalled();
+    expect(sizeCalls()).toEqual([]);
 
     ready.value = true;
     await nextTick();
     flushRaf();
     await flushAsync();
-    expect(mocks.api.setSize).toHaveBeenCalledTimes(1);
-    expect(mocks.api.setSize.mock.calls[0][0]).toMatchObject({ width: 230, height: 24 });
+    expect(sizeCalls()).toEqual([{ height: 24 }]);
   });
 
   it('高度变化后按物理高度差回移 y，下边缘始终钉在原地', async () => {
@@ -169,9 +187,7 @@ describe('useTickerWindowHeight', () => {
     await flushAsync();
 
     // 初始内容 24 逻辑（=30 物理）：高度 50→30，y 下移 20 补偿，下边缘不动
-    expect(mocks.api.setSize).toHaveBeenCalledWith(
-      expect.objectContaining({ width: 230, height: 24 })
-    );
+    expect(sizeCalls()).toContainEqual({ height: 24 });
     expect(mocks.state.y + mocks.state.height).toBe(BOTTOM_EDGE);
 
     // 内容长到两行 39 逻辑（=49 物理）：y 上移 19，下边缘仍不动
@@ -180,12 +196,16 @@ describe('useTickerWindowHeight', () => {
     flushRaf();
     await flushAsync();
 
-    expect(mocks.api.setSize).toHaveBeenLastCalledWith(
-      expect.objectContaining({ width: 230, height: 39 })
-    );
+    expect(sizeCalls()).toContainEqual({ height: 39 });
     expect(mocks.api.setPosition).toHaveBeenLastCalledWith(
       expect.objectContaining({ x: 1690, y: 1031 })
     );
     expect(mocks.state.y + mocks.state.height).toBe(BOTTOM_EDGE);
+
+    // 高度写回库：下次启动先按它建窗，位置才不会被长高补偿推着走
+    expect(vi.mocked(invoke)).toHaveBeenLastCalledWith('set_setting', {
+      key: 'ticker_height',
+      value: '39',
+    });
   });
 });

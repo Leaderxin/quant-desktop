@@ -3,6 +3,9 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
+/// Linux 启动后端（Wayland → XWayland），见模块内说明。
+#[cfg(target_os = "linux")]
+mod linux_backend;
 pub mod hotkey;
 pub mod import;
 pub mod events;
@@ -278,6 +281,48 @@ pub fn show_main_window(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 设行情条窗口尺寸，并把尺寸钉成「不可由用户/WM 改」。
+///
+/// 三步的顺序都是必需的，两两之间各有一个坑：
+///
+/// 1. **先清 min/max 提示**：Linux/GTK 下非 resizable 窗口的尺寸提示会被
+///    `gtk_window_compute_hints()` 钉成同一个值（MAX_SIZE = MIN_SIZE），且那是
+///    **建窗时**的值 —— 不清掉，改高度就会被旧的 max 夹住：窗口只能撑大、收不回
+///    内容高度，行情条底部永久多出一截。
+/// 2. **改完再钉回同一个值**：这才是「锁尺寸」的落实处。不能只靠
+///    `set_resizable(false)` —— GNOME/Mutter 实测仍能给这种无边框窗口提供缩放
+///    手势；而此前放开 `set_resizable(true)` 更是直接把拖拽改大小打开了。
+///    WM 看到 min == max 就不给缩放手柄、边缘拖拽也无效。
+/// 3. 三步都在同一个调用里做完，用户手势插不进「已清提示、还没钉回去」的中间态。
+///
+/// 行情条所有改尺寸的路径都必须走这里：启动、显示（`set_ticker_visible`）、以及
+/// 前端按内容量出的高度（`commands::window::set_ticker_size`）。非 Linux 上钉
+/// min/max 同样是禁止缩放的标准做法，三个平台的行为因此一致。
+pub(crate) fn set_ticker_size(window: &tauri::WebviewWindow, width: u32, height: u32) {
+    let size: tauri::Size = tauri::LogicalSize::new(width as f64, height as f64).into();
+    let _ = window.set_min_size(None::<tauri::Size>);
+    let _ = window.set_max_size(None::<tauri::Size>);
+    let _ = window.set_size(size);
+    let _ = window.set_min_size(Some(size));
+    let _ = window.set_max_size(Some(size));
+}
+
+/// 行情条窗口的持久化高度（逻辑像素）。
+///
+/// 行情条高度由前端按内容测量（见 `useTickerWindowHeight`），配置里的
+/// `TICKER_HEIGHT` 只是首启兜底。启动/显示时必须**先**按这里的高度设尺寸，
+/// 再恢复 `ticker_y`：若先以 40px 建窗、等前端量完再长高，前端把「40 → 内容
+/// 高度」的差当成一次位移来锚定下边缘，而保存的 y 来自上一次会话的最终高度，
+/// 结果就是每次重启都向上漂移同样的距离。
+fn saved_ticker_height(db: &Database) -> u32 {
+    db.get_setting(keys::TICKER_HEIGHT)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<u32>().ok())
+        .map(|h| h.clamp(24, 600))
+        .unwrap_or(crate::datasource::TICKER_HEIGHT)
+}
+
 /// 显示/隐藏行情条窗口，并把可见性落盘到 `ticker_visible`。
 ///
 /// 托盘菜单的「显示/隐藏行情条」与设置页的 `set_ticker_visible` 命令共用这一份
@@ -302,6 +347,12 @@ pub fn set_ticker_visible(
         return Ok(());
     }
 
+    // 先按上次内容高度设尺寸，再 show / 恢复位置：位置是按「最终高度」存下的，
+    // 用配置里的 40px 建窗会让前端的长高补偿把窗口一路往上推（见
+    // saved_ticker_height 的注释）。
+    let height = saved_ticker_height(db);
+    set_ticker_size(&window, crate::datasource::TICKER_WIDTH, height);
+
     window.show().map_err(|e| e.to_string())?;
     let _ = window.set_always_on_top(true);
     let _ = window.set_skip_taskbar(true);
@@ -313,17 +364,11 @@ pub fn set_ticker_visible(
         .as_ref()
         .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
         .unwrap_or((1920, 1080));
-    let win_size = window.outer_size().unwrap_or_else(|_| {
-        // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
-        // 否则 DPI ≠ 100% 时兜底几何偏小
-        let scale = window.scale_factor().unwrap_or(1.0);
-        tauri::PhysicalSize::new(
-            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
-            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
-        )
-    });
-    let tw = win_size.width as i32;
-    let th = win_size.height as i32;
+    // 按即将设置的高度算物理尺寸：set_size 是投递到事件循环的请求，紧接着
+    // outer_size() 读到的可能还是旧值，位置校验就会用错高度。
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let tw = (crate::datasource::TICKER_WIDTH as f64 * scale).round() as i32;
+    let th = (height as f64 * scale).round() as i32;
 
     let mut restored = false;
     if let Ok(Some(x)) = db.get_setting(keys::TICKER_X) {
@@ -379,6 +424,11 @@ fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogg
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 必须最先做：GTK 初始化后后端就定了，切不了。Wayland 会话里行情条的
+    // 「置顶」只能靠 XWayland（详见 linux_backend 模块说明）。
+    #[cfg(target_os = "linux")]
+    linux_backend::ensure_x11_backend();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // 原生「另存为」对话框：自选导入模板让用户自己挑目录。
@@ -449,6 +499,9 @@ pub fn run() {
                 logging::requested_level(),
                 logging::LEVEL_ENV
             );
+            // 置顶依赖 X11：把实际后端和判定依据记下来，出问题一眼能查。
+            #[cfg(target_os = "linux")]
+            log::info!("{}", linux_backend::backend_summary());
             if data_dir_fallback {
                 log::warn!(
                     "System data directory unavailable — using {:?}",
@@ -834,17 +887,18 @@ pub fn run() {
             if let Some(ticker) = app.get_webview_window("ticker") {
                 let _ = ticker.set_always_on_top(true);
 
-                // Linux/GTK：非 resizable 窗口的 min/max 尺寸提示会被钉成同一个值
-                // (gtk_window_compute_hints() 里 MAX_SIZE = MIN_SIZE)，tao 的
-                // set_inner_size 只能把窗口撑大、收不回内容高度，行情条底部就会
-                // 永久多出一截。前端 useTickerWindowHeight 正是靠 setSize 跟着内容
-                // 走的，所以这里必须放开 resizable。
+                // Linux/GTK 曾经在这里 `set_resizable(true)`：非 resizable 窗口的
+                // min/max 提示会被 GTK 钉成建窗时的同一个值
+                // (gtk_window_compute_hints() 里 MAX_SIZE = MIN_SIZE)，之后
+                // set_size 只能撑大、收不回去，行情条底部永久多出一截。
                 //
-                // 代价是 Linux 上窗口不再禁止用户/WM 拖拽改尺寸。无边框小条实际
-                // 很难触发；即便被拉动，下次内容高度变化时 setSize(230, …) 也会把
-                // 宽度钉回去。
-                #[cfg(target_os = "linux")]
-                let _ = ticker.set_resizable(true);
+                // 现在不需要了：改尺寸一律走 `set_ticker_size`，它「先清提示 →
+                // 改尺寸 → 把新尺寸钉回 min/max」。清掉那一步就是上面那个坑的解法，
+                // 而钉回去那一步同时把「用户/WM 能拖大拖小」彻底关掉 —— resizable
+                // 留着 true 的话，GNOME/Mutter 仍会给这种无边框窗口提供缩放手势
+                // （用户实测能拖动大小），锁尺寸必须靠这里两个条件一起成立。
+                //
+                // 顺序依赖：这一步之后才是首次 set_ticker_size（见下）。
 
                 // Windows：无边框窗口开着原生阴影时，DWM 会在窗口最顶上留 1px
                 // 白边（tao 在 Win10 上把 top inset 设成 0，白边正好压在客户区
@@ -855,41 +909,59 @@ pub fn run() {
                 {
                     let _ = ticker.set_shadow(false);
                     // 关掉原生阴影后，WM_NCCALCSIZE 不再扣掉 shadow insets，客户区
-                    // 会从配置的 230×40 涨到原来的 outer 尺寸（左右/下各多一圈）。
-                    // 下面的 show() 就在同一个 setup 块末尾，而前端要等设置/自选
-                    // 拉完才按内容高度 setSize —— 中间会闪一帧更宽更高的底板。
-                    // 这里先按配置尺寸收回去（窗口还没 show，看不到中间态）。
-                    let _ = ticker.set_size(tauri::LogicalSize::new(
-                        crate::datasource::TICKER_WIDTH as f64,
-                        crate::datasource::TICKER_HEIGHT as f64,
-                    ));
+                    // 会比设定值多出左右/下的一圈。尺寸在下面统一设，必须在
+                    // set_shadow(false) 之后，否则会被这圈 inset 覆盖。
                 }
 
-                // Capture monitor bounds and ticker size for clamping on move
+                // 先按上次的内容高度建窗，再恢复位置（见 saved_ticker_height）。
+                // 顺序有依赖：Windows 上必须在 set_shadow(false) 之后（否则
+                // outer 尺寸会多出一圈 inset）。尺寸与 min/max 提示一起在
+                // `set_ticker_size` 里落地 —— GTK 那个「旧 max 夹住新高度」的坑
+                // 由它「先清提示」解决，所以这里不再需要放开 resizable。
+                let initial_ticker_height = saved_ticker_height(&db);
+                set_ticker_size(
+                    &ticker,
+                    crate::datasource::TICKER_WIDTH,
+                    initial_ticker_height,
+                );
+
+                // 钳制与「可见比例」都按事件发生时的真实尺寸算：行情条高度会随
+                // 内容（图表开关、轮播条数）变化，用启动时捕获的高度会把底部
+                // 越界的位置当成合法值存下来。
+                fn ticker_physical_size(window: &tauri::WebviewWindow) -> (i32, i32) {
+                    let size = window.outer_size().unwrap_or_else(|_| {
+                        // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
+                        // 否则 DPI ≠ 100% 时兜底几何偏小
+                        let scale = window.scale_factor().unwrap_or(1.0);
+                        tauri::PhysicalSize::new(
+                            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
+                            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
+                        )
+                    });
+                    (size.width as i32, size.height as i32)
+                }
+
+                // Capture monitor bounds and ticker size for clamping on move.
+                // 这里按「即将设置的高度」算，而不是 outer_size()：set_size 是
+                // 投递到事件循环的请求，紧接着读到的可能还是旧的 40px。
                 let mon = ticker.primary_monitor().ok().flatten();
                 let (mon_w, mon_h) = mon
                     .as_ref()
                     .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
                     .unwrap_or((1920, 1080));
-                let ticker_size = ticker.outer_size().unwrap_or_else(|_| {
-                    // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
-                    // 否则 DPI ≠ 100% 时兜底几何偏小
-                    let scale = ticker.scale_factor().unwrap_or(1.0);
-                    tauri::PhysicalSize::new(
-                        (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
-                        (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
-                    )
-                });
-                let tw = ticker_size.width as i32;
-                let th = ticker_size.height as i32;
+                let scale = ticker.scale_factor().unwrap_or(1.0);
+                let tw = (crate::datasource::TICKER_WIDTH as f64 * scale).round() as i32;
+                let th = (initial_ticker_height as f64 * scale).round() as i32;
 
                 // Save ticker position on move.  Only persist if enough of the
                 // ticker is actually visible — if the user drags it way off
                 // screen, we skip saving so the next launch falls back to the
                 // default bottom-right position.
+                let ticker_for_move = ticker.clone();
                 let db_clone = db.clone();
                 let _ = ticker.on_window_event(move |event| {
                     if let tauri::WindowEvent::Moved(pos) = event {
+                        let (tw, th) = ticker_physical_size(&ticker_for_move);
                         // How much of the ticker is inside the monitor bounds?
                         let visible_left = pos.x.max(0);
                         let visible_right = (pos.x + tw).min(mon_w);
@@ -1007,6 +1079,7 @@ pub fn run() {
             commands::market::get_overview_interval,
             commands::window::show_main_window,
             commands::window::set_ticker_visible,
+            commands::window::set_ticker_size,
             commands::window::set_window_theme,
             commands::updater::check_update,
             commands::updater::install_update,
@@ -1122,5 +1195,38 @@ mod tests {
         let loggers = build_loggers(&blocker.join("data"));
         assert_eq!(loggers.len(), 1, "an unusable app dir must degrade, not panic");
         std::fs::remove_file(&blocker).ok();
+    }
+
+    /// 行情条启动高度：没存过时用配置兜底，坏值/越界值必须夹到可用范围。
+    /// 这里读错会让窗口以错误高度建出来，前端的长高补偿把行情条往上推。
+    #[test]
+    fn saved_ticker_height_defaults_and_clamps() {
+        let dir = temp_path("ticker-height");
+        let db = Database::open(dir.clone()).unwrap();
+
+        assert_eq!(
+            saved_ticker_height(&db),
+            crate::datasource::TICKER_HEIGHT,
+            "首次启动没有持久化高度时用配置兜底"
+        );
+
+        db.set_setting(keys::TICKER_HEIGHT, "5").unwrap();
+        assert_eq!(saved_ticker_height(&db), 24, "过小夹到下限");
+
+        db.set_setting(keys::TICKER_HEIGHT, "9999").unwrap();
+        assert_eq!(saved_ticker_height(&db), 600, "过大夹到上限");
+
+        db.set_setting(keys::TICKER_HEIGHT, "not-a-number").unwrap();
+        assert_eq!(
+            saved_ticker_height(&db),
+            crate::datasource::TICKER_HEIGHT,
+            "坏值退回配置兜底"
+        );
+
+        db.set_setting(keys::TICKER_HEIGHT, "99").unwrap();
+        assert_eq!(saved_ticker_height(&db), 99);
+
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

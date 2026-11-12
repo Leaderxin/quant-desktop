@@ -1,3 +1,4 @@
+use tauri::Manager;
 use tauri::State;
 use std::sync::Arc;
 use crate::db::Database;
@@ -31,6 +32,21 @@ pub fn set_ticker_visible(
         log::warn!("[window] set_ticker_visible({}) failed: {}", visible, e);
         e
     })
+}
+
+/// 按内容高度调整行情条窗口，并把尺寸钉成不可缩放。
+///
+/// 前端 `useTickerWindowHeight` 量到内容高度后调这里，而不是直接用
+/// `setSize`：钉 min/max 提示的三步（清 → 改 → 钉回）必须和改尺寸**原子地**
+/// 成一组，中间被 WM 的手势插一步就可能把尺寸锁死在旧值上。实现单点在
+/// `crate::set_ticker_size`，与启动/显示路径共用一份。
+#[tauri::command]
+pub fn set_ticker_size(app: tauri::AppHandle, height: u32) -> Result<(), String> {
+    let window = app
+        .get_webview_window("ticker")
+        .ok_or_else(|| "Ticker window not found".to_string())?;
+    crate::set_ticker_size(&window, crate::datasource::TICKER_WIDTH, height.clamp(24, 600));
+    Ok(())
 }
 
 /// 同步窗口标题栏的主题（设置页与状态栏的主题开关）。
