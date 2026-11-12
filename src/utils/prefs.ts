@@ -64,8 +64,9 @@ export const TICKER_ITEMS_MIN = 1;
 export const TICKER_ITEMS_PRESET_MAX = 4;
 
 /** 单次轮播条数的上限，也是「自定义」能填到的最大值。
- *  它同时决定行情条窗口的最大高度：一行约 15.4px，10 条约 165px（宽度固定 230px，
- *  窗口高度由 useTickerWindowHeight 按内容量出来，没有 maxHeight 约束）。 */
+ *  它同时决定行情条窗口的最大高度：开迷你分时线后一行被 18px 的图格撑到 18px，
+ *  10 条约 188px（宽度固定 210px，见 datasource::TICKER_WIDTH 的配平；窗口高度由 useTickerWindowHeight 按内容量出来，
+ *  没有 maxHeight 约束）。 */
 export const TICKER_ITEMS_MAX = 10;
 
 export function clampTopN(n: number): number {
@@ -76,6 +77,41 @@ export function clampTopN(n: number): number {
 export function clampTickerItems(n: number): number {
   if (!Number.isFinite(n)) return 1;
   return Math.min(Math.max(Math.round(n), TICKER_ITEMS_MIN), TICKER_ITEMS_MAX);
+}
+
+/** 行情条迷你分时线的纵轴模式。 */
+export const TICKER_CHART_MODES = ['off', 'price', 'limit', 'both'] as const;
+export type TickerChartMode = (typeof TICKER_CHART_MODES)[number];
+
+/**
+ * 行情条分时线模式。非法/缺失归为 `both` —— 与 Rust 侧 `DEFAULT_SETTINGS`
+ * 的默认值一致；`off` 只由用户显式选择。
+ *
+ * 1.7.x 曾把默认钉在 `price`：那之前生成的库里 `ticker_chart_mode` 键不存在
+ * （`init_defaults` 只在缺键时写），读回来就是这个 `both`，与后端新默认一致。
+ * 老库里显式存的 `price`/`limit` 不受影响。
+ */
+export function parseTickerChartMode(raw: string | undefined): TickerChartMode {
+  return (TICKER_CHART_MODES as readonly string[]).includes(raw ?? '')
+    ? (raw as TickerChartMode)
+    : 'both';
+}
+
+/**
+ * 行情条迷你分时线的画法。
+ *
+ * `axis` = 0% 虚线 + 两条曲线 + 一条 x 轴线与三个刻度（起点/午间/终点）；
+ * `plain` = 只有 0% 虚线与两条曲线。默认 `axis`：格子很小，没有轴线时「横轴是
+ * 一整个交易日」只能靠曲线午间那段断口去猜，第一次看的人不知道左边是几点。
+ */
+export const TICKER_CHART_STYLES = ['axis', 'plain'] as const;
+export type TickerChartStyle = (typeof TICKER_CHART_STYLES)[number];
+
+/** 非法/缺失归为 `axis` —— 与 Rust 侧 `DEFAULT_SETTINGS` 的默认值一致。 */
+export function parseTickerChartStyle(raw: string | undefined): TickerChartStyle {
+  return (TICKER_CHART_STYLES as readonly string[]).includes(raw ?? '')
+    ? (raw as TickerChartStyle)
+    : 'axis';
 }
 
 /**

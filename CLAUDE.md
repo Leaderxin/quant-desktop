@@ -43,6 +43,8 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 | `utils/watchGroups.spec.ts` | 删除分组确认框的两份名单（顺序、去重、目标不存在给空） |
 | `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界；网格槽位/偏移/刻度与窄宽回退 |
 | `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动 |
+| `utils/tickerSparkline.spec.ts` | 行情条分时的两套纵轴：±1% 下限、涨跌停固定半幅、越界回退、`both` 下昨收在两条线里同一个 y、单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 画轴+3 刻度、`plain` 不画、虚线/50%/满不透明三档、圆点夹边） |
+| `utils/priceLimit.spec.ts` | 涨跌停比例判定（主板/创业/科创/北交/ST）、不该有涨跌停的品类给 null、`limitPrices` 四舍五入 |
 | `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
 | `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
 
@@ -61,7 +63,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 | 窗口 | Label | 入口 | 配置 |
 |------|-------|------|------|
 | 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
-| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38，置顶、无边框、右下角、不进任务栏 |
+| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 210×38，置顶、无边框、右下角、不进任务栏 |
 
 [vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
@@ -76,6 +78,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 三个必须单点实现的窗口 helper（托盘与设置页共用，各写一份必漂）：
 
 - `set_ticker_visible(app, db, visible)`：显示时依次 show → 置顶 / 隐藏任务栏 / `WS_EX_TOOLWINDOW` / 还原位置，并持久化 `ticker_visible`。**顺序不能反**：Windows 的 `set_skip_taskbar` 走 `ITaskbarList::DeleteTab`，窗口必须已经真正显示过才生效。
+- `set_ticker_size(window, w, h)`：**行情条所有改尺寸的路径都必须走它**（启动、`set_ticker_visible`、前端按内容量出的高度）。三步都有坑：先清 min/max 提示（Linux/GTK 会把非 resizable 窗口的提示钉成建窗时的值，不清就收不回内容高度，底部永久多一截）→ 改尺寸 → 把新尺寸钉回 min/max（WM 见 min==max 才不给缩放手柄；只靠 `set_resizable(false)` 挡不住 GNOME/Mutter 的缩放手势）。前端因此**没有** `core:window:allow-set-size` 权限，绕过命令改不动尺寸。
 - `show_main_window(app)`：`show()` 之后必须 `unminimize()` —— Windows 的 `SW_SHOW` 不会退出最小化，用户只看到任务栏图标闪一下。托盘左键还要判 `is_minimized()`：最小化窗口在 Win32 眼里仍是 `WS_VISIBLE`，只判 `is_visible()` 会把想叫回来的窗口又藏起来。托盘的「设置」在显示窗口后还要 `emit("open-settings")`（webview 常驻，隐藏时也收得到）。
 - `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system`（含缺键、坏值）在 Windows/macOS 上必须传 `None` 给 tao —— 一旦显式设过主题，tao 会忽略系统主题变化，WebView2 的 `prefers-color-scheme` 被一起钉死，「跟随系统」就失效了。**Linux 例外**：tao 把 `None` 实现成 `set_gtk_application_prefer_dark_theme(false)`（强制浅色）而不是解 pin，而这个进程级 GTK 设置正是 WebKitGTK 的 `prefers-color-scheme` 来源。所以 system 模式必须**绕开 `set_theme(None)`**：先用 `linux_portal_theme()` 直接读 xdg-desktop-portal，再 `set_theme(Some(...))` 设回去；先解 pin 会把 GTK 强制改浅，WebKitGTK 先按浅色重绘一帧，切换「跟随系统」时闪白（#37）。只有 portal 不可用时才退回 tao 的旧路径（解 pin → `window.theme()` → 设回去，接受这次闪烁）。启动那次必须**先于** `main.show()`（否则先闪一帧白条）；运行期挂在 store 的模式 watch 上。只作用于 `main`（ticker 无边框、没有标题栏可画）。
 
@@ -155,7 +158,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - 设置页共用原语：`SettingsRow`（标签 + 常驻说明，不靠 placeholder）、`SegmentedControl`（与 `ChartSwitcher`、概览方向同一套视觉）、`DragSortList`（拖拽 + `Alt+↑/↓` + 行内按钮）。开关用 `NSwitch size="small"`，下拉用 `NSelect size="small"`（原生 `<select>` 的展开列表不跟主题）。共用样式在 [settings.css](src/assets/styles/settings.css)，以 `.settings-page` 为祖先。
 - 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
 - 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
-- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
+- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。每行是左右结构 —— 左列上下两行（名称 / 价格+涨跌），右侧一块 75×30 的迷你分时（`TickerSparkline` + `useTickerSparkline`，自绘 Canvas，**不引 klinecharts**）：横轴 09:30–15:00。格子里必画的是 0% 虚线 + 两条曲线；`ticker_chart_style=axis` 时再加一条 x 轴线与三个刻度。**绘制本体是 `utils/tickerSparkline` 的 `paintTickerSparkline`，设置页的 `SparklinePreview` 也用它** —— 各画一份会漂成「设置里看着对、实际不是那样」，比没有预览更糟。关掉分时图时左列容器退回 `display: contents`，行回到原来的一行三段与紧凑高度。尺寸与坐标全部由 `utils/tickerSparkline` 的 `SPARKLINE_*` 常量推出并被组件 style 使用，别再手写第二份数字。缓存/在途请求/重试下限必须放在 composable 的**模块作用域** —— 翻页会销毁重建整批行，实例级缓存等于每 3 秒重打一遍接口。失败不写缓存但要记尝试时间，否则坏标的被反复捶且重试被 TTL 挡死。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
 - 详情面板高度必须是**确定值**（按视口 clamp），图表容器 `flex: 1` 填满剩余空间；`chart.css` 里**不要给图区写死高度** —— 1080p @150% 这类矮窗口会把副图顶出容器、被 `.main-content` 的 `overflow: hidden` 裁掉。详情与设置页用 `defineAsyncComponent` 懒加载；**StockDetail 与 IndexDetail 两个入口必须同时异步**，否则 klinecharts 会经静态链回到首屏。
 - Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
 - Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
@@ -200,6 +203,8 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 | `ticker_transparent` | `0` | 透明背景 |
 | `ticker_click_wakes` | `1` | 点击行情条是否唤醒主界面。关闭后只是纯展示，恢复主界面走托盘或老板键（初始化失败时的「点击重试」不受它影响） |
 | `ticker_items_per_page` | `2` | 每屏条数 1–10（预设到 4 + 自定义）；上限也就是行情条最大高度 |
+| `ticker_chart_mode` | `both` | 行情条每行的迷你分时线：`off`/`price`/`limit`/`both`。`both` 把价格轴（满不透明）与涨跌停轴（50% 透明）叠进同一格，两套纵轴都以昨收为中心，所以一条 0% 线对两条线同时成立。涨跌停规则未知或数据越界时该条回退，只画主线 |
+| `ticker_chart_style` | `axis` | 迷你分时线的画法：`axis`（额外画 x 轴线与三个刻度）/`plain`（只有 0% 虚线与曲线）。高度两种画法都是 30px —— 由画法推导高度会让切换样式时窗口跳一下 |
 | `watchlist_columns` | 全部 8 列 | JSON 数组，顺序即列顺序，不含 `ticker_enabled` |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`，空 = 不自排 |
 | `color_scheme` | `cn` | `cn` 红涨绿跌 / `us` 反过来 |
@@ -213,7 +218,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 以下测试把这张表和前端钉在一起：键名不可改（就是 wire format）、无重复键、`groups_migrated` 不是默认键、布尔只认 `"0"/"1"`、数字可解析。
 
-两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 230 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。
+两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 210 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平：多出来的宽度不会变成图，只会变成中间的空白。
 
 ### 窗口位置
 

@@ -20,6 +20,8 @@ import {
   parseDefaultSort,
   parseJsonArray,
   parseThemeMode,
+  parseTickerChartMode,
+  parseTickerChartStyle,
 } from './prefs';
 
 describe('parseJsonArray', () => {
@@ -166,6 +168,44 @@ describe('parseThemeMode', () => {
     expect(parseThemeMode('')).toBe('system');
     expect(parseThemeMode('Dark')).toBe('system');
     expect(parseThemeMode('auto')).toBe('system');
+  });
+});
+
+describe('parseTickerChartMode', () => {
+  it('四个合法值原样返回', () => {
+    expect(parseTickerChartMode('off')).toBe('off');
+    expect(parseTickerChartMode('price')).toBe('price');
+    expect(parseTickerChartMode('limit')).toBe('limit');
+    expect(parseTickerChartMode('both')).toBe('both');
+  });
+
+  /**
+   * 缺键退回 `both`，与 Rust 侧 `DEFAULT_SETTINGS` 的新默认值一致 ——
+   * 1.7.x 之前生成的库里根本没有这个键，两边给出不同的兜底值就会让
+   * 「设置页显示双线、实际画价格线」这种不一致静默发生。
+   */
+  it('缺键与坏值退回双线', () => {
+    expect(parseTickerChartMode(undefined)).toBe('both');
+    expect(parseTickerChartMode('')).toBe('both');
+    expect(parseTickerChartMode('bogus')).toBe('both');
+  });
+});
+
+describe('parseTickerChartStyle', () => {
+  it('两个合法值原样返回', () => {
+    expect(parseTickerChartStyle('axis')).toBe('axis');
+    expect(parseTickerChartStyle('plain')).toBe('plain');
+  });
+
+  /**
+   * 缺键退回带刻度 —— 与 Rust 侧 `DEFAULT_SETTINGS` 的默认值一致。
+   * 这个键比 `ticker_chart_mode` 更晚出现，1.7.x 及更早的库里根本没有它，
+   * 两边默认值不一致的症状是「设置页显示带刻度、实际画的是纯曲线」。
+   */
+  it('缺键与坏值退回带刻度', () => {
+    expect(parseTickerChartStyle(undefined)).toBe('axis');
+    expect(parseTickerChartStyle('')).toBe('axis');
+    expect(parseTickerChartStyle('bogus')).toBe('axis');
   });
 });
 

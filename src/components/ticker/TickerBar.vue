@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useTickerWindowHeight } from '@/composables/useTickerWindowHeight';
 import { formatPrice } from '@/utils/format';
 import { nextPageStart, windowItems } from '@/utils/paging';
+import TickerSparkline from './TickerSparkline.vue';
 
 const quoteStore = useQuoteStore();
 const watchlist = useWatchlistStore();
@@ -168,8 +169,11 @@ const tickerItems = computed(() =>
     return {
       name: item.name,
       code: item.code,
+      market: item.market,
       price: q?.price ?? null,
       changePct: q?.change_pct ?? null,
+      // 分时图数据里没有上一交易日时（新股首日）的兜底昨收
+      prevClose: q ? q.price - q.change : undefined,
     };
   })
 );
@@ -191,6 +195,19 @@ watch(
 
 const visibleItems = computed(() =>
   windowItems(tickerItems.value, page.value, perPage.value),
+);
+
+/**
+ * 是否给每行挂分时图。
+ *
+ * 行的排布跟着它走：挂图就改成「左文字（名称 / 价格+涨跌）| 右图」的左右结构，
+ * 图才有约两行字的高度；不挂就维持原来的一行三段，行情条回到紧凑高度。
+ * 两处必须同一个条件，否则会出现「文字按两行排、右边没有图」的空档。
+ *
+ * heightReady 之前不挂：那时窗口还是占位行的高度，长高会被量进一次无效位移。
+ */
+const showChart = computed(
+  () => heightReady.value && settings.tickerChartMode !== 'off',
 );
 
 const retryHintVisible = ref(false);
@@ -355,19 +372,42 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
         </div>
       </template>
       <template v-else-if="visibleItems.length > 0">
-        <div v-for="item in visibleItems" :key="item.code" class="ticker-row">
-          <span class="ticker-name">{{ item.name }}</span>
-          <span
-            v-if="item.price !== null"
-            class="ticker-price tabular-nums"
-            :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
-          >{{ formatPrice(item.price) }}</span>
-          <span v-else class="ticker-na">--</span>
-          <span
-            v-if="item.changePct !== null"
-            class="ticker-change tabular-nums"
-            :class="item.changePct >= 0 ? 'up' : 'down'"
-          >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
+        <div
+          v-for="item in visibleItems"
+          :key="item.code"
+          class="ticker-row"
+          :class="{ 'with-chart': showChart }"
+        >
+          <!-- 左侧上下两行：名称 / 价格+涨跌。右侧整块留给分时图，
+               图高 ≈ 两行字，形状才看得出。 -->
+          <div class="ticker-text">
+            <span class="ticker-name">{{ item.name }}</span>
+            <span class="ticker-figures">
+              <span
+                v-if="item.price !== null"
+                class="ticker-price tabular-nums"
+                :class="item.changePct !== null && item.changePct >= 0 ? 'up' : 'down'"
+              >{{ formatPrice(item.price) }}</span>
+              <span v-else class="ticker-na">--</span>
+              <span
+                v-if="item.changePct !== null"
+                class="ticker-change tabular-nums"
+                :class="item.changePct >= 0 ? 'up' : 'down'"
+              >{{ item.changePct >= 0 ? '+' : '' }}{{ item.changePct.toFixed(2) }}%</span>
+            </span>
+          </div>
+          <!-- 每行自己的迷你分时线：与行情同一横轴（09:30–15:00），一眼对应到
+               左边这行字。heightReady 之前窗口还是占位行的高度，此时挂载会让
+               窗口先长高再被内容量回来，跳过它。 -->
+          <TickerSparkline
+            v-if="showChart"
+            :code="item.code"
+            :market="item.market"
+            :name="item.name"
+            :mode="settings.tickerChartMode"
+            :chart-style="settings.tickerChartStyle"
+            :prev-close="item.prevClose"
+          />
         </div>
       </template>
       <!-- 区分两种为空：诚然没有自选，与有自选但全部关闭了播报 -->
@@ -410,7 +450,32 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   gap: var(--space-1);
   line-height: 1.4;
 }
+/* 挂图时左列与图之间给足间距，比文字之间的 4px 松一档 */
+.ticker-row.with-chart {
+  gap: var(--space-2);
+}
+/*
+  没挂图时这个包装不参与布局（display: contents）—— 名称与数字直接成为
+  `.ticker-row` 的 flex 子项，仍是原来的一行三段；挂图时它才立起来变成
+  上下两行的文字列。一份 DOM 两种排布，不用把模板写两遍。
+*/
+.ticker-text {
+  display: contents;
+}
+.ticker-row.with-chart .ticker-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.ticker-figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
 .ticker-name {
+  /* 一行三段时占满剩余宽度，把价格与涨跌推到右边；上下两行时按内容走 */
   flex: 1;
   min-width: 0;
   color: var(--color-text-primary);
@@ -419,6 +484,11 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 上下两行时名称不再需要撑宽（列本身已经 flex:1），只要允许它收缩截断 ——
+   `flex: 1` 在纵向的列里会沿主轴长高，那是另一回事。 */
+.ticker-row.with-chart .ticker-name {
+  flex: 0 1 auto;
 }
 .ticker-price {
   flex-shrink: 0;

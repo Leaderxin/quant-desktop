@@ -4,7 +4,8 @@ import { computed, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { formatCode } from '@/utils/format';
-import { clampTickerItems, TICKER_ITEMS_MAX, TICKER_ITEMS_MIN, TICKER_ITEMS_PRESET_MAX } from '@/utils/prefs';
+import { clampTickerItems, TICKER_ITEMS_MAX, TICKER_ITEMS_MIN, TICKER_ITEMS_PRESET_MAX, type TickerChartMode, type TickerChartStyle } from '@/utils/prefs';
+import SparklinePreview from './SparklinePreview.vue';
 import { moveByStep } from '@/utils/dragSort';
 import SettingsRow from './SettingsRow.vue';
 import SegmentedControl from './SegmentedControl.vue';
@@ -13,6 +14,23 @@ import { NSwitch } from 'naive-ui';
 
 const settings = useSettingsStore();
 const watchlist = useWatchlistStore();
+
+/**
+ * 迷你分时线的纵轴模式。默认「双线」：价格轴线满不透明 + 涨跌停轴线半透明，
+ * 一张小图同时给出「今天怎么走的」和「离涨跌停还有多远」。
+ */
+const chartModeOptions: { value: TickerChartMode; label: string }[] = [
+  { value: 'off', label: '关闭' },
+  { value: 'both', label: '双线' },
+  { value: 'price', label: '价格' },
+  { value: 'limit', label: '涨跌停' },
+];
+
+/** 画法。默认带 x 轴线与刻度 —— 格子很小时「横轴是一整天」需要一条轴来说明。 */
+const chartStyleOptions: { value: TickerChartStyle; label: string }[] = [
+  { value: 'axis', label: '带刻度' },
+  { value: 'plain', label: '纯曲线' },
+];
 
 /** 全部自选，按轮播位次排序。列表顺序即轮播顺序，所以这里必须用 ticker_order
  *  而不是分组顺序 —— 播报范围是跨分组的扁平列表。 */
@@ -181,6 +199,30 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
         </SettingsRow>
 
         <SettingsRow
+          title="迷你分时线"
+          description="在每行行情右侧画一小段分时走势。双线=价格轴曲线（实色）叠涨跌停轴曲线（半透明）；单独选价格或涨跌停时只画一条。"
+        >
+          <SegmentedControl
+            :model-value="settings.tickerChartMode"
+            :options="chartModeOptions"
+            label="迷你分时线纵轴"
+            @update:model-value="settings.setTickerChartMode($event)"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="分时线刻度"
+          description="带刻度：底部一条 x 轴与三个 tick（09:30 / 午间 / 15:00），横轴一眼可读。纯曲线：只留昨收虚线与曲线，更干净。"
+        >
+          <SegmentedControl
+            :model-value="settings.tickerChartStyle"
+            :options="chartStyleOptions"
+            label="迷你分时线画法"
+            @update:model-value="settings.setTickerChartStyle($event)"
+          />
+        </SettingsRow>
+
+        <SettingsRow
           title="点击唤醒主界面"
           description="开启时点击行情条会叫出主界面；关闭后它只是纯展示，恢复主界面走托盘或老板键"
         >
@@ -222,10 +264,26 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
       <div class="preview-wrap">
         <div class="preview" :class="{ transparent: settings.tickerTransparent }">
           <div class="preview-pill" :class="{ bare: settings.tickerTransparent }">
-            <div v-for="row in previewRows" :key="row.name" class="preview-row">
-              <span class="preview-name">{{ row.name }}</span>
-              <span class="preview-price up">{{ row.price }}</span>
-              <span class="preview-pct up">{{ row.pct }}</span>
+            <div
+              v-for="row in previewRows"
+              :key="row.name"
+              class="preview-row"
+              :class="{ 'with-chart': settings.tickerChartMode !== 'off' }"
+            >
+              <span class="preview-text">
+                <span class="preview-name">{{ row.name }}</span>
+                <span class="preview-figures">
+                  <span class="preview-price up">{{ row.price }}</span>
+                  <span class="preview-pct up">{{ row.pct }}</span>
+                </span>
+              </span>
+              <!-- 迷你分时用与行情条同一套画法（同一个 paintTickerSparkline），
+                   这里画的就是实际会看到的样子；示意数据，不发请求。 -->
+              <SparklinePreview
+                v-if="settings.tickerChartMode !== 'off'"
+                :mode="settings.tickerChartMode"
+                :chart-style="settings.tickerChartStyle"
+              />
             </div>
           </div>
         </div>
@@ -336,9 +394,36 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
   line-height: 1.4;
   font-size: var(--text-xs);
 }
+/*
+  与行情条同一套排布规则：挂图时左列上下两行 + 右侧图，关掉图时退回一行三段。
+  预览要是画不出这个差别，它就只是在骗人。
+*/
+.preview-row.with-chart {
+  gap: var(--space-2);
+}
+.preview-text {
+  display: contents;
+}
+.preview-row.with-chart .preview-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.preview-figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
 .preview-name {
-  width: 62px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   color: var(--color-text-primary);
+}
+.preview-row.with-chart .preview-name {
+  flex: 0 1 auto;
 }
 .preview-price {
   width: 46px;
