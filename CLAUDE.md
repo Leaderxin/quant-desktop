@@ -69,6 +69,20 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `http://ipc.localhost`，其余平台 `ipc:`）；缺了它每次 invoke 都会先 fetch 失败再退回 postMessage，日志里成串 `IPC custom protocol failed`。
 
+### Linux 启动后端：Wayland 会话自动切 XWayland
+
+行情条要「始终置顶」，而 GTK 的 `keep_above` 在 X11 上是 `_NET_WM_STATE_ABOVE`（WM 照办），在 Wayland 上**没有任何对应协议** —— 置顶是合成器的权力，客户端无权索取，调用只是静默无效。所以 Wayland 原生会话里置顶无解，只能走 XWayland。
+
+以前靠桌面图标的 `Exec=env GDK_BACKEND=x11 quant-desktop` 达到置顶，但其它入口没有这个前缀：开机自启是 tauri-plugin-autostart 生成的 `~/.config/autostart/*.desktop`（裸 `Exec=`），终端启动也一样 —— 症状是「图标启动能置顶、自启后不能」。
+
+现在判定放进应用自己：[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11` 重新 `exec` 自己（进程映像替换，不双开）。图标、自启、终端三路因此一致，图标里那个前缀不再必要（仍被尊重：已设 `GDK_BACKEND` 就不插手）。
+
+- 只切「Wayland 会话 + 有 XWayland（`DISPLAY` 指向本地且 `/tmp/.X11-unix/X<n>` 存在）」；没有 XWayland 时留在 Wayland 并记 warning —— 宁可没有置顶，也不能因为连不上 X 而启动不了。
+- 自启环境常缺 `XAUTHORITY`，模块会退到扫描 `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth*` 补上，否则 GTK 连不上 X。
+- `QUANT_BACKEND=x11|wayland` 手动指定（排查用，优先于自动判定）；`QUANT_BACKEND_REEXEC=1` 是给子进程打的防重入标记。
+- 启动日志有一行 `启动后端: x11|wayland | 会话 … | QUANT_BACKEND=auto | 原因`，出问题先看它。
+- 附带好处：X11 下 `outer_position()` 读得到真实坐标，行情条的 `ticker_x/ticker_y` 位置记忆才真正生效（Wayland 原生下恒为 (0,0)）。
+
 ### Rust 后端（`src-tauri/src/`）
 
 **`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。窗口位置/大小落库并在下次启动时按显示器边界校验后恢复。

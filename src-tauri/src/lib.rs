@@ -3,6 +3,9 @@ pub mod db;
 pub mod datasource;
 pub mod cache;
 pub mod commands;
+/// Linux 启动后端（Wayland → XWayland），见模块内说明。
+#[cfg(target_os = "linux")]
+mod linux_backend;
 pub mod hotkey;
 pub mod import;
 pub mod events;
@@ -421,6 +424,11 @@ fn build_loggers(app_dir: &std::path::Path) -> Vec<Box<dyn simplelog::SharedLogg
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 必须最先做：GTK 初始化后后端就定了，切不了。Wayland 会话里行情条的
+    // 「置顶」只能靠 XWayland（详见 linux_backend 模块说明）。
+    #[cfg(target_os = "linux")]
+    linux_backend::ensure_x11_backend();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // 原生「另存为」对话框：自选导入模板让用户自己挑目录。
@@ -491,6 +499,9 @@ pub fn run() {
                 logging::requested_level(),
                 logging::LEVEL_ENV
             );
+            // 置顶依赖 X11：把实际后端和判定依据记下来，出问题一眼能查。
+            #[cfg(target_os = "linux")]
+            log::info!("{}", linux_backend::backend_summary());
             if data_dir_fallback {
                 log::warn!(
                     "System data directory unavailable — using {:?}",
