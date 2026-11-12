@@ -32,6 +32,28 @@
 //! 注意：这里**不**按「Wayland 版本」做分支。置顶缺的不是某个版本才有的
 //! 协议，而是从来就不存在 —— 任何版本的 Wayland 原生会话都做不到，所以
 //! 判定只看会话类型 + XWayland 是否可用。
+//!
+//! ## 为什么不做「原生 Wayland + 置顶」（2026-11 决定）
+//!
+//! 上面说的「不存在」有出处：`gdk_window_set_keep_above` 在 Wayland 上是空操作
+//! （Wayland bug 707079，2013 年开至今未解）；GNOME 开发者的立场是窗口堆叠属于
+//! WM 权力，给客户端开放会导致「任意应用把透明窗口盖满屏并截获输入」。唯一能
+//! 做到 overlay 的 `zwlr_layer_shell_v1` 是 wlroots 系扩展，**Mutter 明确不实现**
+//! （GNOME 48 上 grim/slurp 报的 "compositor doesn't support zwlr_layer_shell_v1"
+//! 就是这个原因），而行情条的主战场恰是 GNOME。
+//!
+//! 所以各桌面只能各走各的，且都需要额外东西：
+//!
+//! | 桌面 | 原生 Wayland 下置顶的办法 | 为什么没做 |
+//! |------|---------------------------|-----------|
+//! | GNOME | ① 用户从窗口菜单/快捷键手动「置于顶层」（合成器侧实现，对 Wayland 客户端有效）② 用户装一个按 `WM_CLASS` 强制 `set_above(true)` 的 GNOME Shell 扩展 | 都需要用户操作/额外安装，做不到「装上就生效」 |
+//! | KDE | KWin 窗口规则（keep above，按 class 持久）或 KWin 脚本设 `window.keepAbove` | 只覆盖 KDE；等真有 KDE 用户再加，代码量中等 |
+//! | sway/Hyprland 等 wlroots | 把 ticker 做成 `gtk-layer-shell` 的 OVERLAY 层窗口 | 要接管窗口创建、改变窗口语义（面板化、不能按坐标拖），改动大 |
+//! | 任意 | 主窗口与 ticker 分两个进程，ticker 单独跑 XWayland | 双进程 + 一条新的 IPC 通道，复杂度最高 |
+//!
+//! 当前选择：一条代码路径覆盖所有桌面（Wayland 会话自动落 XWayland），用户无感，
+//! 代价只是 XWayland 在 125%/150% 分数缩放下可能略糊（100%/200% 无影响）。
+//! 需要原生 Wayland 的用户可以 `QUANT_BACKEND=wayland` 手动切换，接受没有置顶。
 
 use std::path::{Path, PathBuf};
 

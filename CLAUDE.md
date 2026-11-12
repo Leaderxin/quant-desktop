@@ -83,6 +83,8 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - 启动日志有一行 `启动后端: x11|wayland | 会话 … | QUANT_BACKEND=auto | 原因`，出问题先看它。
 - 附带好处：X11 下 `outer_position()` 读得到真实坐标，行情条的 `ticker_x/ticker_y` 位置记忆才真正生效（Wayland 原生下恒为 (0,0)）。
 
+**为什么不做「原生 Wayland + 置顶」**（2026-11 决定，别再重复调研）：Wayland 协议从未提供 keep-above，`gdk_window_set_keep_above` 在 Wayland 上是空操作，GNOME 的立场是窗口堆叠属 WM 权力；唯一能做 overlay 的 `zwlr_layer_shell_v1` 是 wlroots 系扩展，Mutter 明确不实现，而行情条主要在 GNOME 上用。各桌面都要额外东西：GNOME 需用户手动「置于顶层」或装 Shell 扩展；KDE 可写 KWin 窗口规则/脚本；wlroots 需把 ticker 改成 `gtk-layer-shell` 的 OVERLAY 窗口；再或者双进程（主窗口原生、ticker 单独 XWayland）。取舍与完整对照表见 [linux_backend.rs](src-tauri/src/linux_backend.rs) 的模块文档。当前选择是一条 XWayland 路径覆盖所有桌面，代价只是分数缩放下可能略糊。
+
 ### Rust 后端（`src-tauri/src/`）
 
 **`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。窗口位置/大小落库并在下次启动时按显示器边界校验后恢复。
