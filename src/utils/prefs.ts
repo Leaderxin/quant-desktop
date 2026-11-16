@@ -82,10 +82,9 @@ export function clampTickerItems(n: number): number {
 /**
  * 行情条迷你分时线开关。
  *
- * 落库值只区分 `off` / `both`（`both` = 开：实色价格线 + 半透明涨跌停投影）。
- * 早期版本存过 `price` / `limit`，一律按「开」处理 —— 不迁移数据，用户下次
- * 拨开关时会自然写成 `both`。键名保持 `ticker_chart_mode`：它已经是 wire
- * format，改键会让老库里的设置失效。
+ * 落库值只区分 `off` / `on`（`on` = 开）。早期版本存过 `price` / `limit` /
+ * `both`，一律按「开」处理 —— 不迁移数据，用户下次拨开关时会自然写成 `on`。
+ * 键名保持 `ticker_chart_mode`：它已经是 wire format，改键会让老库里的设置失效。
  */
 export function parseTickerChartEnabled(raw: string | undefined): boolean {
   return raw !== 'off';
@@ -94,8 +93,8 @@ export function parseTickerChartEnabled(raw: string | undefined): boolean {
 /**
  * 行情条迷你分时线的画法。
  *
- * `axis` = 0% 虚线 + 两条曲线 + 一条 x 轴线与三个刻度（起点/午间/终点）；
- * `plain` = 只有 0% 虚线与两条曲线。默认 `axis`：格子很小，没有轴线时「横轴是
+ * `axis` = 0% 虚线 + 价格曲线 + 一条 x 轴线与三个刻度（起点/午间/终点）；
+ * `plain` = 只有 0% 虚线与价格曲线。默认 `axis`：格子很小，没有轴线时「横轴是
  * 一整个交易日」只能靠曲线午间那段断口去猜，第一次看的人不知道左边是几点。
  */
 export const TICKER_CHART_STYLES = ['axis', 'plain'] as const;

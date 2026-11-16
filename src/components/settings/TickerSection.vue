@@ -194,7 +194,7 @@ function rowTone(pct: string): 'up' | 'down' {
 
         <SettingsRow
           title="迷你分时线"
-          description="在每行行情右侧画一段分时走势：实色主线看当日形态，半透明投影看离涨跌停还有多远；涨跌停规则未知时只画主线。"
+          description="在每行行情右侧画一段当日分时走势（09:30–15:00）；关闭后行情条恢复紧凑高度。"
         >
           <NSwitch
             size="small"

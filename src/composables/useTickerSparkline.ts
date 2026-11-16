@@ -4,15 +4,13 @@
 // 这里给每一行配一块 88×30 的 canvas 自绘折线。区间与坐标换算全在
 // utils/tickerSparkline 里（含单测），本文件只负责取数、缓存与绘制。
 //
-// 开关打开时把两套纵轴画进同一块画布：价格轴那条满不透明当主线，涨跌停轴那条
-// 38% 透明叠在下面。两者都以昨收为中心，所以一条 0% 虚线对两条线同时成立 ——
-// 一眼读出「今天怎么走的」和「离涨跌停还有多远」。规则未知/数据越界时只画主线；
-// 开关关掉时整个组件不挂载。
+// 开关打开时画一条价格曲线：以昨收为中心，0% 虚线是昨收参考线，曲线与末端圆点
+// 取当日方向色。开关关掉时整个组件不挂载。
 //
 // 画法可切换（`ticker_chart_style`）：`axis` 多一条 x 轴线与三个刻度，`plain`
-// 只有 0% 虚线与曲线。涨跌停边界两种画法都不画 —— 那一维由半透明的涨跌停
-// 曲线自己表达。绘制本体在 utils/tickerSparkline 的 `paintTickerSparkline`，
-// 与设置页预览共用同一份，免得「设置里看着对、实际不是那样」。
+// 只有 0% 虚线与曲线。绘制本体在 utils/tickerSparkline 的
+// `paintTickerSparkline`，与设置页预览共用同一份，免得「设置里看着对、实际
+// 不是那样」。
 //
 // 缓存、在途请求、重试间隔都放在**模块作用域**：行情条每 3 秒翻一屏，行随 key
 // 变化整套重建，实例级的东西留不住任何东西，翻页就会变成对数据源的持续轰炸。
@@ -23,11 +21,10 @@ import type { KLineData as KCLineData } from 'klinecharts';
 import type { MinuteData } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { beijingNow, mapMinuteBars, sessionPrevClose } from '@/utils/minuteBars';
-import { priceLimitRate } from '@/utils/priceLimit';
 import type { TickerChartStyle } from '@/utils/prefs';
 import {
   paintTickerSparkline,
-  resolveSparklineLines,
+  resolveSparklineRange,
   sparklineBaselineY,
   sparklineCanvasPoints,
   type SparklineRange,
@@ -97,7 +94,6 @@ export interface TickerSparklineOptions {
   canvas: Ref<HTMLCanvasElement | null>;
   code: MaybeRef<string>;
   market: MaybeRef<string>;
-  name: MaybeRef<string>;
   /** 画法：带 x 轴线与刻度 / 只有虚线与曲线 */
   style: MaybeRef<TickerChartStyle>;
   /** 实时行情给的兜底昨收（`price - change`），数据里没有上一交易日时才用 */
@@ -317,9 +313,8 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rate = priceLimitRate(unref(options.code), unref(options.name));
     const prevClose = effectivePrevClose();
-    const { main, limit } = resolveSparklineLines(bars, prevClose, rate);
+    const range = resolveSparklineRange(bars, prevClose);
     const lastBar = bars[bars.length - 1];
 
     paintTickerSparkline(
@@ -328,11 +323,10 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
         style: unref(options.style),
         // 昨收是猜出来的（新股首日）时给 null：那条线本身就没有意义。
         baselineY: prevClose > 0 ? sparklineBaselineY() : null,
-        under: sparklineCanvasPoints(bars, limit, cssWidth),
-        over: sparklineCanvasPoints(bars, main, cssWidth),
+        points: sparklineCanvasPoints(bars, range, cssWidth),
         dot:
           prevClose > 0 && lastBar
-            ? sparklineDot(bars, main ?? limit, cssWidth, prevClose)
+            ? sparklineDot(bars, range, cssWidth, prevClose)
             : null,
         width: cssWidth,
         height: cssHeight,
@@ -343,7 +337,7 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   }
 
   /**
-   * 末端圆点：位置跟着主线（没有主线时是涨跌停线），颜色跟随相对昨收的涨跌。
+   * 末端圆点：位置跟着价格曲线，颜色跟随相对昨收的涨跌。
    *
    * 昨收未知时不画 —— 「涨还是跌」这个问题本身没有答案。
    */
@@ -430,7 +424,6 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   // 「设置里改了、行情条不动」。
   watch(
     [
-      () => unref(options.name),
       () => unref(options.style),
       () => unref(options.prevClose),
     ],

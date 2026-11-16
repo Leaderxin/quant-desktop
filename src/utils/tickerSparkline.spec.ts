@@ -1,7 +1,7 @@
 // src/utils/tickerSparkline.spec.ts
 //
-// 两种纵轴的边界都在这里钉住：price 模式的 ±1% 下限、limit 模式的固定半幅、
-// 数据越界/规则未知时的回退，以及 09:30–15:00 的横向铺满。
+// 价格轴的边界都在这里钉住：±1% 下限、按最大偏离取半幅、无昨收时用第一根
+// 有效 close 兜底，以及 09:30–15:00 的横向铺满。
 import { describe, expect, it } from 'vitest';
 import {
   SPARKLINE_AXIS_Y,
@@ -14,7 +14,6 @@ import {
   SPARKLINE_TICK_HEIGHT,
   axisTickPositions,
   paintTickerSparkline,
-  resolveSparklineLines,
   sparklineBaselineY,
   sparklineCanvasPoints,
   sparklinePoints,
@@ -25,77 +24,27 @@ function bar(close: number, hour = 9, minute = 30) {
   return { timestamp: new Date(2026, 8, 24, hour, minute).getTime(), close };
 }
 
-describe('resolveSparklineRange — price 模式', () => {
+describe('resolveSparklineRange', () => {
   it('数据波动小于 1% 时按昨收 ±1% 兜底', () => {
-    const range = resolveSparklineRange([bar(100)], 100, 'price', null);
+    const range = resolveSparklineRange([bar(100)], 100);
     expect(range.from).toBeCloseTo(99);
     expect(range.to).toBeCloseTo(101);
-    expect(range.fellBack).toBe(false);
-    expect(range.limitUp).toBeNull();
-    expect(range.limitDown).toBeNull();
   });
 
   it('按数据最大偏离取半幅', () => {
-    const range = resolveSparklineRange([bar(100), bar(103), bar(97)], 100, 'price', null);
+    const range = resolveSparklineRange([bar(100), bar(103), bar(97)], 100);
     expect(range.from).toBeCloseTo(97);
     expect(range.to).toBeCloseTo(103);
   });
 
   it('prevClose 无效时用第一根有效 close 兜底', () => {
-    const range = resolveSparklineRange([bar(50)], 0, 'price', null);
+    const range = resolveSparklineRange([bar(50)], 0);
     expect(range.from).toBeCloseTo(49.5);
     expect(range.to).toBeCloseTo(50.5);
   });
 
   it('没有任何有效数据时返回空区间', () => {
-    const range = resolveSparklineRange([], 0, 'price', null);
-    expect(range).toEqual({ from: 0, to: 0, limitUp: null, limitDown: null, fellBack: false });
-  });
-});
-
-describe('resolveSparklineRange — limit 模式', () => {
-  it('10% 主板：半幅固定为涨停价到昨收的距离', () => {
-    const range = resolveSparklineRange([bar(101)], 100, 'limit', 0.10);
-    expect(range.from).toBeCloseTo(90);
-    expect(range.to).toBeCloseTo(110);
-    expect(range.limitUp).toBeCloseTo(110);
-    expect(range.limitDown).toBeCloseTo(90);
-    expect(range.fellBack).toBe(false);
-  });
-
-  it('5% ST / 20% 创业板 / 30% 北交所', () => {
-    expect(resolveSparklineRange([bar(10)], 10, 'limit', 0.05).limitUp).toBeCloseTo(10.5);
-    expect(resolveSparklineRange([bar(10)], 10, 'limit', 0.05).limitDown).toBeCloseTo(9.5);
-    expect(resolveSparklineRange([bar(100)], 100, 'limit', 0.20).limitUp).toBeCloseTo(120);
-    expect(resolveSparklineRange([bar(100)], 100, 'limit', 0.30).limitDown).toBeCloseTo(70);
-  });
-
-  it('数据超出涨跌停区间（新股/规则判错）时回退 price，不画假边界', () => {
-    const range = resolveSparklineRange([bar(125)], 100, 'limit', 0.10);
-    expect(range.fellBack).toBe(true);
-    expect(range.limitUp).toBeNull();
-    expect(range.limitDown).toBeNull();
-    expect(range.from).toBeCloseTo(75);
-    expect(range.to).toBeCloseTo(125);
-  });
-
-  it('比例未知或昨收无效时回退 price', () => {
-    const unknown = resolveSparklineRange([bar(100)], 100, 'limit', null);
-    expect(unknown.fellBack).toBe(true);
-    expect(unknown.limitUp).toBeNull();
-
-    const noPrevClose = resolveSparklineRange([bar(100)], 0, 'limit', 0.10);
-    expect(noPrevClose.fellBack).toBe(true);
-    expect(noPrevClose.limitUp).toBeNull();
-  });
-
-  it('涨跌停价四舍五入后两侧距离不等时，半幅取较大值保持 0% 居中', () => {
-    // 10.05 × 1.1 = 11.06（+1.01）、× 0.9 = 9.05（-1.00）
-    const range = resolveSparklineRange([bar(10.05)], 10.05, 'limit', 0.10);
-    expect(range.limitUp).toBeCloseTo(11.06);
-    expect(range.limitDown).toBeCloseTo(9.05);
-    expect(range.from).toBeCloseTo(9.04);
-    expect(range.to).toBeCloseTo(11.06);
+    expect(resolveSparklineRange([], 0)).toEqual({ from: 0, to: 0 });
   });
 });
 
@@ -141,40 +90,6 @@ describe('sparklinePoints', () => {
   });
 });
 
-describe('resolveSparklineLines — 一格要画哪些线', () => {
-  const bars = [bar(101, 10, 0), bar(103, 11, 0), bar(99, 14, 0)];
-
-  it('无数据不画', () => {
-    expect(resolveSparklineLines([], 100, 0.1)).toEqual({
-      main: null,
-      limit: null,
-    });
-  });
-
-  it('主线是价格轴，涨跌停轴作为半透明投影一起返回', () => {
-    const { main, limit } = resolveSparklineLines(bars, 100, 0.1);
-    expect(main!.from).toBeCloseTo(97);
-    expect(main!.to).toBeCloseTo(103);
-    expect(limit!.to).toBeCloseTo(110);
-  });
-
-  it('涨跌停轴回退（规则未知 / 数据越界）时只画主线', () => {
-    const unknownRate = resolveSparklineLines(bars, 100, null);
-    expect(unknownRate.limit).toBeNull();
-    expect(unknownRate.main).not.toBeNull();
-
-    const outOfRange = resolveSparklineLines([bar(130)], 100, 0.1);
-    expect(outOfRange.limit).toBeNull();
-    expect(outOfRange.main).not.toBeNull();
-  });
-
-  it('昨收无效时涨跌停轴不可用，主线仍按数据画', () => {
-    const { main, limit } = resolveSparklineLines(bars, 0, 0.1);
-    expect(limit).toBeNull();
-    expect(main).not.toBeNull();
-  });
-});
-
 describe('单元格几何', () => {
   /**
    * 两种画法共用同一个高度，且 `axis` 那条轴 + 刻度画得下。
@@ -197,22 +112,12 @@ describe('单元格几何', () => {
     );
   });
 
-  /**
-   * 两套纵轴叠在同一格里能读的前提：昨收在两个坐标系里落在**同一个 y**。
-   * 涨跌停价对称（半幅取较宽一侧），价格轴区间也以昨收为中心。
-   */
-  it('price 与 limit 两套纵轴下昨收映射到同一个 y', () => {
+  it('昨收映射到 0% 线', () => {
     const bars = [bar(101, 10, 0), bar(97, 14, 0)];
-    const width = 88;
-    const { main, limit } = resolveSparklineLines(bars, 100, 0.1);
-    for (const range of [main, limit]) {
-      if (!range) continue;
-      const points = sparklineCanvasPoints(bars, range, width);
-      // 昨收落在 y = baseline：用一根正好等于昨收的 bar 验证
-      const atPrev = sparklineCanvasPoints([bar(100, 10, 0)], range, width)[0];
-      expect(atPrev.y).toBeCloseTo(sparklineBaselineY());
-      expect(points.length).toBe(2);
-    }
+    const range = resolveSparklineRange(bars, 100);
+    const atPrev = sparklineCanvasPoints([bar(100, 10, 0)], range, 88)[0];
+    expect(atPrev.y).toBeCloseTo(sparklineBaselineY());
+    expect(sparklineCanvasPoints(bars, range, 88)).toHaveLength(2);
   });
 
   it('x 轴三个刻度：起点 / 中点（午间）/ 右端内缩一像素', () => {
@@ -324,8 +229,7 @@ describe('paintTickerSparkline', () => {
   it('axis 画 x 轴线与三个刻度，plain 一条都不画', () => {
     const base = {
       baselineY: null,
-      under: [],
-      over: [],
+      points: [],
       dot: null,
       width: SPARKLINE_CANVAS_WIDTH,
       height: SPARKLINE_CANVAS_HEIGHT,
@@ -343,15 +247,14 @@ describe('paintTickerSparkline', () => {
     expect(plainCtx.rec.filter((r) => r.op === 'stroke')).toHaveLength(0);
   });
 
-  it('0% 线是虚线，涨跌停那条是 38% 透明，主线满不透明', () => {
+  it('0% 线是虚线，价格线满不透明', () => {
     const ctx = fakeCtx();
     paintTickerSparkline(
       ctx,
       {
         style: 'plain',
         baselineY: sparklineBaselineY(),
-        under: points,
-        over: points,
+        points,
         dot: null,
         width: SPARKLINE_CANVAS_WIDTH,
         height: SPARKLINE_CANVAS_HEIGHT,
@@ -360,11 +263,10 @@ describe('paintTickerSparkline', () => {
       1,
     );
 
-    const [baselineStroke, underStroke, overStroke] = strokes(ctx);
+    const [baselineStroke, lineStroke] = strokes(ctx);
     expect(baselineStroke).toMatchObject({ alpha: 0.3 });
     expect((baselineStroke as { dash: number[] }).dash.length).toBeGreaterThan(0);
-    expect(underStroke).toMatchObject({ alpha: 0.38, lineWidth: 1 });
-    expect(overStroke).toMatchObject({ alpha: 1, lineWidth: 1.5 });
+    expect(lineStroke).toMatchObject({ alpha: 1, lineWidth: 1.5 });
   });
 
   it('主线与末端圆点跟随当日方向着色，下方铺同色渐变', () => {
@@ -380,14 +282,13 @@ describe('paintTickerSparkline', () => {
       rising,
       {
         ...base,
-        under: points,
-        over: points,
+        points,
         dot: { x: 40, y: 14, rising: true },
       },
       palette,
       1,
     );
-    // 最后一条 stroke 是主线（圆点是 fill）
+    // 最后一条 stroke 是价格线（圆点是 fill）
     expect(strokes(rising).at(-1)).toMatchObject({
       color: palette.up,
       alpha: 1,
@@ -406,8 +307,7 @@ describe('paintTickerSparkline', () => {
       falling,
       {
         ...base,
-        under: points,
-        over: points,
+        points,
         dot: { x: 40, y: 14, rising: false },
       },
       palette,
@@ -417,26 +317,6 @@ describe('paintTickerSparkline', () => {
     expect(falling.fillStyle).toBe(palette.down);
   });
 
-  it('单独选涨跌停时那条线不再半透明（它就是主线）', () => {
-    const ctx = fakeCtx();
-    paintTickerSparkline(
-      ctx,
-      {
-        style: 'plain',
-        baselineY: null,
-        under: points,
-        over: [],
-        dot: null,
-        width: SPARKLINE_CANVAS_WIDTH,
-        height: SPARKLINE_CANVAS_HEIGHT,
-      },
-      palette,
-      1,
-    );
-    // 没有 0% 线（baselineY=null），只剩一条曲线，满不透明
-    expect(strokes(ctx)).toEqual([expect.objectContaining({ alpha: 1 })]);
-  });
-
   it('末端圆点被夹进画布内，收盘时不缺半颗', () => {
     const ctx = fakeCtx();
     paintTickerSparkline(
@@ -444,8 +324,7 @@ describe('paintTickerSparkline', () => {
       {
         style: 'plain',
         baselineY: sparklineBaselineY(),
-        under: [],
-        over: [{ x: SPARKLINE_CANVAS_WIDTH, y: 12 }],
+        points: [{ x: SPARKLINE_CANVAS_WIDTH, y: 12 }],
         dot: { x: SPARKLINE_CANVAS_WIDTH, y: 12, rising: true },
         width: SPARKLINE_CANVAS_WIDTH,
         height: SPARKLINE_CANVAS_HEIGHT,

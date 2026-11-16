@@ -403,7 +403,6 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
             v-if="showChart"
             :code="item.code"
             :market="item.market"
-            :name="item.name"
             :chart-style="settings.tickerChartStyle"
             :prev-close="item.prevClose"
           />

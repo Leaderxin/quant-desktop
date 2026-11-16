@@ -174,14 +174,14 @@ describe('parseThemeMode', () => {
 describe('parseTickerChartEnabled', () => {
   it('只有 off 是关', () => {
     expect(parseTickerChartEnabled('off')).toBe(false);
-    expect(parseTickerChartEnabled('both')).toBe(true);
+    expect(parseTickerChartEnabled('on')).toBe(true);
   });
 
   /**
-   * 旧版的 price / limit 已经不在 UI 里，但老库里可能存着：一律按「开」处理，
-   * 用户下次拨开关时会被改写成 both。缺键/坏值也与 Rust 侧默认值一致（开）。
+   * 旧版的 price / limit / both 已经不在 UI 里，但老库里可能存着：一律按「开」
+   * 处理，用户下次拨开关时会被改写成 on。缺键/坏值也与 Rust 侧默认值一致（开）。
    */
-  it('旧版 price/limit、缺键与坏值都按开处理', () => {
+  it('旧版 price/limit/both、缺键与坏值都按开处理', () => {
     expect(parseTickerChartEnabled('price')).toBe(true);
     expect(parseTickerChartEnabled('limit')).toBe(true);
     expect(parseTickerChartEnabled(undefined)).toBe(true);

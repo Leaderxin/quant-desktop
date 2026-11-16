@@ -217,7 +217,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   async function setTickerChartEnabled(enabled: boolean) {
-    await setSetting('ticker_chart_mode', enabled ? 'both' : 'off');
+    await setSetting('ticker_chart_mode', enabled ? 'on' : 'off');
   }
 
   async function setTickerChartStyle(style: TickerChartStyle) {

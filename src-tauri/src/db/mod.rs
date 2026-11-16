@@ -31,7 +31,7 @@ pub mod keys {
     /// 点击行情条是否唤醒主窗口。默认开；关闭后点击只是纯展示，不叫出主界面。
     pub const TICKER_CLICK_WAKES: &str = "ticker_click_wakes";
     pub const TICKER_ITEMS_PER_PAGE: &str = "ticker_items_per_page";
-    /// 行情条迷你分时线开关：off / both（历史 price / limit 前端按「开」处理）。
+    /// 行情条迷你分时线开关：off / on（历史 price / limit / both 前端按「开」处理）。
     pub const TICKER_CHART_MODE: &str = "ticker_chart_mode";
     /// 行情条迷你分时线的画法：axis（带 x 轴线与刻度）/ plain（只有虚线与曲线）。
     pub const TICKER_CHART_STYLE: &str = "ticker_chart_style";
@@ -367,10 +367,10 @@ impl Database {
         (keys::TICKER_TRANSPARENT, "0"),
         (keys::TICKER_CLICK_WAKES, "1"),
         (keys::TICKER_ITEMS_PER_PAGE, "2"),
-        // 行情条迷你分时线开关：默认 both（开）—— 实色价格线 + 半透明涨跌停
-        // 投影叠在一起，一次读出两种信息。off 时窗口恢复原来的紧凑高度。
-        // 历史版本存过 price / limit，前端一律按开处理，不迁移数据。
-        (keys::TICKER_CHART_MODE, "both"),
+        // 行情条迷你分时线开关：默认 on —— 每行右侧画一条价格曲线（0% 参考线 +
+        // 方向色主线 + 渐变面积）。off 时窗口恢复原来的紧凑高度。历史版本存过
+        // price / limit / both，前端一律按开处理，不迁移数据。
+        (keys::TICKER_CHART_MODE, "on"),
         // 行情条分时线的画法。默认带 x 轴线与刻度：格子只有 88px 宽，没有轴线时
         // 「横轴是一整个交易日」只能靠午间那段断口猜。
         (keys::TICKER_CHART_STYLE, "axis"),
@@ -1974,8 +1974,8 @@ mod tests {
     /// 分时线开关的默认值必须是开关能识别的两种落库值之一。
     ///
     /// 键名与取值都是 wire format：前端 `parseTickerChartEnabled` 只把 `off`
-    /// 当关，其余（含历史 price / limit）都按开处理；默认值写成拼错的值不会报错，
-    /// 只会让「设置页显示开、实际没画」这类不一致静默发生。
+    /// 当关，其余（含历史 price / limit / both）都按开处理；默认值写成拼错的值
+    /// 不会报错，只会让「设置页显示开、实际没画」这类不一致静默发生。
     #[test]
     fn ticker_chart_mode_default_is_a_valid_switch_value() {
         let v = Database::DEFAULT_SETTINGS
@@ -1984,7 +1984,7 @@ mod tests {
             .map(|(_, v)| *v)
             .expect("ticker_chart_mode 应在默认值表里");
         assert!(
-            matches!(v, "off" | "both"),
+            matches!(v, "off" | "on"),
             "ticker_chart_mode 默认值 {v:?} 不是开关认得的落库值"
         );
     }

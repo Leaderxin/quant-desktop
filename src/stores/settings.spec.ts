@@ -134,8 +134,9 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerItemsPerPage).toBe(2);
   });
 
-  it('ticker_chart_mode 只有 off 是关，旧版 price/limit 与坏值都算开', async () => {
+  it('ticker_chart_mode 只有 off 是关，旧版 price/limit/both 与坏值都算开', async () => {
     expect((await load({ ticker_chart_mode: 'off' })).tickerChartEnabled).toBe(false);
+    expect((await load({ ticker_chart_mode: 'on' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'both' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'price' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'limit' })).tickerChartEnabled).toBe(true);
@@ -143,7 +144,7 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerChartEnabled).toBe(true);
   });
 
-  it('setTickerChartEnabled 写 off/both 并广播到行情条', async () => {
+  it('setTickerChartEnabled 写 off/on 并广播到行情条', async () => {
     const store = await load({});
     invokeMock.mockResolvedValueOnce(undefined);
     emitMock.mockClear();
@@ -164,7 +165,7 @@ describe('派生配置的解析与兜底', () => {
     await store.setTickerChartEnabled(true);
     expect(invokeMock).toHaveBeenLastCalledWith('set_setting', {
       key: 'ticker_chart_mode',
-      value: 'both',
+      value: 'on',
     });
     expect(store.tickerChartEnabled).toBe(true);
   });

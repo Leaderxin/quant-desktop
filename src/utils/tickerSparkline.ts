@@ -1,37 +1,20 @@
 // src/utils/tickerSparkline.ts — 行情条迷你分时线的纯几何计算
 //
-// 两条纵轴共用同一套 x/y 映射，区别只在「半幅」怎么来：
-// - price：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值（与主图一致）
-// - limit：半幅由涨停价/跌停价决定；数据超出边界（新股、规则判错）时回退 price
-//
-// 图表打开时把两者画进同一块小画布：price 那条满不透明当主线，limit 那条压到
-// 38% 叠在下面 —— 两套纵轴都以昨收为中心，所以 0% 那条参考线对两条线同时成立。
-// 规则未知/数据越界时只画主线，不叠一条与主线重合的假线。
+// 只用价格轴：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值（与主图一致）。
+// 小波动不会被放大成噪声，接近涨跌停的日子自然撑满。0% 虚线就是昨收参考线。
 //
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
 
 import { SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
-import { limitPrices } from './priceLimit';
 import type { TickerChartStyle } from './prefs';
-
-export type SparklineMode = 'price' | 'limit';
 
 export interface SparklineRange {
   from: number;
   to: number;
-  /** limit 模式下真实的涨停价；回退 price 时为 null */
-  limitUp: number | null;
-  /** limit 模式下真实的跌停价；回退 price 时为 null */
-  limitDown: number | null;
-  /** limit 模式因规则未知或数据越界而退回 price */
-  fellBack: boolean;
 }
 
 /** 与主图 `minuteAxis.ts` 的 MIN_RANGE_RATE 保持一致：涨跌幅很小时纵轴不被放大。 */
 const MIN_RANGE_RATE = 0.01;
-
-/** limit 模式允许数据超出涨跌停区间的容差，超过即回退 price。 */
-const LIMIT_TOLERANCE = 1.02;
 
 function firstValidClose(bars: readonly { close: number }[]): number {
   for (const bar of bars) {
@@ -50,53 +33,20 @@ function maxDeviation(bars: readonly { close: number }[], base: number): number 
   return half;
 }
 
-function priceRange(base: number, bars: readonly { close: number }[], minRate: number) {
-  const half = Math.max(maxDeviation(bars, base), base * minRate);
-  return { from: base - half, to: base + half };
-}
-
 /**
- * 解析纵轴区间。
+ * 解析纵轴区间：以昨收为中心，半幅取最大偏离与昨收 1% 的较大值。
  *
- * `prevClose <= 0`（行情还没到、新股首日拿不到昨收）时用第一根有效 close 兜底，
- * 但 limit 模式一律回退 price —— 拿一个猜出来的基准去算涨跌停价没有意义。
+ * `prevClose <= 0`（行情还没到、新股首日拿不到昨收）时用第一根有效 close 兜底。
  */
 export function resolveSparklineRange(
   bars: readonly { close: number }[],
   prevClose: number,
-  mode: SparklineMode,
-  limitRate: number | null,
   minRate = MIN_RANGE_RATE,
 ): SparklineRange {
   const base = prevClose > 0 ? prevClose : firstValidClose(bars);
-  if (!(base > 0)) {
-    return { from: 0, to: 0, limitUp: null, limitDown: null, fellBack: mode === 'limit' };
-  }
-
-  if (mode === 'limit' && prevClose > 0 && limitRate !== null && limitRate > 0) {
-    const { up, down } = limitPrices(prevClose, limitRate);
-    const half = Math.max(up - prevClose, prevClose - down);
-    if (maxDeviation(bars, prevClose) <= half * LIMIT_TOLERANCE) {
-      return {
-        from: prevClose - half,
-        to: prevClose + half,
-        limitUp: up,
-        limitDown: down,
-        fellBack: false,
-      };
-    }
-    // 数据越界：新股首日、退市整理期、或规则判错。退回价格轴，别画假的边界。
-    const fallback = priceRange(prevClose, bars, minRate);
-    return { ...fallback, limitUp: null, limitDown: null, fellBack: true };
-  }
-
-  const range = priceRange(base, bars, minRate);
-  return {
-    ...range,
-    limitUp: null,
-    limitDown: null,
-    fellBack: mode === 'limit',
-  };
+  if (!(base > 0)) return { from: 0, to: 0 };
+  const half = Math.max(maxDeviation(bars, base), base * minRate);
+  return { from: base - half, to: base + half };
 }
 
 export interface SparklinePoint {
@@ -137,8 +87,7 @@ export function sparklinePoints(
 // 切换样式会让窗口长高变矮，行情条在屏幕上跳一下（见 ticker_chart_style）。
 //
 // 画什么由 `TickerChartStyle`（utils/prefs）决定：`axis` 额外画一条 x 轴线与三个刻度（起点 /
-// 午间 / 终点），`plain` 只有 0% 虚线与曲线。涨跌停边界一律不画 —— 那一维由
-// 半透明的涨跌停曲线自己表达，两条边界线在平静日只是噪音。
+// 午间 / 终点），`plain` 只有 0% 虚线与曲线。
 
 /**
  * 画布宽（CSS 像素）。固定值，不跟着剩余空间长 —— 每行都按内容定宽，
@@ -167,8 +116,7 @@ export const SPARKLINE_CANVAS_HEIGHT = 30;
 /**
  * 0% 线（昨收）在画布上的 y。
  *
- * price 与 limit 两套纵轴都以昨收为中心（涨跌停价对称，半幅取较宽的一侧），
- * 所以这条线在两个坐标系里是同一个位置 —— 只需画一次。
+ * 纵轴以昨收为中心，所以这条线永远在曲线区的正中间。
  */
 export function sparklineBaselineY(): number {
   return SPARKLINE_PAD_TOP + SPARKLINE_PLOT_HEIGHT / 2;
@@ -195,33 +143,6 @@ export function sparklineCanvasPoints(
   ).map((p) => ({ x: p.x, y: p.y + SPARKLINE_PAD_TOP }));
 }
 
-/** 一格要画的两条线。 */
-export interface SparklineLines {
-  /** 满不透明的主线（价格轴） */
-  main: SparklineRange | null;
-  /** 叠在下面、半透明的涨跌停投影；null = 没有可用的涨跌停轴 */
-  limit: SparklineRange | null;
-}
-
-/**
- * 算出开关打开时要画的两条线。
- *
- * 主线永远是价格轴；涨跌停轴能算出来就作为半透明投影叠在下面，否则只画主线。
- * 回退时两条线会重合，叠出来毫无信息量，所以不画那条投影（也不画假的边界）。
- */
-export function resolveSparklineLines(
-  bars: readonly { timestamp: number; close: number }[],
-  prevClose: number,
-  limitRate: number | null,
-): SparklineLines {
-  if (bars.length === 0) return { main: null, limit: null };
-
-  const price = resolveSparklineRange(bars, prevClose, 'price', limitRate);
-  const main = price.to > price.from ? price : null;
-  const limit = resolveSparklineRange(bars, prevClose, 'limit', limitRate);
-  return { main, limit: !limit.fellBack && limit.to > limit.from ? limit : null };
-}
-
 /**
  * x 轴刻度位置：09:30（起点）、11:30/13:00（午间分界）、15:00（终点）。
  *
@@ -238,10 +159,8 @@ export interface SparklinePaintInput {
   style: TickerChartStyle;
   /** 0% 线（昨收）的 y；<= 0 表示昨收不可用，不画这条线 */
   baselineY: number | null;
-  /** 先画的线（涨跌停投影，38% 透明） */
-  under: SparklinePoint[];
-  /** 压在上面的主线（价格轴） */
-  over: SparklinePoint[];
+  /** 价格曲线（画布坐标） */
+  points: SparklinePoint[];
   /** 末端圆点：跟随相对昨收的涨跌上色 */
   dot: { x: number; y: number; rising: boolean } | null;
   width: number;
@@ -316,19 +235,19 @@ export function paintTickerSparkline(
 
   // 曲线与轴线之间的同色渐变只做「体量」，不做装饰：16% → 1%。
   // 用渐变而不是整块半透明色，靠近轴线处自然收掉，不会在底部留一条硬边。
-  const primary = input.over.length > 0 ? input.over : input.under;
-  if (primary.length >= 2) {
+  const points = input.points;
+  if (points.length >= 2) {
     const gradient = ctx.createLinearGradient(0, SPARKLINE_PAD_TOP, 0, SPARKLINE_AXIS_Y);
     gradient.addColorStop(0, withAlpha(lineColor, 0.16));
     gradient.addColorStop(1, withAlpha(lineColor, 0.01));
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(primary[0].x, SPARKLINE_AXIS_Y);
-    ctx.lineTo(primary[0].x, primary[0].y);
-    for (let i = 1; i < primary.length; i++) {
-      ctx.lineTo(primary[i].x, primary[i].y);
+    ctx.moveTo(points[0].x, SPARKLINE_AXIS_Y);
+    ctx.lineTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
     }
-    ctx.lineTo(primary[primary.length - 1].x, SPARKLINE_AXIS_Y);
+    ctx.lineTo(points[points.length - 1].x, SPARKLINE_AXIS_Y);
     ctx.closePath();
     ctx.fillStyle = gradient;
     ctx.fill();
@@ -367,10 +286,8 @@ export function paintTickerSparkline(
     ctx.restore();
   };
 
-  const hasOver = input.over.length > 0;
-  // 涨跌停那条是同一段行情的另一套坐标，压低到 38% 当投影；主线用 1.5px 提亮。
-  stroke(input.under, hasOver ? 0.38 : 1, 1);
-  stroke(input.over, 1, 1.5);
+  // 主线 1.5px：30px 高的格子里再细就发虚，再粗会盖住 0% 参考线。
+  stroke(input.points, 1, 1.5);
 
   if (input.dot) {
     ctx.beginPath();

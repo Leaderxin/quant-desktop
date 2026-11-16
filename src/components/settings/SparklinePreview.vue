@@ -6,7 +6,7 @@
 // 预览要的是「这两种画法长什么样」，不是「这只股票今天怎么走」，为了它去发
 // get_intraday 既打扰数据源又要挑一只真的自选（新装的用户还没有）。
 //
-// 画法与纵轴模式全部走真实链路：`paintTickerSparkline` / `resolveSparklineLines`
+// 画法与纵轴全部走真实链路：`paintTickerSparkline` / `resolveSparklineRange`
 // 都是行情条用的那一份（含物理像素对齐与 alpha 规则），所以预览不会画出一个
 // 实际看不到的样子 —— 这类「预览与实物不符」比没有预览更糟。
 import { nextTick, onMounted, ref, watch } from 'vue';
@@ -15,7 +15,7 @@ import {
   SPARKLINE_CANVAS_HEIGHT,
   SPARKLINE_CANVAS_WIDTH,
   paintTickerSparkline,
-  resolveSparklineLines,
+  resolveSparklineRange,
   sparklineBaselineY,
   sparklineCanvasPoints,
 } from '@/utils/tickerSparkline';
@@ -32,15 +32,13 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 
 /** 昨收。示意数据以此为基准，涨跌都围着它走。 */
 const PREV_CLOSE = 100;
-/** 主板 10% —— 预览里涨跌停轴要有边界可算，给个最常见的比例 */
-const LIMIT_RATE = 0.1;
 
 /**
  * 一天的示意分时：早盘下探、午前拉起、午后回落到略高于昨收。
  *
- * 形状要同时喂饱两套纵轴 —— 价格轴看得到起伏（±0.7% 量级，与真实行情同数量级，
- * 不是随手画的余弦），涨跌停轴看得到「离两板都还远」。时间戳用交易日分钟铺到
- * 09:30–14:59，午休那段留空洞，午间断口才会出现在预览里。
+ * 起伏控制在 ±0.7% 量级（与真实行情同数量级，不是随手画的余弦），价格轴的
+ * 1% 下限会让它撑满曲线区。时间戳用交易日分钟铺到 09:30–14:59，午休那段
+ * 留空洞，午间断口才会出现在预览里。
  */
 const SAMPLE_MINUTES = [2, 18, 34, 52, 68, 84, 118, 124, 142, 163, 182, 205, 228];
 const SAMPLE_CLOSES = [99.92, 99.54, 99.68, 99.9, 100.24, 100.42, 100.55, 100.48, 100.6, 100.72, 100.44, 100.52, 100.36];
@@ -85,26 +83,23 @@ function paint() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // 跌行把示意数据以昨收为轴镜像，曲线方向与左侧数字一致；涨跌停轴用的是
-  // 对称区间，镜像后仍在范围内。
+  // 跌行把示意数据以昨收为轴镜像，曲线方向与左侧数字一致。
   const bars =
     props.rising === false
       ? sampleBars.map((bar) => ({ ...bar, close: 2 * PREV_CLOSE - bar.close }))
       : sampleBars;
 
-  // 与行情条同一条纵轴判定：涨跌停规则在这里就是主板 10%。
-  const { main, limit } = resolveSparklineLines(bars, PREV_CLOSE, LIMIT_RATE);
+  const range = resolveSparklineRange(bars, PREV_CLOSE);
   const lastBar = bars[bars.length - 1];
-  const primaryPoints = sparklineCanvasPoints(bars, main ?? limit, width);
-  const dot = primaryPoints[primaryPoints.length - 1];
+  const points = sparklineCanvasPoints(bars, range, width);
+  const dot = points[points.length - 1];
 
   paintTickerSparkline(
     ctx,
     {
       style: props.chartStyle,
       baselineY: sparklineBaselineY(),
-      under: sparklineCanvasPoints(bars, limit, width),
-      over: sparklineCanvasPoints(bars, main, width),
+      points,
       dot: dot && lastBar ? { x: dot.x, y: dot.y, rising: lastBar.close >= PREV_CLOSE } : null,
       width,
       height,
@@ -117,7 +112,7 @@ function paint() {
 const settings = useSettingsStore();
 
 onMounted(paint);
-// 模式/画法变了立刻重画；主题、配色、透明切换也要重画 —— canvas 读不了 var()，
+// 画法变了立刻重画；主题、配色、透明切换也要重画 —— canvas 读不了 var()，
 // 只能等样式落定后重取一次调色板。
 watch(
   [
