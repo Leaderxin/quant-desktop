@@ -1,22 +1,20 @@
 // src/utils/tickerSparkline.ts — 行情条迷你分时线的纯几何计算
 //
-// 两种纵轴共用同一套 x/y 映射，区别只在「半幅」怎么来：
+// 两条纵轴共用同一套 x/y 映射，区别只在「半幅」怎么来：
 // - price：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值（与主图一致）
 // - limit：半幅由涨停价/跌停价决定；数据超出边界（新股、规则判错）时回退 price
 //
-// `both` 把两者画进同一块小画布：price 那条满不透明当主线，limit 那条压到 38%
-// 叠在下面 —— 两套纵轴都以昨收为中心，所以 0% 那条参考线对两条线同时成立。
+// 图表打开时把两者画进同一块小画布：price 那条满不透明当主线，limit 那条压到
+// 38% 叠在下面 —— 两套纵轴都以昨收为中心，所以 0% 那条参考线对两条线同时成立。
+// 规则未知/数据越界时只画主线，不叠一条与主线重合的假线。
 //
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
 
 import { SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
 import { limitPrices } from './priceLimit';
-import type { TickerChartMode, TickerChartStyle } from './prefs';
+import type { TickerChartStyle } from './prefs';
 
 export type SparklineMode = 'price' | 'limit';
-
-/** 行情条一格里要画的轴组合（`off` 由调用方决定不挂载组件）。 */
-export type SparklineChartKind = TickerChartMode;
 
 export interface SparklineRange {
   from: number;
@@ -199,38 +197,27 @@ export function sparklineCanvasPoints(
 
 /** 一格要画的两条线。 */
 export interface SparklineLines {
-  /** 满不透明的主线 */
+  /** 满不透明的主线（价格轴） */
   main: SparklineRange | null;
-  /** 叠在下面、半透明的涨跌停投影；null 表示这条模式不画 */
+  /** 叠在下面、半透明的涨跌停投影；null = 没有可用的涨跌停轴 */
   limit: SparklineRange | null;
 }
 
 /**
- * 按模式算出要画哪些线。
+ * 算出开关打开时要画的两条线。
  *
- * - `price`：只有价格轴主线。
- * - `limit`：涨跌停投影就是主线，满不透明。昨收不可用或规则未知时
- *   `resolveSparklineRange` 已经把它回退成价格轴区间（`fellBack`），照原样画。
- * - `both`：price 当主线，limit 半透明叠在下面。涨跌停轴回退时两条线会是同一条，
- *   叠出来毫无信息量，所以那种情况只画主线。
+ * 主线永远是价格轴；涨跌停轴能算出来就作为半透明投影叠在下面，否则只画主线。
+ * 回退时两条线会重合，叠出来毫无信息量，所以不画那条投影（也不画假的边界）。
  */
 export function resolveSparklineLines(
   bars: readonly { timestamp: number; close: number }[],
   prevClose: number,
-  kind: SparklineChartKind,
   limitRate: number | null,
 ): SparklineLines {
-  if (kind === 'off' || bars.length === 0) return { main: null, limit: null };
-
-  if (kind === 'limit') {
-    const only = resolveSparklineRange(bars, prevClose, 'limit', limitRate);
-    return { main: only.to > only.from ? only : null, limit: null };
-  }
+  if (bars.length === 0) return { main: null, limit: null };
 
   const price = resolveSparklineRange(bars, prevClose, 'price', limitRate);
   const main = price.to > price.from ? price : null;
-  if (kind === 'price') return { main, limit: null };
-
   const limit = resolveSparklineRange(bars, prevClose, 'limit', limitRate);
   return { main, limit: !limit.fellBack && limit.to > limit.from ? limit : null };
 }
@@ -251,7 +238,7 @@ export interface SparklinePaintInput {
   style: TickerChartStyle;
   /** 0% 线（昨收）的 y；<= 0 表示昨收不可用，不画这条线 */
   baselineY: number | null;
-  /** 先画的线（涨跌停投影），`both` 时半透明 */
+  /** 先画的线（涨跌停投影，38% 透明） */
   under: SparklinePoint[];
   /** 压在上面的主线（价格轴） */
   over: SparklinePoint[];

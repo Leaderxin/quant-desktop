@@ -134,31 +134,39 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerItemsPerPage).toBe(2);
   });
 
-  it('ticker_chart_mode 只认 off/price/limit/both，缺键或坏值退回 both', async () => {
-    expect((await load({ ticker_chart_mode: 'off' })).tickerChartMode).toBe('off');
-    expect((await load({ ticker_chart_mode: 'price' })).tickerChartMode).toBe('price');
-    expect((await load({ ticker_chart_mode: 'limit' })).tickerChartMode).toBe('limit');
-    expect((await load({ ticker_chart_mode: 'both' })).tickerChartMode).toBe('both');
-    expect((await load({ ticker_chart_mode: 'bogus' })).tickerChartMode).toBe('both');
-    expect((await load({})).tickerChartMode).toBe('both');
+  it('ticker_chart_mode 只有 off 是关，旧版 price/limit 与坏值都算开', async () => {
+    expect((await load({ ticker_chart_mode: 'off' })).tickerChartEnabled).toBe(false);
+    expect((await load({ ticker_chart_mode: 'both' })).tickerChartEnabled).toBe(true);
+    expect((await load({ ticker_chart_mode: 'price' })).tickerChartEnabled).toBe(true);
+    expect((await load({ ticker_chart_mode: 'limit' })).tickerChartEnabled).toBe(true);
+    expect((await load({ ticker_chart_mode: 'bogus' })).tickerChartEnabled).toBe(true);
+    expect((await load({})).tickerChartEnabled).toBe(true);
   });
 
-  it('setTickerChartMode 写库并广播到行情条', async () => {
+  it('setTickerChartEnabled 写 off/both 并广播到行情条', async () => {
     const store = await load({});
     invokeMock.mockResolvedValueOnce(undefined);
     emitMock.mockClear();
 
-    await store.setTickerChartMode('limit');
+    await store.setTickerChartEnabled(false);
 
     expect(invokeMock).toHaveBeenCalledWith('set_setting', {
       key: 'ticker_chart_mode',
-      value: 'limit',
+      value: 'off',
     });
-    expect(store.tickerChartMode).toBe('limit');
+    expect(store.tickerChartEnabled).toBe(false);
     expect(emitMock).toHaveBeenCalledWith('settings-changed', {
       key: 'ticker_chart_mode',
-      value: 'limit',
+      value: 'off',
     });
+
+    invokeMock.mockResolvedValueOnce(undefined);
+    await store.setTickerChartEnabled(true);
+    expect(invokeMock).toHaveBeenLastCalledWith('set_setting', {
+      key: 'ticker_chart_mode',
+      value: 'both',
+    });
+    expect(store.tickerChartEnabled).toBe(true);
   });
 
   it('ticker_chart_style 只认 axis/plain，缺键或坏值退回 axis', async () => {

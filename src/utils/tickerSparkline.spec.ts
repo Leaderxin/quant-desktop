@@ -144,49 +144,32 @@ describe('sparklinePoints', () => {
 describe('resolveSparklineLines — 一格要画哪些线', () => {
   const bars = [bar(101, 10, 0), bar(103, 11, 0), bar(99, 14, 0)];
 
-  it('off 与无数据都不画', () => {
-    expect(resolveSparklineLines(bars, 100, 'off', 0.1)).toEqual({
-      main: null,
-      limit: null,
-    });
-    expect(resolveSparklineLines([], 100, 'both', 0.1)).toEqual({
+  it('无数据不画', () => {
+    expect(resolveSparklineLines([], 100, 0.1)).toEqual({
       main: null,
       limit: null,
     });
   });
 
-  it('price 只有主线，没有涨跌停线', () => {
-    const { main, limit } = resolveSparklineLines(bars, 100, 'price', 0.1);
-    expect(main).not.toBeNull();
+  it('主线是价格轴，涨跌停轴作为半透明投影一起返回', () => {
+    const { main, limit } = resolveSparklineLines(bars, 100, 0.1);
     expect(main!.from).toBeCloseTo(97);
-    expect(main!.to).toBeCloseTo(103);
-    expect(limit).toBeNull();
-  });
-
-  it('limit 单轴：涨跌停投影就是主线（满不透明），不再叠第二条', () => {
-    const { main, limit } = resolveSparklineLines(bars, 100, 'limit', 0.1);
-    expect(limit).toBeNull();
-    expect(main!.from).toBeCloseTo(90);
-    expect(main!.to).toBeCloseTo(110);
-  });
-
-  it('both：主线是价格轴，叠一条涨跌停轴投影', () => {
-    const { main, limit } = resolveSparklineLines(bars, 100, 'both', 0.1);
     expect(main!.to).toBeCloseTo(103);
     expect(limit!.to).toBeCloseTo(110);
   });
 
-  it('both 且涨跌停轴回退（规则未知 / 数据越界）时只画主线', () => {
-    const unknownRate = resolveSparklineLines(bars, 100, 'both', null);
+  it('涨跌停轴回退（规则未知 / 数据越界）时只画主线', () => {
+    const unknownRate = resolveSparklineLines(bars, 100, null);
     expect(unknownRate.limit).toBeNull();
     expect(unknownRate.main).not.toBeNull();
 
-    const outOfRange = resolveSparklineLines([bar(130)], 100, 'both', 0.1);
+    const outOfRange = resolveSparklineLines([bar(130)], 100, 0.1);
     expect(outOfRange.limit).toBeNull();
+    expect(outOfRange.main).not.toBeNull();
   });
 
-  it('昨收无效时 limit 轴不可用，主线仍按数据画', () => {
-    const { main, limit } = resolveSparklineLines(bars, 0, 'both', 0.1);
+  it('昨收无效时涨跌停轴不可用，主线仍按数据画', () => {
+    const { main, limit } = resolveSparklineLines(bars, 0, 0.1);
     expect(limit).toBeNull();
     expect(main).not.toBeNull();
   });
@@ -221,16 +204,14 @@ describe('单元格几何', () => {
   it('price 与 limit 两套纵轴下昨收映射到同一个 y', () => {
     const bars = [bar(101, 10, 0), bar(97, 14, 0)];
     const width = 88;
-    for (const kind of ['price', 'limit', 'both'] as const) {
-      const { main, limit } = resolveSparklineLines(bars, 100, kind, 0.1);
-      for (const range of [main, limit]) {
-        if (!range) continue;
-        const points = sparklineCanvasPoints(bars, range, width);
-        // 昨收落在 y = baseline：用一根正好等于昨收的 bar 验证
-        const atPrev = sparklineCanvasPoints([bar(100, 10, 0)], range, width)[0];
-        expect(atPrev.y).toBeCloseTo(sparklineBaselineY());
-        expect(points.length).toBe(2);
-      }
+    const { main, limit } = resolveSparklineLines(bars, 100, 0.1);
+    for (const range of [main, limit]) {
+      if (!range) continue;
+      const points = sparklineCanvasPoints(bars, range, width);
+      // 昨收落在 y = baseline：用一根正好等于昨收的 bar 验证
+      const atPrev = sparklineCanvasPoints([bar(100, 10, 0)], range, width)[0];
+      expect(atPrev.y).toBeCloseTo(sparklineBaselineY());
+      expect(points.length).toBe(2);
     }
   });
 

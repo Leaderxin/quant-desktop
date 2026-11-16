@@ -19,10 +19,9 @@ import {
   sparklineBaselineY,
   sparklineCanvasPoints,
 } from '@/utils/tickerSparkline';
-import type { TickerChartMode, TickerChartStyle } from '@/utils/prefs';
+import type { TickerChartStyle } from '@/utils/prefs';
 
 const props = defineProps<{
-  mode: TickerChartMode;
   /** 不叫 `style` —— Vue 对它有特殊处理，声明成 prop 收不到值 */
   chartStyle: TickerChartStyle;
   /** 这一行是涨还是跌：跌行把示意数据上下镜像，预览的曲线方向才与数字一致 */
@@ -94,7 +93,7 @@ function paint() {
       : sampleBars;
 
   // 与行情条同一条纵轴判定：涨跌停规则在这里就是主板 10%。
-  const { main, limit } = resolveSparklineLines(bars, PREV_CLOSE, props.mode, LIMIT_RATE);
+  const { main, limit } = resolveSparklineLines(bars, PREV_CLOSE, LIMIT_RATE);
   const lastBar = bars[bars.length - 1];
   const primaryPoints = sparklineCanvasPoints(bars, main ?? limit, width);
   const dot = primaryPoints[primaryPoints.length - 1];
@@ -122,7 +121,6 @@ onMounted(paint);
 // 只能等样式落定后重取一次调色板。
 watch(
   [
-    () => props.mode,
     () => props.chartStyle,
     () => props.rising,
     () => settings.theme,
@@ -137,10 +135,7 @@ watch(
 </script>
 
 <template>
-  <!-- 关闭时行情条整块不挂图，这里也就不画：画一个空的坐标格会让人以为
-       「关了还留着框」。 -->
   <canvas
-    v-if="mode !== 'off'"
     ref="canvasRef"
     class="spark-preview"
     :style="{

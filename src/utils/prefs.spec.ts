@@ -20,7 +20,7 @@ import {
   parseDefaultSort,
   parseJsonArray,
   parseThemeMode,
-  parseTickerChartMode,
+  parseTickerChartEnabled,
   parseTickerChartStyle,
 } from './prefs';
 
@@ -171,23 +171,22 @@ describe('parseThemeMode', () => {
   });
 });
 
-describe('parseTickerChartMode', () => {
-  it('四个合法值原样返回', () => {
-    expect(parseTickerChartMode('off')).toBe('off');
-    expect(parseTickerChartMode('price')).toBe('price');
-    expect(parseTickerChartMode('limit')).toBe('limit');
-    expect(parseTickerChartMode('both')).toBe('both');
+describe('parseTickerChartEnabled', () => {
+  it('只有 off 是关', () => {
+    expect(parseTickerChartEnabled('off')).toBe(false);
+    expect(parseTickerChartEnabled('both')).toBe(true);
   });
 
   /**
-   * 缺键退回 `both`，与 Rust 侧 `DEFAULT_SETTINGS` 的新默认值一致 ——
-   * 1.7.x 之前生成的库里根本没有这个键，两边给出不同的兜底值就会让
-   * 「设置页显示双线、实际画价格线」这种不一致静默发生。
+   * 旧版的 price / limit 已经不在 UI 里，但老库里可能存着：一律按「开」处理，
+   * 用户下次拨开关时会被改写成 both。缺键/坏值也与 Rust 侧默认值一致（开）。
    */
-  it('缺键与坏值退回双线', () => {
-    expect(parseTickerChartMode(undefined)).toBe('both');
-    expect(parseTickerChartMode('')).toBe('both');
-    expect(parseTickerChartMode('bogus')).toBe('both');
+  it('旧版 price/limit、缺键与坏值都按开处理', () => {
+    expect(parseTickerChartEnabled('price')).toBe(true);
+    expect(parseTickerChartEnabled('limit')).toBe(true);
+    expect(parseTickerChartEnabled(undefined)).toBe(true);
+    expect(parseTickerChartEnabled('')).toBe(true);
+    expect(parseTickerChartEnabled('bogus')).toBe(true);
   });
 });
 

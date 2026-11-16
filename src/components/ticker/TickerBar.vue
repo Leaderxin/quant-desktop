@@ -207,7 +207,7 @@ const visibleItems = computed(() =>
  * heightReady 之前不挂：那时窗口还是占位行的高度，长高会被量进一次无效位移。
  */
 const showChart = computed(
-  () => heightReady.value && settings.tickerChartMode !== 'off',
+  () => heightReady.value && settings.tickerChartEnabled,
 );
 
 const retryHintVisible = ref(false);
@@ -404,7 +404,6 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
             :code="item.code"
             :market="item.market"
             :name="item.name"
-            :mode="settings.tickerChartMode"
             :chart-style="settings.tickerChartStyle"
             :prev-close="item.prevClose"
           />

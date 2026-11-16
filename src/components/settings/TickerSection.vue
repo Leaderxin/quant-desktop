@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { formatCode } from '@/utils/format';
-import { clampTickerItems, TICKER_ITEMS_MAX, TICKER_ITEMS_MIN, TICKER_ITEMS_PRESET_MAX, type TickerChartMode, type TickerChartStyle } from '@/utils/prefs';
+import { clampTickerItems, TICKER_ITEMS_MAX, TICKER_ITEMS_MIN, TICKER_ITEMS_PRESET_MAX, type TickerChartStyle } from '@/utils/prefs';
 import SparklinePreview from './SparklinePreview.vue';
 import { moveByStep } from '@/utils/dragSort';
 import SettingsRow from './SettingsRow.vue';
@@ -14,17 +14,6 @@ import { NSwitch } from 'naive-ui';
 
 const settings = useSettingsStore();
 const watchlist = useWatchlistStore();
-
-/**
- * 迷你分时线的纵轴模式。默认「双线」：价格轴线满不透明 + 涨跌停轴线半透明，
- * 一张小图同时给出「今天怎么走的」和「离涨跌停还有多远」。
- */
-const chartModeOptions: { value: TickerChartMode; label: string }[] = [
-  { value: 'off', label: '关闭' },
-  { value: 'both', label: '双线' },
-  { value: 'price', label: '价格' },
-  { value: 'limit', label: '涨跌停' },
-];
 
 /** 画法。默认带 x 轴线与刻度 —— 格子很小时「横轴是一整天」需要一条轴来说明。 */
 const chartStyleOptions: { value: TickerChartStyle; label: string }[] = [
@@ -205,17 +194,18 @@ function rowTone(pct: string): 'up' | 'down' {
 
         <SettingsRow
           title="迷你分时线"
-          description="在每行行情右侧画一小段分时走势。双线=价格轴曲线（实色）叠涨跌停轴曲线（半透明）；单独选价格或涨跌停时只画一条。"
+          description="在每行行情右侧画一段分时走势：实色主线看当日形态，半透明投影看离涨跌停还有多远；涨跌停规则未知时只画主线。"
         >
-          <SegmentedControl
-            :model-value="settings.tickerChartMode"
-            :options="chartModeOptions"
-            label="迷你分时线纵轴"
-            @update:model-value="settings.setTickerChartMode($event)"
+          <NSwitch
+            size="small"
+            :value="settings.tickerChartEnabled"
+            aria-label="行情条迷你分时线"
+            @update:value="settings.setTickerChartEnabled($event)"
           />
         </SettingsRow>
 
         <SettingsRow
+          v-if="settings.tickerChartEnabled"
           title="分时线刻度"
           description="带刻度：底部一条 x 轴与三个 tick（09:30 / 午间 / 15:00），横轴一眼可读。纯曲线：只留昨收虚线与曲线，更干净。"
         >
@@ -273,7 +263,7 @@ function rowTone(pct: string): 'up' | 'down' {
               v-for="row in previewRows"
               :key="row.name"
               class="preview-row"
-              :class="{ 'with-chart': settings.tickerChartMode !== 'off' }"
+              :class="{ 'with-chart': settings.tickerChartEnabled }"
             >
               <span class="preview-text">
                 <span class="preview-name">{{ row.name }}</span>
@@ -285,8 +275,7 @@ function rowTone(pct: string): 'up' | 'down' {
               <!-- 迷你分时用与行情条同一套画法（同一个 paintTickerSparkline），
                    这里画的就是实际会看到的样子；示意数据，不发请求。 -->
               <SparklinePreview
-                v-if="settings.tickerChartMode !== 'off'"
-                :mode="settings.tickerChartMode"
+                v-if="settings.tickerChartEnabled"
                 :chart-style="settings.tickerChartStyle"
                 :rising="rowTone(row.pct) === 'up'"
               />

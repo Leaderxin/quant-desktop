@@ -79,22 +79,16 @@ export function clampTickerItems(n: number): number {
   return Math.min(Math.max(Math.round(n), TICKER_ITEMS_MIN), TICKER_ITEMS_MAX);
 }
 
-/** 行情条迷你分时线的纵轴模式。 */
-export const TICKER_CHART_MODES = ['off', 'price', 'limit', 'both'] as const;
-export type TickerChartMode = (typeof TICKER_CHART_MODES)[number];
-
 /**
- * 行情条分时线模式。非法/缺失归为 `both` —— 与 Rust 侧 `DEFAULT_SETTINGS`
- * 的默认值一致；`off` 只由用户显式选择。
+ * 行情条迷你分时线开关。
  *
- * 1.7.x 曾把默认钉在 `price`：那之前生成的库里 `ticker_chart_mode` 键不存在
- * （`init_defaults` 只在缺键时写），读回来就是这个 `both`，与后端新默认一致。
- * 老库里显式存的 `price`/`limit` 不受影响。
+ * 落库值只区分 `off` / `both`（`both` = 开：实色价格线 + 半透明涨跌停投影）。
+ * 早期版本存过 `price` / `limit`，一律按「开」处理 —— 不迁移数据，用户下次
+ * 拨开关时会自然写成 `both`。键名保持 `ticker_chart_mode`：它已经是 wire
+ * format，改键会让老库里的设置失效。
  */
-export function parseTickerChartMode(raw: string | undefined): TickerChartMode {
-  return (TICKER_CHART_MODES as readonly string[]).includes(raw ?? '')
-    ? (raw as TickerChartMode)
-    : 'both';
+export function parseTickerChartEnabled(raw: string | undefined): boolean {
+  return raw !== 'off';
 }
 
 /**

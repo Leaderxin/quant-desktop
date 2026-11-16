@@ -4,12 +4,13 @@
 // 这里给每一行配一块 88×30 的 canvas 自绘折线。区间与坐标换算全在
 // utils/tickerSparkline 里（含单测），本文件只负责取数、缓存与绘制。
 //
-// `both` 把两套纵轴画进同一块画布：价格轴那条满不透明当主线，涨跌停轴那条 50%
-// 透明叠在下面。两者都以昨收为中心，所以一条 0% 虚线对两条线同时成立 ——
-// 一眼读出「今天怎么走的」和「离涨跌停还有多远」。
+// 开关打开时把两套纵轴画进同一块画布：价格轴那条满不透明当主线，涨跌停轴那条
+// 38% 透明叠在下面。两者都以昨收为中心，所以一条 0% 虚线对两条线同时成立 ——
+// 一眼读出「今天怎么走的」和「离涨跌停还有多远」。规则未知/数据越界时只画主线；
+// 开关关掉时整个组件不挂载。
 //
 // 画法可切换（`ticker_chart_style`）：`axis` 多一条 x 轴线与三个刻度，`plain`
-// 只有 0% 虚线 + 两条曲线。涨跌停边界两种画法都不画 —— 那一维由半透明的涨跌停
+// 只有 0% 虚线与曲线。涨跌停边界两种画法都不画 —— 那一维由半透明的涨跌停
 // 曲线自己表达。绘制本体在 utils/tickerSparkline 的 `paintTickerSparkline`，
 // 与设置页预览共用同一份，免得「设置里看着对、实际不是那样」。
 //
@@ -23,7 +24,7 @@ import type { MinuteData } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { beijingNow, mapMinuteBars, sessionPrevClose } from '@/utils/minuteBars';
 import { priceLimitRate } from '@/utils/priceLimit';
-import type { TickerChartMode, TickerChartStyle } from '@/utils/prefs';
+import type { TickerChartStyle } from '@/utils/prefs';
 import {
   paintTickerSparkline,
   resolveSparklineLines,
@@ -97,8 +98,6 @@ export interface TickerSparklineOptions {
   code: MaybeRef<string>;
   market: MaybeRef<string>;
   name: MaybeRef<string>;
-  /** `off` 由调用方决定不挂载，这里只会收到 price / limit / both */
-  mode: MaybeRef<TickerChartMode>;
   /** 画法：带 x 轴线与刻度 / 只有虚线与曲线 */
   style: MaybeRef<TickerChartStyle>;
   /** 实时行情给的兜底昨收（`price - change`），数据里没有上一交易日时才用 */
@@ -318,10 +317,9 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const mode = unref(options.mode);
     const rate = priceLimitRate(unref(options.code), unref(options.name));
     const prevClose = effectivePrevClose();
-    const { main, limit } = resolveSparklineLines(bars, prevClose, mode, rate);
+    const { main, limit } = resolveSparklineLines(bars, prevClose, rate);
     const lastBar = bars[bars.length - 1];
 
     paintTickerSparkline(
@@ -433,7 +431,6 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   watch(
     [
       () => unref(options.name),
-      () => unref(options.mode),
       () => unref(options.style),
       () => unref(options.prevClose),
     ],
