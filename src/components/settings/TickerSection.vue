@@ -207,7 +207,7 @@ function rowTone(pct: string): 'up' | 'down' {
         <SettingsRow
           v-if="settings.tickerChartEnabled"
           title="分时线刻度"
-          description="带刻度：底部多一条 x 轴线与三个刻度（不标文字，跟随早盘/全天自适应），横轴范围更好辨认。纯曲线：只留 0% 虚线与价格线，更干净。"
+          description="带刻度：底部多一条 x 轴线与刻度（早盘两个端点、11:30 后三个，不标文字），横轴范围更好辨认。纯曲线：只留 0% 虚线与价格线，更干净。"
         >
           <SegmentedControl
             :model-value="settings.tickerChartStyle"

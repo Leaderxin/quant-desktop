@@ -163,8 +163,9 @@ describe('单元格几何', () => {
     expect(sparklineCanvasPoints(bars, range, 88)).toHaveLength(2);
   });
 
-  it('x 轴三个刻度：起点 / 中点（午间）/ 右端内缩一像素', () => {
-    expect(axisTickPositions(75)).toEqual([0, 37.5, 74]);
+  it('x 轴刻度：全天三个（起点/午间/右端），早盘两个（起点/右端）', () => {
+    expect(axisTickPositions(75, SESSION_MINUTES)).toEqual([0, 37.5, 74]);
+    expect(axisTickPositions(75, SESSION_MINUTES / 2)).toEqual([0, 74]);
     expect(axisTickPositions(0)).toEqual([]);
     expect(axisTickPositions(-5)).toEqual([]);
   });
@@ -283,6 +284,16 @@ describe('paintTickerSparkline', () => {
     const axisLineMoves = axisCtx.rec.filter((r) => r.op === 'moveTo');
     // 轴线 1 段 + 刻度 3 段
     expect(axisLineMoves).toHaveLength(4);
+
+    // 早盘只画两个端点刻度：轴线 1 段 + 2 段
+    const morningCtx = fakeCtx();
+    paintTickerSparkline(
+      morningCtx,
+      { ...base, style: 'axis', xSpanMinutes: SESSION_MINUTES / 2 },
+      palette,
+      1,
+    );
+    expect(morningCtx.rec.filter((r) => r.op === 'moveTo')).toHaveLength(3);
 
     const plainCtx = fakeCtx();
     paintTickerSparkline(plainCtx, { ...base, style: 'plain' }, palette, 1);

@@ -334,6 +334,7 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
             : null,
         width: cssWidth,
         height: cssHeight,
+        xSpanMinutes: xSpan,
       },
       readColors(),
       dpr,

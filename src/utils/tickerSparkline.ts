@@ -181,14 +181,16 @@ export function sparklineCanvasPoints(
 }
 
 /**
- * x 轴刻度位置：可视区间的起点、中点、右端（内缩一像素避免与边线重合）。
+ * x 轴刻度位置：全天三个（起点 / 午间 / 右端），早盘两个（起点 / 右端）。
  *
- * 全天模式下中点正好是午间分界；早盘模式（只铺 09:30–11:30）下中点是 10:30。
- * 不放文字：宽度里挤下「09:30」既占地方又必然压线。
+ * 早盘横轴只覆盖 09:30–11:30，此时中点不是午休，画出来会被误读成「已经到
+ * 11:30/13:00 了」；所以只在全天模式下加中间那个刻度。右端内缩一像素避免
+ * 与边线重合。不放文字：宽度里挤下「09:30」既占地方又必然压线。
  */
-export function axisTickPositions(width: number): number[] {
+export function axisTickPositions(width: number, xSpanMinutes = SESSION_MINUTES): number[] {
   if (!(width > 0)) return [];
-  return [0, width / 2, Math.max(0, width - 1)];
+  const end = Math.max(0, width - 1);
+  return xSpanMinutes < SESSION_MINUTES ? [0, end] : [0, width / 2, end];
 }
 
 /** 一次绘制需要的全部输入；数值都已经是画布坐标。 */
@@ -202,6 +204,8 @@ export interface SparklinePaintInput {
   dot: { x: number; y: number; rising: boolean } | null;
   width: number;
   height: number;
+  /** 横轴跨度（交易日分钟）：早盘 120 只画两个端点刻度，全天 240 画三个。 */
+  xSpanMinutes?: number;
 }
 
 export interface SparklinePalette {
@@ -253,7 +257,7 @@ export function paintTickerSparkline(
     // 刻度自轴线向下：向上会去抢曲线区的位置
     ctx.globalAlpha = 0.22;
     ctx.beginPath();
-    for (const tick of axisTickPositions(width)) {
+    for (const tick of axisTickPositions(width, input.xSpanMinutes)) {
       const x = Math.round(tick * dpr) + 0.5;
       ctx.moveTo(x, y);
       ctx.lineTo(x, Math.round((SPARKLINE_AXIS_Y + SPARKLINE_TICK_HEIGHT) * dpr) + 0.5);
