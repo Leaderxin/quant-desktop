@@ -33,7 +33,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 - `stores/market.spec.ts` — 刷新并发：过期响应不落地、in-flight 与切时段交错。
 - `utils/hotkey.spec.ts` — 裸键/只带 Shift 的组合不得当热键，修饰键顺序两端一致。
 - `composables/useTickerWindowHeight.spec.ts` — 行情条并发改高只补偿一次。
-- `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的。
+- `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调；forward 只回传新增 bar，分钟 K 不声明还有更早数据。
 - `utils/tickerSparkline.spec.ts` — 早盘/全天横轴与两种画法的绘制指令。
 
 不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（短信分类、响应解析、时段、分组归属/迁移、日志工具）；`vue-tsc` 负责类型；暂无 lint 命令。
@@ -178,7 +178,7 @@ DataSource → Scheduler → QuoteCache（内存 + SQLite）
 
 跨窗口设置：`setSetting` 写库并广播 `settings-changed`；ticker 直接 `applyRemoteSetting`，**不得回广播**（会来回弹）。`datasource-changed` 单独一条，因为它还有每窗口的副作用。主题不需要专线：两个窗口各自用本窗口的 `matchMedia` 解析 —— ticker 的窗口没被钉过，读到的是系统真值。
 
-K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。切股/切周期时主请求由 `AbortController` 丢弃，forward/增量由 `dataEpoch` 丢弃 —— 图表实例与 `allData` 跨标的复用，旧响应的 prepend 会让新标的的图上多出一段旧历史（新标的 2010 年上市，图上却从 2000 年开始）。
+K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。切股/切周期时主请求由 `AbortController` 丢弃，forward/增量由 `dataEpoch` 丢弃 —— 图表实例与 `allData` 跨标的复用，旧响应的 prepend 会让新标的的图上多出一段旧历史（新标的 2010 年上市，图上却从 2000 年开始）。分钟 K 不做前向翻页（mkline 的 `end_date` 不生效，返回的仍是最近一段）；forward 只把去重后的 bar 交给图表，否则 prepend 会叠出重复段。
 
 ### Logging
 

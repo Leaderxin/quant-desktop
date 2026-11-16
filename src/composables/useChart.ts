@@ -64,12 +64,6 @@ export function useChart(options: {
     return `${y}-${m}-${day}`;
   }
 
-  function formatDateMinuteStamp(ts: number): string {
-    const d = new Date(ts);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`;
-  }
-
   // ---- 数据映射 ----
 
   function mapKLineToChart(data: KLineData[]): KCLineData[] {
@@ -91,20 +85,16 @@ export function useChart(options: {
   async function loadMoreHistory(): Promise<KCLineData[]> {
     const epoch = dataEpoch;
     if (!hasMoreForward.value || loading.value) return [];
-    const span = minuteKSpan(currentPeriod.value);
-    const isSina = settings.activeDatasource === 'sina';
-    if (span !== null && isSina) {
+    // 分钟 K 不做前向加载：腾讯 mkline 不按 end_date 翻页，传了也返回最近一段，
+    // 前向结果会与已有数据整段重叠；再 prepend 进图表就是两端重复的 K 线。
+    if (minuteKSpan(currentPeriod.value) !== null) {
       hasMoreForward.value = false;
       return [];
     }
     loading.value = true;
     try {
       const earliest = allData.value[0];
-      const endDate = earliest
-        ? (span !== null
-            ? formatDateMinuteStamp(earliest.timestamp)
-            : formatDate(earliest.timestamp - 86_400_000))
-        : undefined;
+      const endDate = earliest ? formatDate(earliest.timestamp - 86_400_000) : undefined;
       const count = 200;
       const data = await invoke<KLineData[]>('get_kline', {
         code: unref(options.code),
@@ -117,21 +107,21 @@ export function useChart(options: {
       // 交回给旧 loader 的 callback（否则会 prepend 到新标的的图上）。
       if (epoch !== dataEpoch) return [];
       const newBars = mapKLineToChart(data);
-      let uniqueCount = 0;
+      let uniqueBars: KCLineData[] = [];
       if (newBars.length > 0) {
         const existing = new Set(allData.value.map((d) => d.timestamp));
-        const unique = newBars.filter((d) => !existing.has(d.timestamp));
-        uniqueCount = unique.length;
-        if (uniqueCount > 0) {
+        uniqueBars = newBars.filter((d) => !existing.has(d.timestamp));
+        if (uniqueBars.length > 0) {
           allData.value = [
-            ...unique.sort((a, b) => a.timestamp - b.timestamp),
+            ...uniqueBars.sort((a, b) => a.timestamp - b.timestamp),
             ...allData.value,
           ];
         }
       }
       klineData.value = allData.value;
-      hasMoreForward.value = uniqueCount > 0 && newBars.length >= 100;
-      return newBars;
+      hasMoreForward.value = uniqueBars.length > 0 && newBars.length >= 100;
+      // 只把去重后的 bar 交给图表：forward 是 prepend，重复项会直接叠进图里。
+      return uniqueBars;
     } catch (e) {
       console.error('[useChart] forward load failed:', e);
       return [];
@@ -354,7 +344,8 @@ export function useChart(options: {
         const mapped = mapKLineToChart(data);
         allData.value = mapped.sort((a, b) => a.timestamp - b.timestamp);
         const isSina = settings.activeDatasource === 'sina';
-        hasMoreForward.value = !isSina;
+        // 分钟 K 不做前向加载：mkline 不按 end_date 翻页，见 loadMoreHistory。
+        hasMoreForward.value = !isSina && minuteKSpan(period) === null;
         klineData.value = mapped;
       } else {
         // 空响应也要清掉上一只股票的数据：syncPrecision 还会读 klineData，

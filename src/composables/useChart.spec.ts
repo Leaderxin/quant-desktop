@@ -168,6 +168,60 @@ describe('useChart 切股丢弃旧请求', () => {
     });
   });
 
+  it('forward 响应与已有数据重叠时只回传新增部分', async () => {
+    invokeMock.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd !== 'get_kline') return undefined;
+      if (args?.count === 200) return [...A_MAIN, ...A_HISTORY];
+      return A_MAIN;
+    });
+
+    const { api } = mountChart();
+    await api.initChart('daily');
+    await api.loadData('daily');
+
+    let forwarded: unknown[] | null = null;
+    await mocks.state.loader!.getBars({
+      type: 'forward',
+      symbol: { ticker: 'sh600000' },
+      period: { type: 'day', span: 1 },
+      timestamp: null,
+      callback: (data: unknown[]) => {
+        forwarded = data;
+      },
+    });
+
+    // A_MAIN 已在图里；forward 只能把 2000 年那根交回图表，否则会 prepend 重复段
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded![0]).toMatchObject({
+      close: 5,
+      timestamp: new Date('2000-01-04').getTime(),
+    });
+  });
+
+  it('分钟 K 的 init 不声明还有更早数据（mkline 不支持翻页）', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd !== 'get_kline') return undefined;
+      return A_MAIN;
+    });
+
+    const { api } = mountChart();
+    await api.initChart('30min');
+    await api.loadData('30min');
+
+    let moreForward: boolean | undefined;
+    await mocks.state.loader!.getBars({
+      type: 'init',
+      symbol: { ticker: 'sh600000' },
+      period: { type: 'minute', span: 30 },
+      timestamp: null,
+      callback: (_data: unknown[], m: { forward?: boolean }) => {
+        moreForward = m.forward;
+      },
+    });
+
+    expect(moreForward).toBe(false);
+  });
+
   it('新标的加载失败时，旧标的的自动刷新定时器必须停掉', async () => {
     vi.useFakeTimers();
     try {
