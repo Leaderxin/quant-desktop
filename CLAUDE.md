@@ -26,28 +26,15 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 - **只 mock Tauri 边界**（`@tauri-apps/api/*` 的 `invoke`/`listen`/`emit`）。Pinia 与 store 用真的 —— 被钉的行为就是 store 自己的。需要 `document` 的 spec 在文件头加 `// @vitest-environment happy-dom`，不切全局环境。
 - **组件测不了的纯逻辑抽到 `src/utils/`**：`dragSort`、`paging`、`watchGroups`、`minuteBars`、`minuteAxis`、`theme`、`webLog` 都是这么来的。
 
-覆盖范围（细节读 spec 本身）：
+重点 spec（其余 spec 覆盖解析兜底、格式、拖拽落点等，细节读 spec 本身）：
 
-| Spec | 钉住的行为 |
-|------|-----------|
-| `stores/market.spec.ts` | 刷新调度并发：过期响应不落地、in-flight 与切时段交错 |
-| `stores/watchlist.spec.ts` | 派生顺序（分组顺序来自关联表）、悬空 id、`ticker_order`、乐观 `setTickerEnabled`、**IPC 参数拼写**（Rust snake_case / JS camelCase，拼错只表现为反序列化失败） |
-| `stores/settings.spec.ts` | 派生配置兜底、写入前夹取、`applyRemoteSetting` 不回写不广播；主题三态与解 pin 顺序 |
-| `utils/theme.spec.ts` | 「跟随系统」解析：显式模式不看系统、无 `matchMedia` 时按浅色且不抛错、订阅/退订 |
-| `utils/prefs.spec.ts` | 任何损坏/旧版设置值都给出可用默认值 |
-| `utils/csv.spec.ts` | CSV 编码（UTF-8 严格优先、失败才退 GBK）、引号内逗号/换行、表头；**行号按物理行**；与 Excel 网格共用 `mapWatchlistRows` |
-| `utils/format.spec.ts` | 「较昨同期」增量的符号、不足一亿按持平、缺失给空串 |
-| `utils/hotkey.spec.ts` | 加速键字符串两端一致、修饰键顺序、裸键/只带 Shift 的组合不得当热键 |
-| `utils/changelog.spec.ts` | 更新说明解析：版本/日期/小节、CRLF、坏输入不抛错 |
-| `utils/dragSort.spec.ts` / `paging.spec.ts` | 拖拽落点（四向 × 前后）、轮播窗口（短列表不自转） |
-| `utils/watchGroups.spec.ts` | 删除分组确认框的两份名单（顺序、去重、目标不存在给空） |
-| `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界、当日累计均价（含零成交量）；网格槽位/偏移/刻度与窄宽回退、自适应纵轴（单边行情不压半区、均价参与取幅） |
-| `utils/paneSize.spec.ts` | 副图高度按 28% 夹在 48–80px；高度未知时给兜底值 |
-| `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动；并发触发（visibilitychange + ResizeObserver）只补偿一次 |
-| `composables/useChart.spec.ts` | 切股/切周期后旧 forward 响应被代次闸门丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调 |
-| `utils/tickerSparkline.spec.ts` | 行情条分时的价格轴：±1% 下限、按最大偏离取半幅、无昨收时用首根 close 兜底；早盘横轴只铺 09:30–11:30、11:30 后切全天、上一交易日按全天；单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 全天画轴+3 刻度、早盘画轴+2 端点刻度、`plain` 不画，0% 虚线/主线满不透明、主线与圆点跟随方向着色、渐变面积只在 ≥2 点时铺、圆点夹边） |
-| `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
-| `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
+- `stores/watchlist.spec.ts` — IPC 参数拼写（Rust snake_case / JS camelCase，拼错只表现为反序列化失败）、派生顺序与悬空 id。
+- `utils/csv.spec.ts` — 行号按物理行；与 Excel 网格共用 `mapWatchlistRows`；UTF-8 严格优先、失败才退 GBK。
+- `stores/market.spec.ts` — 刷新并发：过期响应不落地、in-flight 与切时段交错。
+- `utils/hotkey.spec.ts` — 裸键/只带 Shift 的组合不得当热键，修饰键顺序两端一致。
+- `composables/useTickerWindowHeight.spec.ts` — 行情条并发改高只补偿一次。
+- `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的。
+- `utils/tickerSparkline.spec.ts` — 早盘/全天横轴与两种画法的绘制指令。
 
 不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（短信分类、响应解析、时段、分组归属/迁移、日志工具）；`vue-tsc` 负责类型；暂无 lint 命令。
 
@@ -72,20 +59,15 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 
 ### Linux 启动后端：Wayland 会话自动切 XWayland
 
-行情条要「始终置顶」，而 GTK 的 `keep_above` 在 X11 上是 `_NET_WM_STATE_ABOVE`（WM 照办），在 Wayland 上**没有任何对应协议** —— 置顶是合成器的权力，客户端无权索取，调用只是静默无效。所以 Wayland 原生会话里置顶无解，只能走 XWayland。
+行情条的「始终置顶」靠 GTK `keep_above`，而 Wayland 没有对应协议（置顶是合成器权力），所以只能走 XWayland。[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11,wayland` 重新 `exec` 自己（替换进程映像，不双开）—— 图标、自启、终端三条路径因此一致；已设 `GDK_BACKEND` 的启动环境仍被尊重。
 
-以前靠桌面图标的 `Exec=env GDK_BACKEND=x11 quant-desktop` 达到置顶，但其它入口没有这个前缀：开机自启是 tauri-plugin-autostart 生成的 `~/.config/autostart/*.desktop`（裸 `Exec=`），终端启动也一样 —— 症状是「图标启动能置顶、自启后不能」。
+- **必须是候选列表 `x11,wayland`，不能写单值 `x11`**：socket 存在不等于授权可用，自启缺 `XAUTHORITY` 时 GTK 连不上 X 会直接退出，而 `exec` 已替换进程映像、没有第二次机会；GDK 按序回退到 Wayland。
+- 没有 XWayland 时留在 Wayland（置顶失效但能启动）；`QUANT_BACKEND=x11|wayland` 可手动覆盖，`wayland` 会清掉启动器留下的 `GDK_BACKEND`；`QUANT_BACKEND_REEXEC=1` 防重入。
+- 自启环境常缺 `XAUTHORITY`，模块会尽力扫 `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth*`；真正的兜底是上面的候选列表。
+- 启动日志有一行 `启动后端: … | 会话 … | QUANT_BACKEND=auto | 原因`；exec 失败会记「已退回」。该模块只在 Linux 编译，由 CI 的 `backend-linux` job 覆盖（Windows 的 cargo test 看不到）。
+- 附带好处：X11 下 `outer_position()` 有真实坐标，`ticker_x/ticker_y` 位置记忆才生效。
 
-现在判定放进应用自己：[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11,wayland` 重新 `exec` 自己（进程映像替换，不双开）。图标、自启、终端三路因此一致，图标里那个前缀不再必要（仍被尊重：已设 `GDK_BACKEND` 就不插手）。
-
-- 只切「Wayland 会话 + 有 XWayland（`DISPLAY` 指向本地且 `/tmp/.X11-unix/X<n>` 存在）」；没有 XWayland 时留在 Wayland —— 宁可没有置顶，也不能因为连不上 X 而启动不了。
-- **必须是候选列表 `x11,wayland`，不能写单值 `x11`**：socket 存在不等于授权可用，自启环境缺 `XAUTHORITY` 时 GTK 连不上 X 会直接退出，而 `exec` 已经替换掉进程映像、没有第二次机会。GDK 按逗号顺序尝试，X11 打不开会自动落到 Wayland。
-- 自启环境常缺 `XAUTHORITY`，模块会退到扫描 `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth*` 补上；这只是尽力而为，真正的兜底是上面那条候选列表。
-- `QUANT_BACKEND=x11|wayland` 手动指定（排查用，优先于自动判定）；`wayland` 会清掉启动器留下的 `GDK_BACKEND`，否则旧图标的 `Exec=env GDK_BACKEND=x11 …` 会让覆盖开关形同虚设。`QUANT_BACKEND_REEXEC=1` 是给子进程打的防重入标记。
-- 启动日志有一行 `启动后端: … | 会话 … | QUANT_BACKEND=auto | 原因`，出问题先看它；`exec` 自身的失败会记进进程内标记，摘要里写明「已退回」而不是按环境误报。该模块只在 Linux 编译，由 CI 的 `backend-linux` job 覆盖。`cargo test` 的 Windows job 看不到它。
-- 附带好处：X11 下 `outer_position()` 读得到真实坐标，行情条的 `ticker_x/ticker_y` 位置记忆才真正生效（Wayland 原生下恒为 (0,0)）。
-
-**为什么不做「原生 Wayland + 置顶」**（2026-11 决定，别再重复调研）：Wayland 协议从未提供 keep-above，`gdk_window_set_keep_above` 在 Wayland 上是空操作，GNOME 的立场是窗口堆叠属 WM 权力；唯一能做 overlay 的 `zwlr_layer_shell_v1` 是 wlroots 系扩展，Mutter 明确不实现，而行情条主要在 GNOME 上用。各桌面都要额外东西：GNOME 需用户手动「置于顶层」或装 Shell 扩展；KDE 可写 KWin 窗口规则/脚本；wlroots 需把 ticker 改成 `gtk-layer-shell` 的 OVERLAY 窗口；再或者双进程（主窗口原生、ticker 单独 XWayland）。取舍与完整对照表见 [linux_backend.rs](src-tauri/src/linux_backend.rs) 的模块文档。当前选择是一条 XWayland 路径覆盖所有桌面，代价只是分数缩放下可能略糊。
+为什么不做原生 Wayland 置顶（协议缺失、Mutter 不实现 layer-shell、各桌面方案）的完整调研与对照表见 [linux_backend.rs](src-tauri/src/linux_backend.rs) 的模块文档，别再重复调研。
 
 ### Rust 后端（`src-tauri/src/`）
 
@@ -98,7 +80,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - `set_ticker_visible(app, db, visible)`：显示时依次 show → 置顶 / 隐藏任务栏 / `WS_EX_TOOLWINDOW` / 还原位置，并持久化 `ticker_visible`。**顺序不能反**：Windows 的 `set_skip_taskbar` 走 `ITaskbarList::DeleteTab`，窗口必须已经真正显示过才生效。
 - `set_ticker_size(window, w, h)`：**行情条所有改尺寸的路径都必须走它**（启动、`set_ticker_visible`、前端按内容量出的高度）。三步都有坑：先清 min/max 提示（Linux/GTK 会把非 resizable 窗口的提示钉成建窗时的值，不清就收不回内容高度，底部永久多一截）→ 改尺寸 → 把新尺寸钉回 min/max（WM 见 min==max 才不给缩放手柄；只靠 `set_resizable(false)` 挡不住 GNOME/Mutter 的缩放手势）。前端因此**没有** `core:window:allow-set-size` 权限，绕过命令改不动尺寸。
 - `show_main_window(app)`：`show()` 之后必须 `unminimize()` —— Windows 的 `SW_SHOW` 不会退出最小化，用户只看到任务栏图标闪一下。托盘左键还要判 `is_minimized()`：最小化窗口在 Win32 眼里仍是 `WS_VISIBLE`，只判 `is_visible()` 会把想叫回来的窗口又藏起来。托盘的「设置」在显示窗口后还要 `emit("open-settings")`（webview 常驻，隐藏时也收得到）。
-- `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system`（含缺键、坏值）在 Windows/macOS 上必须传 `None` 给 tao —— 一旦显式设过主题，tao 会忽略系统主题变化，WebView2 的 `prefers-color-scheme` 被一起钉死，「跟随系统」就失效了。**Linux 例外**：tao 把 `None` 实现成 `set_gtk_application_prefer_dark_theme(false)`（强制浅色）而不是解 pin，而这个进程级 GTK 设置正是 WebKitGTK 的 `prefers-color-scheme` 来源。所以 system 模式必须**绕开 `set_theme(None)`**：先用 `linux_portal_theme()` 直接读 xdg-desktop-portal，再 `set_theme(Some(...))` 设回去；先解 pin 会把 GTK 强制改浅，WebKitGTK 先按浅色重绘一帧，切换「跟随系统」时闪白（#37）。只有 portal 不可用时才退回 tao 的旧路径（解 pin → `window.theme()` → 设回去，接受这次闪烁）。启动那次必须**先于** `main.show()`（否则先闪一帧白条）；运行期挂在 store 的模式 watch 上。只作用于 `main`（ticker 无边框、没有标题栏可画）。
+- `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system` 在 Windows/macOS 必须传 `None` 给 tao，否则会钉死 `prefers-color-scheme`；**Linux 例外**：tao 把 `None` 实现成强制浅色，必须先用 `linux_portal_theme()` 读 portal 再 `set_theme(Some(...))`，先解 pin 会闪白（机制与 #37 见代码注释）。启动那次必须先于 `main.show()`；只作用于 `main`。
 
 **`domain/mod.rs`** — IPC 数据类型，对应 [src/types/index.ts](src/types/index.ts)：`Quote`、`IndexQuote`、`Depth`/`Level`、`MinuteData`、`KLineData`、`StockBrief`、`Market`（CN/HK/US）。
 
@@ -177,7 +159,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
 - 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
 - 分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）：滚动条隐藏，但可滚动提示不能省 —— 纵向滚轮转横向、两侧渐隐 + 箭头按钮、当前分组自动滚入视野；「新建分组」固定在滚动区外。只留 `overflow-x: auto` 会把溢出内容变成鼠标用户看不见也滚不到的死角。
-- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。每行是左右结构 —— 左列上下两行（名称 / 价格+涨跌），右侧一块 88×30 的迷你分时（`TickerSparkline` + `useTickerSparkline`，自绘 Canvas，**不引 klinecharts**；由 `ticker_chart_mode` 开关控制，默认关）：横轴 09:30–15:00（早盘只铺 09:30–11:30，11:30 后切全天，避免早上把线挤在左半格；画的是上一交易日时按全天）。挂图时价格是 12px/600 的主角、名称 11px/500，涨跌收进同色浅底胶囊；曲线与末端圆点取当日方向色，下方铺同色渐变（16%→1%），轴线与刻度压到 28%/22% 只当背景。格子里必画的是 0% 虚线与价格曲线；`ticker_chart_style=axis` 时再加一条 x 轴线与刻度（早盘两个端点、11:30 后三个）。**绘制本体是 `utils/tickerSparkline` 的 `paintTickerSparkline`，设置页的 `SparklinePreview` 也用它** —— 各画一份会漂成「设置里看着对、实际不是那样」，比没有预览更糟。关掉分时图时左列容器退回 `display: contents`，行回到原来的一行三段与紧凑高度。尺寸与坐标全部由 `utils/tickerSparkline` 的 `SPARKLINE_*` 常量推出并被组件 style 使用，别再手写第二份数字。缓存/在途请求/重试下限必须放在 composable 的**模块作用域** —— 翻页会销毁重建整批行，实例级缓存等于每 3 秒重打一遍接口。失败不写缓存但要记尝试时间，否则坏标的被反复捶且重试被 TTL 挡死。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
+- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。挂图时每行是「左列上下两行（名称 / 价格+涨跌）| 右侧 88×30 迷你分时」；`ticker_chart_mode` 默认关，关掉时左列退回 `display: contents`，行恢复一行三段的紧凑高度。迷你分时横轴 09:30–15:00（早盘只铺 09:30–11:30，11:30 后切全天；画的是上一交易日时按全天），`axis` 画法下早盘两个端点刻度、11:30 后三个。**绘制本体是 `utils/tickerSparkline` 的 `paintTickerSparkline`，设置页 `SparklinePreview` 也用它** —— 各画一份会漂成「设置里看着对、实际不是那样」。尺寸/坐标只认 `SPARKLINE_*` 常量；缓存/在途请求/重试下限必须放 composable 的**模块作用域**（翻页会重建整批行）。透明背景由 `body.ticker-transparent` 控制，底板/圆角/阴影**一起**去掉；窗口在 `tauri.conf.json` 开了 `transparent: true`。
 - 详情面板高度必须是**确定值**（按视口 clamp），图表容器 `flex: 1` 填满剩余空间；`chart.css` 里**不要给图区写死高度** —— 1080p @150% 这类矮窗口会把副图顶出容器、被 `.main-content` 的 `overflow: hidden` 裁掉。详情与设置页用 `defineAsyncComponent` 懒加载；**StockDetail 与 IndexDetail 两个入口必须同时异步**，否则 klinecharts 会经静态链回到首屏。
 - Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
 - Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
@@ -190,7 +172,7 @@ DataSource → Scheduler → QuoteCache（内存 + SQLite）
     → Pinia stores → Vue 组件（主窗口 + 行情条）
 ```
 
-按需请求：深度 3s、分时 5s、日 K 30s、周/月 K 60s。分时/K 线的关键约束（日期来自数据而非本机时钟、以 UTC+8 墙钟过滤未来 bar、网格按会话固定、composable 自己注册卸载）见 [minuteBars.ts](src/utils/minuteBars.ts)、[minuteAxis.ts](src/utils/minuteAxis.ts)、[useMinuteChart.ts](src/composables/useMinuteChart.ts) 的注释与 spec。分时图的均价线由前端按成交量累计 VWAP（`cumulativeAvgPrices`）—— 后端 `MinuteData.avg_price` 在两个适配器里填的都是 bar 的开盘价，不能直接画；成交量是独立副图 pane（`VOL`，`calcParams: []` 只留量柱），副图高度与 K 线同一套 28%/48–80px 规则。均价读数并进蜡烛 tooltip 的同一行（放在「量」后面），均价指标自己那行图例靠空 `shortName` + 无 `title` 的 figure 关掉 —— 否则 klinecharts 会把指标图例画在蜡烛图例下方的独立行。
+按需请求：深度 3s、分时 5s、日 K 30s、周/月 K 60s。分时/K 线的关键约束（日期来自数据而非本机时钟、以 UTC+8 墙钟过滤未来 bar、网格按会话固定、composable 自己注册卸载）见 [minuteBars.ts](src/utils/minuteBars.ts)、[minuteAxis.ts](src/utils/minuteAxis.ts)、[useMinuteChart.ts](src/composables/useMinuteChart.ts) 的注释与 spec。分时均价必须前端按成交量累计 VWAP（`cumulativeAvgPrices`）—— 后端 `MinuteData.avg_price` 填的是 bar 开盘价，不能直接画；成交量是独立 `VOL` 副图（`calcParams: []` 只留量柱），高度与 K 线共用 28%/48–80px 规则。
 
 自选写操作：`invoke` → Rust → SQLite → 前端重拉；每个影响自选的命令都发 `watchlist-changed`，行情条靠它同步。数据源切换走 `Notify` 立即刷新。
 
@@ -222,8 +204,8 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 | `ticker_transparent` | `0` | 透明背景 |
 | `ticker_click_wakes` | `1` | 点击行情条是否唤醒主界面。关闭后只是纯展示，恢复主界面走托盘或老板键（初始化失败时的「点击重试」不受它影响） |
 | `ticker_items_per_page` | `2` | 每屏条数 1–10（预设到 4 + 自定义）；上限也就是行情条最大高度 |
-| `ticker_chart_mode` | `off` | 行情条每行的迷你分时线开关：`off` / `on`，默认关。开时画一条以昨收为中心的价格曲线（0% 虚线 + 方向色主线 + 渐变面积），关时整块不挂载、行恢复紧凑高度。旧版存过的 `price`/`limit`/`both` 一律按开处理 |
-| `ticker_chart_style` | `axis` | 迷你分时线的画法：`axis`（额外画 x 轴线与刻度，早盘两个端点、11:30 后三个）/`plain`（只有 0% 虚线与曲线）。高度两种画法都是 30px —— 由画法推导高度会让切换样式时窗口跳一下 |
+| `ticker_chart_mode` | `off` | 迷你分时线开关：`off`/`on`，默认关；旧值 `price`/`limit`/`both` 按开处理 |
+| `ticker_chart_style` | `axis` | `axis` 带 x 轴线与刻度 / `plain` 纯曲线；高度固定 30px，切换不跳 |
 | `watchlist_columns` | 全部 8 列 | JSON 数组，顺序即列顺序，不含 `ticker_enabled` |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`，空 = 不自排 |
 | `color_scheme` | `cn` | `cn` 红涨绿跌 / `us` 反过来 |
@@ -237,7 +219,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 以下测试把这张表和前端钉在一起：键名不可改（就是 wire format）、无重复键、`groups_migrated` 不是默认键、布尔只认 `"0"/"1"`、数字可解析。
 
-两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 220 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平（220 = 16 + 108 + 8 + 88）：多出来的宽度不会变成图，只会变成中间的空白。
+两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 220 逻辑像素（高度按内容测量）。宽度只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`；改尺寸走 `set_ticker_size`，配平见 `datasource` 注释。
 
 ### 窗口位置
 
@@ -251,10 +233,10 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 ## CI/CD
 
-- [release.yml](.github/workflows/release.yml) — `v*` tag 或手动触发；Windows MSVC / macOS universal / Linux gnu 矩阵，产出 exe/msi/dmg/deb/AppImage。
-- [ci.yml](.github/workflows/ci.yml) — push/PR：`vue-tsc` + vitest；`cargo check` 跑 default 与 `--features store` 两套 + `cargo test`（Windows，商店版的 Windows-only 代码只能在这里编译）。
-- [pages.yml](.github/workflows/pages.yml) — 官网发布：跑 `site-assets.mjs` 组装校验，push 到 master 部署；PR 只校验（fork 拿不到开启 Pages 的权限）。
-- [store-release.yml](.github/workflows/store-release.yml) — 手动触发 MSIX：`tauri build --features store --config tauri.microsoftstore.conf.json`，再用 `msiexec /a` + `makeappx` 重打包（商店签名）。`store` feature 关掉内置 updater、把 Windows 自启换成 StartupTask。
+- [release.yml](.github/workflows/release.yml) — `v*` tag / 手动；三平台矩阵，产出 exe/msi/dmg/deb/AppImage。
+- [ci.yml](.github/workflows/ci.yml) — push/PR：前端 `vue-tsc` + vitest；Windows job 跑 `cargo check`（default + `--features store`）与 `cargo test`；`backend-linux` job 编译并运行 Linux-only 的 `linux_backend` 用例。
+- [pages.yml](.github/workflows/pages.yml) — 官网：`site-assets.mjs` 校验后发布；PR 只校验。
+- [store-release.yml](.github/workflows/store-release.yml) — 手动 MSIX：`--features store` 构建后 `msiexec /a` + `makeappx` 重打包；`store` feature 关 updater、Windows 自启换 StartupTask。
 
 ## 依赖版本钉子
 
