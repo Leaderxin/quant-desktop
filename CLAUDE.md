@@ -42,7 +42,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 | `utils/dragSort.spec.ts` / `paging.spec.ts` | 拖拽落点（四向 × 前后）、轮播窗口（短列表不自转） |
 | `utils/watchGroups.spec.ts` | 删除分组确认框的两份名单（顺序、去重、目标不存在给空） |
 | `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界；网格槽位/偏移/刻度与窄宽回退 |
-| `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动 |
+| `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动；并发触发（visibilitychange + ResizeObserver）只补偿一次 |
 | `utils/tickerSparkline.spec.ts` | 行情条分时的两套纵轴：±1% 下限、涨跌停固定半幅、越界回退、`both` 下昨收在两条线里同一个 y、单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 画轴+3 刻度、`plain` 不画、虚线/50%/满不透明三档、圆点夹边） |
 | `utils/priceLimit.spec.ts` | 涨跌停比例判定（主板/创业/科创/北交/ST）、不该有涨跌停的品类给 null、`limitPrices` 四舍五入 |
 | `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
@@ -75,12 +75,13 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 
 以前靠桌面图标的 `Exec=env GDK_BACKEND=x11 quant-desktop` 达到置顶，但其它入口没有这个前缀：开机自启是 tauri-plugin-autostart 生成的 `~/.config/autostart/*.desktop`（裸 `Exec=`），终端启动也一样 —— 症状是「图标启动能置顶、自启后不能」。
 
-现在判定放进应用自己：[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11` 重新 `exec` 自己（进程映像替换，不双开）。图标、自启、终端三路因此一致，图标里那个前缀不再必要（仍被尊重：已设 `GDK_BACKEND` 就不插手）。
+现在判定放进应用自己：[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11,wayland` 重新 `exec` 自己（进程映像替换，不双开）。图标、自启、终端三路因此一致，图标里那个前缀不再必要（仍被尊重：已设 `GDK_BACKEND` 就不插手）。
 
-- 只切「Wayland 会话 + 有 XWayland（`DISPLAY` 指向本地且 `/tmp/.X11-unix/X<n>` 存在）」；没有 XWayland 时留在 Wayland 并记 warning —— 宁可没有置顶，也不能因为连不上 X 而启动不了。
-- 自启环境常缺 `XAUTHORITY`，模块会退到扫描 `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth*` 补上，否则 GTK 连不上 X。
-- `QUANT_BACKEND=x11|wayland` 手动指定（排查用，优先于自动判定）；`QUANT_BACKEND_REEXEC=1` 是给子进程打的防重入标记。
-- 启动日志有一行 `启动后端: x11|wayland | 会话 … | QUANT_BACKEND=auto | 原因`，出问题先看它。
+- 只切「Wayland 会话 + 有 XWayland（`DISPLAY` 指向本地且 `/tmp/.X11-unix/X<n>` 存在）」；没有 XWayland 时留在 Wayland —— 宁可没有置顶，也不能因为连不上 X 而启动不了。
+- **必须是候选列表 `x11,wayland`，不能写单值 `x11`**：socket 存在不等于授权可用，自启环境缺 `XAUTHORITY` 时 GTK 连不上 X 会直接退出，而 `exec` 已经替换掉进程映像、没有第二次机会。GDK 按逗号顺序尝试，X11 打不开会自动落到 Wayland。
+- 自启环境常缺 `XAUTHORITY`，模块会退到扫描 `$XDG_RUNTIME_DIR/.mutter-Xwaylandauth*` 补上；这只是尽力而为，真正的兜底是上面那条候选列表。
+- `QUANT_BACKEND=x11|wayland` 手动指定（排查用，优先于自动判定）；`wayland` 会清掉启动器留下的 `GDK_BACKEND`，否则旧图标的 `Exec=env GDK_BACKEND=x11 …` 会让覆盖开关形同虚设。`QUANT_BACKEND_REEXEC=1` 是给子进程打的防重入标记。
+- 启动日志有一行 `启动后端: … | 会话 … | QUANT_BACKEND=auto | 原因`，出问题先看它；`exec` 自身的失败会记进进程内标记，摘要里写明「已退回」而不是按环境误报。该模块只在 Linux 编译，由 CI 的 `backend-linux` job 覆盖。`cargo test` 的 Windows job 看不到它。
 - 附带好处：X11 下 `outer_position()` 读得到真实坐标，行情条的 `ticker_x/ticker_y` 位置记忆才真正生效（Wayland 原生下恒为 (0,0)）。
 
 **为什么不做「原生 Wayland + 置顶」**（2026-11 决定，别再重复调研）：Wayland 协议从未提供 keep-above，`gdk_window_set_keep_above` 在 Wayland 上是空操作，GNOME 的立场是窗口堆叠属 WM 权力；唯一能做 overlay 的 `zwlr_layer_shell_v1` 是 wlroots 系扩展，Mutter 明确不实现，而行情条主要在 GNOME 上用。各桌面都要额外东西：GNOME 需用户手动「置于顶层」或装 Shell 扩展；KDE 可写 KWin 窗口规则/脚本；wlroots 需把 ticker 改成 `gtk-layer-shell` 的 OVERLAY 窗口；再或者双进程（主窗口原生、ticker 单独 XWayland）。取舍与完整对照表见 [linux_backend.rs](src-tauri/src/linux_backend.rs) 的模块文档。当前选择是一条 XWayland 路径覆盖所有桌面，代价只是分数缩放下可能略糊。

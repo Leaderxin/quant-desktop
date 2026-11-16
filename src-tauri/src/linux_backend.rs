@@ -14,9 +14,15 @@
 //! tauri-plugin-autostart 生成的 `~/.config/autostart/*.desktop`（裸 `Exec=`），
 //! 终端里敲命令启动也一样。结果就是「图标启动能置顶、自启后不能」。
 //!
-//! 所以判定放进应用自己：检测到 Wayland 会话就带着 `GDK_BACKEND=x11` 重新
-//! `exec` 自己（`exec` 替换进程映像，不留父进程、不双开）。这样一来图标、
+//! 所以判定放进应用自己：检测到 Wayland 会话就带着 `GDK_BACKEND=x11,wayland`
+//! 重新 `exec` 自己（`exec` 替换进程映像，不留父进程、不双开）。这样一来图标、
 //! 自启、终端三条路径行为一致，图标里那个前缀也就不再必要。
+//!
+//! 写的是**候选列表**而不是单个 `x11`：`exec` 成功只代表新进程已启动，不代表
+//! X server 一定连得上（socket 存在不等于授权可用 —— 自启环境缺 `XAUTHORITY`
+//! 正是这条路径上最容易出的事）。GDK 会按逗号顺序逐个尝试，X11 打不开时自动
+//! 落到 Wayland：应用照常启动，只是没有置顶。单值 `x11` 没有这个退路：GTK
+//! 连不上 display 会直接退出，而 `exec` 已经替换掉进程映像，没有第二次机会。
 //!
 //! 附带好处：X11 下 `outer_position()` 读得到真实坐标，行情条的位置记忆
 //! （`ticker_x`/`ticker_y`）才真正生效；Wayland 原生会话里它恒为 (0,0)。
@@ -27,6 +33,8 @@
 //! - 能否切：`DISPLAY` 指向本地且 `/tmp/.X11-unix/X<n>` 存在（有 XWayland）。
 //!   没有 XWayland 时留在 Wayland：置顶无解，但至少应用能启动。
 //! - `QUANT_BACKEND=x11|wayland`：手动指定，用于排查（默认 auto）。
+//!   `wayland` 会清掉启动器留下的 `GDK_BACKEND`，否则旧图标的
+//!   `Exec=env GDK_BACKEND=x11 …` 会让这个覆盖开关形同虚设。
 //! - `QUANT_BACKEND_REEXEC=1`：本模块给子进程打的标记，防无限重入。
 //!
 //! 注意：这里**不**按「Wayland 版本」做分支。置顶缺的不是某个版本才有的
@@ -56,6 +64,14 @@
 //! 需要原生 Wayland 的用户可以 `QUANT_BACKEND=wayland` 手动切换，接受没有置顶。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// `exec` 本身失败（fork/exec 层面的错误，极少见）时置位。
+///
+/// logger 要到 setup 里才就绪，这里只能先记在进程内，让 `backend_summary`
+/// 如实报告「没切过去」，而不是按未改变的环境重新判定后写出与实际相反的
+/// 「X11（待切换）」—— 那行日志存在的意义就是出问题时的第一手线索。
+static EXEC_FAILED: AtomicBool = AtomicBool::new(false);
 
 /// 判定所需的全部环境输入（纯数据，便于单测）。
 #[derive(Debug, Default)]
@@ -88,7 +104,7 @@ impl BackendEnv {
 pub(crate) enum Decision {
     /// 保持当前后端（Wayland 原生，或本来就已是 X11）
     Keep(&'static str),
-    /// 带着 GDK_BACKEND=x11 重新 exec
+    /// 带着 `GDK_BACKEND=x11,wayland` 重新 exec
     SwitchToX11(&'static str),
 }
 
@@ -129,8 +145,11 @@ pub(crate) fn decide(env: &BackendEnv, x_socket_present: bool) -> Decision {
         _ => {}
     }
     // 启动器已经指定了后端（例如旧图标的 `Exec=env GDK_BACKEND=x11 …`）就不插手。
+    // 值可能是逗号分隔的候选列表（GDK 按顺序尝试，且不做空白/大小写归一），
+    // 看首项即可判断实际会落在哪个后端。
     if let Some(backend) = env.gdk_backend.as_deref() {
-        return if backend.eq_ignore_ascii_case("x11") {
+        let first = backend.split(',').next().unwrap_or("");
+        return if first.eq_ignore_ascii_case("x11") {
             Decision::Keep("GDK_BACKEND 已由启动环境指定为 x11")
         } else {
             Decision::Keep("GDK_BACKEND 已由启动环境指定，尊重该设置")
@@ -176,12 +195,28 @@ fn display_x_socket_present(display: Option<&str>) -> bool {
     }
 }
 
-/// 启动最早期调用：必要且可行时带着 `GDK_BACKEND=x11` 重新 exec 自己。
+/// `QUANT_BACKEND=wayland` 是否还要清掉启动器留下的 `GDK_BACKEND`。
+///
+/// 旧桌面图标可能是 `Exec=env GDK_BACKEND=x11 quant-desktop`。只改判定结果是
+/// 不够的：GDK 读的是环境变量，不清掉的话「手动切回 Wayland」实际仍跑在 X11。
+/// 调用点在 GTK 初始化之前，直接 remove 是安全的。
+fn forced_wayland_needs_gdk_reset(env: &BackendEnv) -> bool {
+    env.forced.as_deref() == Some("wayland") && env.gdk_backend.is_some()
+}
+
+/// 启动最早期调用：必要且可行时带着 `GDK_BACKEND=x11,wayland` 重新 exec 自己。
 ///
 /// 必须在 GTK/Tauri 初始化**之前**（`run()` 的第一句），否则后端已经定了。
 /// exec 成功不返回；失败就退回 Wayland 继续启动（宁可没有置顶，也不能起不来）。
+/// exec 成功后 X server 仍可能连不上（授权缺失），由候选列表里的 `wayland`
+/// 兜住 —— 这一层降级发生在 GDK 内部，比事后补救可靠。
 pub(crate) fn ensure_x11_backend() {
-    let env = BackendEnv::from_process();
+    let mut env = BackendEnv::from_process();
+    // 显式要求 Wayland 时，启动器指定的 GDK_BACKEND 也必须让位。
+    if forced_wayland_needs_gdk_reset(&env) {
+        std::env::remove_var("GDK_BACKEND");
+        env.gdk_backend = None;
+    }
     let x_available = display_x_socket_present(env.display.as_deref());
     let Decision::SwitchToX11(reason) = decide(&env, x_available) else {
         return;
@@ -192,7 +227,7 @@ pub(crate) fn ensure_x11_backend() {
     let mut command = std::process::Command::new(&exe);
     command
         .args(std::env::args_os().skip(1))
-        .env("GDK_BACKEND", "x11")
+        .env("GDK_BACKEND", "x11,wayland")
         .env("QUANT_BACKEND_REEXEC", "1");
 
     if std::env::var_os("XAUTHORITY").is_none() {
@@ -206,6 +241,7 @@ pub(crate) fn ensure_x11_backend() {
     use std::os::unix::process::CommandExt;
     let err = command.exec();
     // exec 只有失败才返回。
+    EXEC_FAILED.store(true, Ordering::Relaxed);
     eprintln!(
         "QuantDesktop: 切到 XWayland 失败（{err}），继续用 Wayland 启动 —— 行情条将无法置顶（原因：{reason}）"
     );
@@ -219,14 +255,32 @@ pub(crate) fn backend_summary() -> String {
     let forced = env.forced.clone().unwrap_or_else(|| "auto".to_string());
     let session = env.session_type.clone().unwrap_or_else(|| "unknown".to_string());
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_else(|_| "-".to_string());
+
+    if EXEC_FAILED.load(Ordering::Relaxed) {
+        let effective = if is_wayland_session(&env) {
+            "wayland"
+        } else {
+            "x11"
+        };
+        return format!(
+            "启动后端: {effective}（切换 XWayland 失败，已退回）| 会话 {session} / {desktop} | QUANT_BACKEND={forced}"
+        );
+    }
+
     match decision {
         Decision::SwitchToX11(reason) => format!(
             "启动后端: X11（待切换）| 会话 {session} / {desktop} | QUANT_BACKEND={forced} | {reason}"
         ),
         Decision::Keep(reason) => {
-            let effective = env.gdk_backend.clone().unwrap_or_else(|| {
-                if is_wayland_session(&env) { "wayland".into() } else { "x11".into() }
-            });
+            let effective = match env.gdk_backend.as_deref() {
+                // 候选列表不是「并行后端」，实际只会用一个；保留顺序说明是为了
+                // 出问题时能一眼看出 X11 连不上时会落到哪里。
+                Some(list) if list.contains(',') => {
+                    format!("{list}（按序尝试，失败自动回退）")
+                }
+                Some(backend) => backend.to_string(),
+                None => if is_wayland_session(&env) { "wayland".into() } else { "x11".into() },
+            };
             format!(
                 "启动后端: {effective} | 会话 {session} / {desktop} | QUANT_BACKEND={forced} | {reason}"
             )
@@ -271,7 +325,7 @@ mod tests {
     }
 
     /// 启动器自己指定了 GDK_BACKEND（老图标 `Exec=env GDK_BACKEND=x11 …`）就尊重它，
-    /// 不要再套一层 exec。
+    /// 不要再套一层 exec。候选列表看首项（GDK 不做空白/大小写归一，这里也不做）。
     #[test]
     fn explicit_backend_is_respected() {
         let mut env = wayland_env();
@@ -279,8 +333,43 @@ mod tests {
         assert!(matches!(decide(&env, true), Decision::Keep(_)));
 
         let mut env = wayland_env();
+        env.gdk_backend = Some("x11,wayland".into());
+        assert_eq!(
+            decide(&env, true),
+            Decision::Keep("GDK_BACKEND 已由启动环境指定为 x11")
+        );
+
+        let mut env = wayland_env();
         env.gdk_backend = Some("wayland".into());
         assert!(matches!(decide(&env, true), Decision::Keep(_)));
+
+        let mut env = wayland_env();
+        env.gdk_backend = Some("wayland,x11".into());
+        assert!(matches!(decide(&env, true), Decision::Keep(_)));
+    }
+
+    /// 显式要求 Wayland 时，启动器留下的 GDK_BACKEND=x11 必须被清掉，
+    /// 否则覆盖开关只改判定、改不了实际后端。
+    #[test]
+    fn forced_wayland_resets_inherited_gdk_backend() {
+        let mut env = wayland_env();
+        env.forced = Some("wayland".into());
+        assert!(
+            !forced_wayland_needs_gdk_reset(&env),
+            "没有 GDK_BACKEND 时无事可做"
+        );
+
+        env.gdk_backend = Some("x11".into());
+        assert!(forced_wayland_needs_gdk_reset(&env));
+
+        env.forced = Some("auto".into());
+        assert!(
+            !forced_wayland_needs_gdk_reset(&env),
+            "auto 模式要尊重启动器"
+        );
+
+        env.forced = Some("x11".into());
+        assert!(!forced_wayland_needs_gdk_reset(&env), "强制 x11 时不能清");
     }
 
     /// QUANT_BACKEND 是排查开关，优先于自动判定。
