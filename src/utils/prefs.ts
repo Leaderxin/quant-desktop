@@ -65,7 +65,7 @@ export const TICKER_ITEMS_PRESET_MAX = 4;
 
 /** 单次轮播条数的上限，也是「自定义」能填到的最大值。
  *  它同时决定行情条窗口的最大高度：开迷你分时线后一行被 30px 的图格撑到约 32px，
- *  10 条约 320px（宽度固定 230px，见 datasource::TICKER_WIDTH 的配平；窗口高度由 useTickerWindowHeight 按内容量出来，
+ *  10 条约 320px（宽度固定 220px，见 datasource::TICKER_WIDTH 的配平；窗口高度由 useTickerWindowHeight 按内容量出来，
  *  没有 maxHeight 约束）。 */
 export const TICKER_ITEMS_MAX = 10;
 

@@ -64,7 +64,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 | 窗口 | Label | 入口 | 配置 |
 |------|-------|------|------|
 | 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
-| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38，置顶、无边框、右下角、不进任务栏 |
+| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 220×38，置顶、无边框、右下角、不进任务栏 |
 
 [vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
@@ -237,7 +237,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 以下测试把这张表和前端钉在一起：键名不可改（就是 wire format）、无重复键、`groups_migrated` 不是默认键、布尔只认 `"0"/"1"`、数字可解析。
 
-两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 230 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平（230 = 16 + 118 + 8 + 88）：多出来的宽度不会变成图，只会变成中间的空白。
+两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 220 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平（220 = 16 + 108 + 8 + 88）：多出来的宽度不会变成图，只会变成中间的空白。
 
 ### 窗口位置
 

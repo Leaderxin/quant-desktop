@@ -147,7 +147,7 @@ export function sparklinePoints(
  * 图跟着 flex 走会让同一屏里各行的图宽不一样，竖着看就成了锯齿。
  *
  * 横轴固定是 240 个交易日分钟，88px 下上午半天约 44px。窗口宽度按
- * 「内边距 16 + 文字列 118 + 间距 8 + 图 88 = 230」配平
+ * 「内边距 16 + 文字列 108 + 间距 8 + 图 88 = 220」配平
  * （见 datasource::TICKER_WIDTH），不留多余空白。
  */
 export const SPARKLINE_CANVAS_WIDTH = 88;
