@@ -426,7 +426,6 @@ function rowTone(pct: string): 'up' | 'down' {
   line-height: 1.3;
 }
 .preview-price {
-  width: 46px;
   text-align: right;
   font-family: var(--font-mono);
 }

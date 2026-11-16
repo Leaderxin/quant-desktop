@@ -494,12 +494,16 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   flex: 0 1 auto;
   line-height: 1.3;
 }
+/*
+  价格按内容宽：短价格（ETF 常见 1.234）不再占着 46px 的空列，省下的宽度
+  直接给左侧名称，长 ETF 名称才不会被截。涨跌列仍固定 48px —— 它是每行最右
+  一列，定宽能保证跨行右缘对齐，不会因为 +/- 位数不同而错位。
+*/
 .ticker-price {
   flex-shrink: 0;
   font-weight: var(--font-weight-semibold);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 46px;
   text-align: right;
   color: var(--color-text-primary);
 }
@@ -508,7 +512,6 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   color: var(--color-text-tertiary);
   font-size: var(--text-xs);
   font-family: var(--font-mono);
-  width: 46px;
   text-align: right;
 }
 .ticker-change {
