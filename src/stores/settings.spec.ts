@@ -134,14 +134,14 @@ describe('派生配置的解析与兜底', () => {
     expect((await load({})).tickerItemsPerPage).toBe(2);
   });
 
-  it('ticker_chart_mode 只有 off 是关，旧版 price/limit/both 与坏值都算开', async () => {
+  it('ticker_chart_mode 默认关；on 与旧版 price/limit/both 算开，坏值按关', async () => {
     expect((await load({ ticker_chart_mode: 'off' })).tickerChartEnabled).toBe(false);
     expect((await load({ ticker_chart_mode: 'on' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'both' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'price' })).tickerChartEnabled).toBe(true);
     expect((await load({ ticker_chart_mode: 'limit' })).tickerChartEnabled).toBe(true);
-    expect((await load({ ticker_chart_mode: 'bogus' })).tickerChartEnabled).toBe(true);
-    expect((await load({})).tickerChartEnabled).toBe(true);
+    expect((await load({ ticker_chart_mode: 'bogus' })).tickerChartEnabled).toBe(false);
+    expect((await load({})).tickerChartEnabled).toBe(false);
   });
 
   it('setTickerChartEnabled 写 off/on 并广播到行情条', async () => {

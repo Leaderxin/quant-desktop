@@ -367,10 +367,10 @@ impl Database {
         (keys::TICKER_TRANSPARENT, "0"),
         (keys::TICKER_CLICK_WAKES, "1"),
         (keys::TICKER_ITEMS_PER_PAGE, "2"),
-        // 行情条迷你分时线开关：默认 on —— 每行右侧画一条价格曲线（0% 参考线 +
-        // 方向色主线 + 渐变面积）。off 时窗口恢复原来的紧凑高度。历史版本存过
-        // price / limit / both，前端一律按开处理，不迁移数据。
-        (keys::TICKER_CHART_MODE, "on"),
+        // 行情条迷你分时线开关：默认 off（关）—— 新装先保持紧凑的一行三段，
+        // 需要时在设置页打开。历史版本存过 price / limit / both，前端按开处理，
+        // 不迁移数据。
+        (keys::TICKER_CHART_MODE, "off"),
         // 行情条分时线的画法。默认带 x 轴线与刻度：格子只有 88px 宽，没有轴线时
         // 「横轴是一整个交易日」只能靠午间那段断口猜。
         (keys::TICKER_CHART_STYLE, "axis"),
@@ -1971,37 +1971,31 @@ mod tests {
         }
     }
 
-    /// 分时线开关的默认值必须是开关能识别的两种落库值之一。
+    /// 迷你分时线默认关：新装先看到紧凑的一行三段，需要时再打开。
     ///
-    /// 键名与取值都是 wire format：前端 `parseTickerChartEnabled` 只把 `off`
-    /// 当关，其余（含历史 price / limit / both）都按开处理；默认值写成拼错的值
-    /// 不会报错，只会让「设置页显示开、实际没画」这类不一致静默发生。
+    /// 键名与取值都是 wire format：前端 `parseTickerChartEnabled` 把 `on`（以及
+    /// 历史 `price` / `limit` / `both`）当开，其余当关；默认值写成拼错的值不会
+    /// 报错，只会让「设置页显示关、实际画着图」这类不一致静默发生。
     #[test]
-    fn ticker_chart_mode_default_is_a_valid_switch_value() {
+    fn ticker_chart_mode_defaults_to_off() {
         let v = Database::DEFAULT_SETTINGS
             .iter()
             .find(|(k, _)| *k == keys::TICKER_CHART_MODE)
             .map(|(_, v)| *v)
             .expect("ticker_chart_mode 应在默认值表里");
-        assert!(
-            matches!(v, "off" | "on"),
-            "ticker_chart_mode 默认值 {v:?} 不是开关认得的落库值"
-        );
+        assert_eq!(v, "off", "迷你分时线默认关");
     }
 
-    /// 画法这个键同理：拼错的值只会静默退回默认，症状是
+    /// 画法默认带刻度（`axis`）—— 拼错的值只会静默退回默认，症状是
     /// 「设置页选了带刻度、实际画的是纯曲线」。
     #[test]
-    fn ticker_chart_style_default_is_a_known_style() {
+    fn ticker_chart_style_defaults_to_axis() {
         let v = Database::DEFAULT_SETTINGS
             .iter()
             .find(|(k, _)| *k == keys::TICKER_CHART_STYLE)
             .map(|(_, v)| *v)
             .expect("ticker_chart_style 应在默认值表里");
-        assert!(
-            matches!(v, "axis" | "plain"),
-            "ticker_chart_style 默认值 {v:?} 不是前端认得的画法"
-        );
+        assert_eq!(v, "axis", "分时线默认带刻度");
     }
 
     #[test]

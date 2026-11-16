@@ -80,14 +80,14 @@ export function clampTickerItems(n: number): number {
 }
 
 /**
- * 行情条迷你分时线开关。
+ * 行情条迷你分时线开关，默认关。
  *
- * 落库值只区分 `off` / `on`（`on` = 开）。早期版本存过 `price` / `limit` /
- * `both`，一律按「开」处理 —— 不迁移数据，用户下次拨开关时会自然写成 `on`。
+ * 落库值 `on` / `off`。缺失、空串与坏值都按关处理（首装默认）；早期版本存过的
+ * `price` / `limit` / `both` 是「开」的历史写法，继续按开处理，不迁移数据。
  * 键名保持 `ticker_chart_mode`：它已经是 wire format，改键会让老库里的设置失效。
  */
 export function parseTickerChartEnabled(raw: string | undefined): boolean {
-  return raw !== 'off';
+  return raw === 'on' || raw === 'both' || raw === 'price' || raw === 'limit';
 }
 
 /**

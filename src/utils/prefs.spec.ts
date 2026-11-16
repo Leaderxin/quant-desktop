@@ -178,15 +178,16 @@ describe('parseTickerChartEnabled', () => {
   });
 
   /**
-   * 旧版的 price / limit / both 已经不在 UI 里，但老库里可能存着：一律按「开」
-   * 处理，用户下次拨开关时会被改写成 on。缺键/坏值也与 Rust 侧默认值一致（开）。
+   * 首装默认关：缺键、空串与坏值都按关处理。旧版的 price / limit / both 已经
+   * 不在 UI 里，但老库里可能存着：一律按开处理，用户下次拨开关时会被改写成 on。
    */
-  it('旧版 price/limit/both、缺键与坏值都按开处理', () => {
+  it('旧版 price/limit/both 按开处理，缺键与坏值默认关', () => {
     expect(parseTickerChartEnabled('price')).toBe(true);
     expect(parseTickerChartEnabled('limit')).toBe(true);
-    expect(parseTickerChartEnabled(undefined)).toBe(true);
-    expect(parseTickerChartEnabled('')).toBe(true);
-    expect(parseTickerChartEnabled('bogus')).toBe(true);
+    expect(parseTickerChartEnabled('both')).toBe(true);
+    expect(parseTickerChartEnabled(undefined)).toBe(false);
+    expect(parseTickerChartEnabled('')).toBe(false);
+    expect(parseTickerChartEnabled('bogus')).toBe(false);
   });
 });
 
