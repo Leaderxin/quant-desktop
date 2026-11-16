@@ -25,6 +25,8 @@ const props = defineProps<{
   mode: TickerChartMode;
   /** 不叫 `style` —— Vue 对它有特殊处理，声明成 prop 收不到值 */
   chartStyle: TickerChartStyle;
+  /** 这一行是涨还是跌：跌行把示意数据上下镜像，预览的曲线方向才与数字一致 */
+  rising?: boolean;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -84,10 +86,17 @@ function paint() {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // 跌行把示意数据以昨收为轴镜像，曲线方向与左侧数字一致；涨跌停轴用的是
+  // 对称区间，镜像后仍在范围内。
+  const bars =
+    props.rising === false
+      ? sampleBars.map((bar) => ({ ...bar, close: 2 * PREV_CLOSE - bar.close }))
+      : sampleBars;
+
   // 与行情条同一条纵轴判定：涨跌停规则在这里就是主板 10%。
-  const { main, limit } = resolveSparklineLines(sampleBars, PREV_CLOSE, props.mode, LIMIT_RATE);
-  const lastBar = sampleBars[sampleBars.length - 1];
-  const primaryPoints = sparklineCanvasPoints(sampleBars, main ?? limit, width);
+  const { main, limit } = resolveSparklineLines(bars, PREV_CLOSE, props.mode, LIMIT_RATE);
+  const lastBar = bars[bars.length - 1];
+  const primaryPoints = sparklineCanvasPoints(bars, main ?? limit, width);
   const dot = primaryPoints[primaryPoints.length - 1];
 
   paintTickerSparkline(
@@ -95,8 +104,8 @@ function paint() {
     {
       style: props.chartStyle,
       baselineY: sparklineBaselineY(),
-      under: sparklineCanvasPoints(sampleBars, limit, width),
-      over: sparklineCanvasPoints(sampleBars, main, width),
+      under: sparklineCanvasPoints(bars, limit, width),
+      over: sparklineCanvasPoints(bars, main, width),
       dot: dot && lastBar ? { x: dot.x, y: dot.y, rising: lastBar.close >= PREV_CLOSE } : null,
       width,
       height,
@@ -115,6 +124,7 @@ watch(
   [
     () => props.mode,
     () => props.chartStyle,
+    () => props.rising,
     () => settings.theme,
     () => settings.colorScheme,
   ],

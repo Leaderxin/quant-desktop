@@ -4,7 +4,7 @@
 // - price：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值（与主图一致）
 // - limit：半幅由涨停价/跌停价决定；数据超出边界（新股、规则判错）时回退 price
 //
-// `both` 把两者画进同一块小画布：price 那条满不透明当主线，limit 那条 50% 透明
+// `both` 把两者画进同一块小画布：price 那条满不透明当主线，limit 那条压到 38%
 // 叠在下面 —— 两套纵轴都以昨收为中心，所以 0% 那条参考线对两条线同时成立。
 //
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
@@ -146,11 +146,11 @@ export function sparklinePoints(
  * 画布宽（CSS 像素）。固定值，不跟着剩余空间长 —— 每行都按内容定宽，
  * 图跟着 flex 走会让同一屏里各行的图宽不一样，竖着看就成了锯齿。
  *
- * 横轴固定是 240 个交易日分钟，75px 下上午半天约 37px：密集震荡会被压平
- * 一点，但形状仍读得出来。窗口宽度按「文字列 + 间距 + 图 + 内边距」配平
+ * 横轴固定是 240 个交易日分钟，88px 下上午半天约 44px。窗口宽度按
+ * 「内边距 16 + 文字列 118 + 间距 8 + 图 88 = 230」配平
  * （见 datasource::TICKER_WIDTH），不留多余空白。
  */
-export const SPARKLINE_CANVAS_WIDTH = 75;
+export const SPARKLINE_CANVAS_WIDTH = 88;
 /** 曲线区上边缘（自顶向下） */
 export const SPARKLINE_PAD_TOP = 2;
 /** 曲线区高度 */
@@ -262,10 +262,19 @@ export interface SparklinePaintInput {
 }
 
 export interface SparklinePalette {
+  /** 没有方向信息（无圆点）时的兜底线色 */
   accent: string;
   baseline: string;
   up: string;
   down: string;
+}
+
+/** `#rrggbb` → `rgba(...)`，只给同色渐变加 alpha；无法解析时原样返回。 */
+function withAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (!match) return color;
+  const n = Number.parseInt(match[1], 16);
+  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
 }
 
 /**
@@ -292,13 +301,14 @@ export function paintTickerSparkline(
     ctx.strokeStyle = palette.baseline;
     ctx.lineWidth = Math.max(1, Math.round(dpr));
     const y = Math.round(SPARKLINE_AXIS_Y * dpr) + 0.5;
-    ctx.globalAlpha = 0.35;
+    // 轴线与刻度是背景网格，压到刚好看得见：再亮就会和曲线抢注意力。
+    ctx.globalAlpha = 0.28;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(Math.round(width * dpr), y);
     ctx.stroke();
     // 刻度自轴线向下：向上会去抢曲线区的位置
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.22;
     ctx.beginPath();
     for (const tick of axisTickPositions(width)) {
       const x = Math.round(tick * dpr) + 0.5;
@@ -306,6 +316,35 @@ export function paintTickerSparkline(
       ctx.lineTo(x, Math.round((SPARKLINE_AXIS_Y + SPARKLINE_TICK_HEIGHT) * dpr) + 0.5);
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  // 线与末端圆点同色，取当日方向（相对昨收）：图与左边红/绿的数字才像同一行
+  // 的数据。没有圆点时退回 accent（纯色兜底，不参与真实渲染）。
+  const lineColor = input.dot
+    ? input.dot.rising
+      ? palette.up
+      : palette.down
+    : palette.accent;
+
+  // 曲线与轴线之间的同色渐变只做「体量」，不做装饰：16% → 1%。
+  // 用渐变而不是整块半透明色，靠近轴线处自然收掉，不会在底部留一条硬边。
+  const primary = input.over.length > 0 ? input.over : input.under;
+  if (primary.length >= 2) {
+    const gradient = ctx.createLinearGradient(0, SPARKLINE_PAD_TOP, 0, SPARKLINE_AXIS_Y);
+    gradient.addColorStop(0, withAlpha(lineColor, 0.16));
+    gradient.addColorStop(1, withAlpha(lineColor, 0.01));
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(primary[0].x, SPARKLINE_AXIS_Y);
+    ctx.lineTo(primary[0].x, primary[0].y);
+    for (let i = 1; i < primary.length; i++) {
+      ctx.lineTo(primary[i].x, primary[i].y);
+    }
+    ctx.lineTo(primary[primary.length - 1].x, SPARKLINE_AXIS_Y);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
     ctx.restore();
   }
 
@@ -333,7 +372,7 @@ export function paintTickerSparkline(
       if (i === 0) ctx.moveTo(point.x, point.y);
       else ctx.lineTo(point.x, point.y);
     });
-    ctx.strokeStyle = palette.accent;
+    ctx.strokeStyle = lineColor;
     ctx.lineWidth = lineWidth;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -342,8 +381,9 @@ export function paintTickerSparkline(
   };
 
   const hasOver = input.over.length > 0;
-  stroke(input.under, hasOver ? 0.5 : 1, 1);
-  stroke(input.over, 1, 1.25);
+  // 涨跌停那条是同一段行情的另一套坐标，压低到 38% 当投影；主线用 1.5px 提亮。
+  stroke(input.under, hasOver ? 0.38 : 1, 1);
+  stroke(input.over, 1, 1.5);
 
   if (input.dot) {
     ctx.beginPath();
@@ -354,7 +394,7 @@ export function paintTickerSparkline(
       0,
       Math.PI * 2,
     );
-    ctx.fillStyle = input.dot.rising ? palette.up : palette.down;
+    ctx.fillStyle = lineColor;
     ctx.fill();
   }
 }

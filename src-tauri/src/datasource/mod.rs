@@ -101,9 +101,9 @@ pub const DEFAULT_INDEX_CODES: &[&str] = &[
 /// `tauri.conf.json` → `app.windows[ticker]` and `SPARKLINE_CANVAS_WIDTH`;
 /// the frontend no longer carries a width constant).
 ///
-/// 宽度不是随手取的：内边距 16 + 文字列 98（价格 46 + 间距 4 + 涨跌 48）+
-/// 图前间距 8 + 分时图 75 = 197，凑到 210 留出零头。多要一分就是中间一块
-/// 空白，少要一分就会把数字列挤到溢出。
+/// 宽度按内容配平：内边距 16 + 文字列 118 + 图前间距 8 + 分时图 88 = 230。
+/// 文字列（名称 / 价格 + 涨跌）吃掉剩余宽度；再窄会截长名称、再把涨跌条挤出
+/// 右缘，再宽只会在文字与图之间多出一块空白。
 ///
 /// The ticker's height is only a first-launch fallback: the frontend measures the
 /// real content height, calls `set_ticker_size`, and persists it to the internal
@@ -114,7 +114,7 @@ pub const DEFAULT_INDEX_CODES: &[&str] = &[
 /// Consumers needing *physical* pixels (the `outer_size()` fallbacks in
 /// `lib.rs`) must multiply by the window's `scale_factor()` — the raw value
 /// undersizes the window at DPI ≠ 100%.
-pub const TICKER_WIDTH: u32 = 210;
+pub const TICKER_WIDTH: u32 = 230;
 pub const TICKER_HEIGHT: u32 = 40;
 
 // ── Data Normalization ──

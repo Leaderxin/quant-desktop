@@ -262,11 +262,15 @@ describe('paintTickerSparkline', () => {
 
   function fakeCtx() {
     const rec: Rec[] = [];
-    const state = { alpha: 1, lineWidth: 1, dash: [] as number[] };
-    const ctx = {
-      rec,
+    const state = {
+      alpha: 1,
+      lineWidth: 1,
+      dash: [] as number[],
       strokeStyle: '',
       fillStyle: '',
+    };
+    const ctx = {
+      rec,
       setTransform: () => rec.push({ op: 'setTransform' }),
       clearRect: () => rec.push({ op: 'clearRect' }),
       save: () => rec.push({ op: 'save' }),
@@ -274,13 +278,26 @@ describe('paintTickerSparkline', () => {
       beginPath: () => rec.push({ op: 'beginPath' }),
       moveTo: (x: number, y: number) => rec.push({ op: 'moveTo', detail: [x, y] }),
       lineTo: (x: number, y: number) => rec.push({ op: 'lineTo', detail: [x, y] }),
+      closePath: () => rec.push({ op: 'closePath' }),
+      createLinearGradient: (x0: number, y0: number, x1: number, y1: number) => {
+        rec.push({ op: 'gradient', detail: [x0, y0, x1, y1] });
+        return {
+          addColorStop: (offset: number, color: string) =>
+            rec.push({ op: 'colorStop', detail: [offset, color] }),
+        };
+      },
       stroke: () =>
         rec.push({
           op: 'stroke',
-          detail: { alpha: state.alpha, lineWidth: state.lineWidth, dash: [...state.dash] },
+          detail: {
+            alpha: state.alpha,
+            lineWidth: state.lineWidth,
+            dash: [...state.dash],
+            color: state.strokeStyle,
+          },
         }),
       arc: (x: number, y: number, r: number) => rec.push({ op: 'arc', detail: [x, y, r] }),
-      fill: () => rec.push({ op: 'fill' }),
+      fill: () => rec.push({ op: 'fill', detail: state.fillStyle }),
       setLineDash: (d: number[]) => {
         state.dash = d;
       },
@@ -295,6 +312,18 @@ describe('paintTickerSparkline', () => {
       get: () => state.lineWidth,
       set: (v: number) => {
         state.lineWidth = v;
+      },
+    });
+    Object.defineProperty(ctx, 'strokeStyle', {
+      get: () => state.strokeStyle,
+      set: (v: string) => {
+        state.strokeStyle = v;
+      },
+    });
+    Object.defineProperty(ctx, 'fillStyle', {
+      get: () => state.fillStyle,
+      set: (v: string) => {
+        state.fillStyle = v;
       },
     });
     // 调色板断言就靠这两个字段被真实赋值
@@ -333,7 +362,7 @@ describe('paintTickerSparkline', () => {
     expect(plainCtx.rec.filter((r) => r.op === 'stroke')).toHaveLength(0);
   });
 
-  it('0% 线是虚线，涨跌停那条是 50% 透明，主线满不透明', () => {
+  it('0% 线是虚线，涨跌停那条是 38% 透明，主线满不透明', () => {
     const ctx = fakeCtx();
     paintTickerSparkline(
       ctx,
@@ -353,8 +382,58 @@ describe('paintTickerSparkline', () => {
     const [baselineStroke, underStroke, overStroke] = strokes(ctx);
     expect(baselineStroke).toMatchObject({ alpha: 0.3 });
     expect((baselineStroke as { dash: number[] }).dash.length).toBeGreaterThan(0);
-    expect(underStroke).toMatchObject({ alpha: 0.5, lineWidth: 1 });
-    expect(overStroke).toMatchObject({ alpha: 1, lineWidth: 1.25 });
+    expect(underStroke).toMatchObject({ alpha: 0.38, lineWidth: 1 });
+    expect(overStroke).toMatchObject({ alpha: 1, lineWidth: 1.5 });
+  });
+
+  it('主线与末端圆点跟随当日方向着色，下方铺同色渐变', () => {
+    const base = {
+      style: 'plain' as const,
+      baselineY: sparklineBaselineY(),
+      width: SPARKLINE_CANVAS_WIDTH,
+      height: SPARKLINE_CANVAS_HEIGHT,
+    };
+
+    const rising = fakeCtx();
+    paintTickerSparkline(
+      rising,
+      {
+        ...base,
+        under: points,
+        over: points,
+        dot: { x: 40, y: 14, rising: true },
+      },
+      palette,
+      1,
+    );
+    // 最后一条 stroke 是主线（圆点是 fill）
+    expect(strokes(rising).at(-1)).toMatchObject({
+      color: palette.up,
+      alpha: 1,
+      lineWidth: 1.5,
+    });
+    const stops = rising.rec
+      .filter((r) => r.op === 'colorStop')
+      .map((r) => r.detail as [number, string]);
+    expect(rising.rec.some((r) => r.op === 'gradient')).toBe(true);
+    expect(stops).toHaveLength(2);
+    expect(stops[0][1]).toContain('rgba(248, 81, 73');
+    expect(rising.fillStyle).toBe(palette.up);
+
+    const falling = fakeCtx();
+    paintTickerSparkline(
+      falling,
+      {
+        ...base,
+        under: points,
+        over: points,
+        dot: { x: 40, y: 14, rising: false },
+      },
+      palette,
+      1,
+    );
+    expect(strokes(falling).at(-1)).toMatchObject({ color: palette.down });
+    expect(falling.fillStyle).toBe(palette.down);
   });
 
   it('单独选涨跌停时那条线不再半透明（它就是主线）', () => {
@@ -397,5 +476,7 @@ describe('paintTickerSparkline', () => {
     expect((arc!.detail as number[])[0]).toBe(SPARKLINE_CANVAS_WIDTH - SPARKLINE_DOT_RADIUS);
     // 涨：用 --color-up
     expect(ctx.fillStyle).toBe(palette.up);
+    // 只有一个点撑不出面积，不铺渐变
+    expect(ctx.rec.some((r) => r.op === 'gradient')).toBe(false);
   });
 });

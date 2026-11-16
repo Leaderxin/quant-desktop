@@ -454,6 +454,10 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
 .ticker-row.with-chart {
   gap: var(--space-2);
 }
+/* 上下两行本身已经比一行紧凑；两行之间再留 4px，避免行与行糊成一块 */
+.ticker-row.with-chart + .ticker-row.with-chart {
+  margin-top: var(--space-1);
+}
 /*
   没挂图时这个包装不参与布局（display: contents）—— 名称与数字直接成为
   `.ticker-row` 的 flex 子项，仍是原来的一行三段；挂图时它才立起来变成
@@ -465,6 +469,7 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
 .ticker-row.with-chart .ticker-text {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -489,6 +494,7 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
    `flex: 1` 在纵向的列里会沿主轴长高，那是另一回事。 */
 .ticker-row.with-chart .ticker-name {
   flex: 0 1 auto;
+  line-height: 1.3;
 }
 .ticker-price {
   flex-shrink: 0;
@@ -513,6 +519,39 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
   font-family: var(--font-mono);
   width: 48px;
   text-align: right;
+}
+/*
+  挂图后两行文字的字号/权重拉开一档：价格是主角（12px/600，跟着方向着色），
+  名称退成 11px/500；涨跌收进同色浅底的小胶囊，与右侧曲线共用同一种颜色。
+  胶囊只改变文字块内部的观感，不占额外行高。
+*/
+.ticker-row.with-chart .ticker-figures {
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+.ticker-row.with-chart .ticker-price {
+  width: auto;
+  font-size: var(--text-sm);
+  line-height: 1.3;
+}
+.ticker-row.with-chart .ticker-change {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: var(--font-weight-semibold);
+}
+.ticker-row.with-chart .ticker-change.up {
+  background: var(--color-up-bg);
+}
+.ticker-row.with-chart .ticker-change.down {
+  background: var(--color-down-bg);
 }
 .up { color: var(--color-up); }
 .down { color: var(--color-down); }

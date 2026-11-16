@@ -44,7 +44,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 | `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界、当日累计均价（含零成交量）；网格槽位/偏移/刻度与窄宽回退、自适应纵轴（单边行情不压半区、均价参与取幅） |
 | `utils/paneSize.spec.ts` | 副图高度按 28% 夹在 48–80px；高度未知时给兜底值 |
 | `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动；并发触发（visibilitychange + ResizeObserver）只补偿一次 |
-| `utils/tickerSparkline.spec.ts` | 行情条分时的两套纵轴：±1% 下限、涨跌停固定半幅、越界回退、`both` 下昨收在两条线里同一个 y、单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 画轴+3 刻度、`plain` 不画、虚线/50%/满不透明三档、圆点夹边） |
+| `utils/tickerSparkline.spec.ts` | 行情条分时的两套纵轴：±1% 下限、涨跌停固定半幅、越界回退、`both` 下昨收在两条线里同一个 y、单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 画轴+3 刻度、`plain` 不画、虚线/38%/满不透明三档、主线与圆点跟随方向着色、渐变面积只在 ≥2 点时铺、圆点夹边） |
 | `utils/priceLimit.spec.ts` | 涨跌停比例判定（主板/创业/科创/北交/ST）、不该有涨跌停的品类给 null、`limitPrices` 四舍五入 |
 | `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
 | `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
@@ -64,7 +64,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 | 窗口 | Label | 入口 | 配置 |
 |------|-------|------|------|
 | 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
-| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 210×38，置顶、无边框、右下角、不进任务栏 |
+| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 230×38，置顶、无边框、右下角、不进任务栏 |
 
 [vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
@@ -177,7 +177,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - 分组删除确认（[DeleteGroupDialog.vue](src/components/watchlist/DeleteGroupDialog.vue)）：两份名单逐只列名称 + 代码；孤儿并入**展示顺序里第一个别的分组**（不能取 `defaultGroupId`，被删的恰是默认分组时那正是它自己；与后端 fallback 规则一致）；最后一个分组时菜单项禁用。
 - 自选删除确认（[DeleteStockDialog.vue](src/components/watchlist/DeleteStockDialog.vue)）：列出会从哪些分组消失。只剩一个分组时「从本组移除」与「删除自选」等价，菜单里只留后者。两个确认框共用 [ConfirmDialog.vue](src/components/common/ConfirmDialog.vue) 外壳（默认焦点在「取消」）。
 - 分组标签栏（[GroupTabs.vue](src/components/watchlist/GroupTabs.vue)）：滚动条隐藏，但可滚动提示不能省 —— 纵向滚轮转横向、两侧渐隐 + 箭头按钮、当前分组自动滚入视野；「新建分组」固定在滚动区外。只留 `overflow-x: auto` 会把溢出内容变成鼠标用户看不见也滚不到的死角。
-- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。每行是左右结构 —— 左列上下两行（名称 / 价格+涨跌），右侧一块 75×30 的迷你分时（`TickerSparkline` + `useTickerSparkline`，自绘 Canvas，**不引 klinecharts**）：横轴 09:30–15:00。格子里必画的是 0% 虚线 + 两条曲线；`ticker_chart_style=axis` 时再加一条 x 轴线与三个刻度。**绘制本体是 `utils/tickerSparkline` 的 `paintTickerSparkline`，设置页的 `SparklinePreview` 也用它** —— 各画一份会漂成「设置里看着对、实际不是那样」，比没有预览更糟。关掉分时图时左列容器退回 `display: contents`，行回到原来的一行三段与紧凑高度。尺寸与坐标全部由 `utils/tickerSparkline` 的 `SPARKLINE_*` 常量推出并被组件 style 使用，别再手写第二份数字。缓存/在途请求/重试下限必须放在 composable 的**模块作用域** —— 翻页会销毁重建整批行，实例级缓存等于每 3 秒重打一遍接口。失败不写缓存但要记尝试时间，否则坏标的被反复捶且重试被 TTL 挡死。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
+- 行情条（`TickerBar`）：跨分组按 `ticker_order` 轮播，每屏 `ticker_items_per_page` 条、3 秒翻页，悬停暂停，点击恢复主窗口（受 `ticker_click_wakes` 控制）；只播 `ticker_enabled`；`watchlist-changed` 触发重拉。每行是左右结构 —— 左列上下两行（名称 / 价格+涨跌），右侧一块 88×30 的迷你分时（`TickerSparkline` + `useTickerSparkline`，自绘 Canvas，**不引 klinecharts**）：横轴 09:30–15:00。挂图时价格是 12px/600 的主角、名称 11px/500，涨跌收进同色浅底胶囊；曲线与末端圆点取当日方向色，下方铺同色渐变（16%→1%），轴线与刻度压到 28%/22% 只当背景。格子里必画的是 0% 虚线 + 两条曲线；`ticker_chart_style=axis` 时再加一条 x 轴线与三个刻度。**绘制本体是 `utils/tickerSparkline` 的 `paintTickerSparkline`，设置页的 `SparklinePreview` 也用它** —— 各画一份会漂成「设置里看着对、实际不是那样」，比没有预览更糟。关掉分时图时左列容器退回 `display: contents`，行回到原来的一行三段与紧凑高度。尺寸与坐标全部由 `utils/tickerSparkline` 的 `SPARKLINE_*` 常量推出并被组件 style 使用，别再手写第二份数字。缓存/在途请求/重试下限必须放在 composable 的**模块作用域** —— 翻页会销毁重建整批行，实例级缓存等于每 3 秒重打一遍接口。失败不写缓存但要记尝试时间，否则坏标的被反复捶且重试被 TTL 挡死。透明背景由 `document.body` 的 `ticker-transparent` class 控制，底板/圆角/阴影**一起**去掉（只改 background 会留脏边），窗口在 `tauri.conf.json` 里开了 `transparent: true`。
 - 详情面板高度必须是**确定值**（按视口 clamp），图表容器 `flex: 1` 填满剩余空间；`chart.css` 里**不要给图区写死高度** —— 1080p @150% 这类矮窗口会把副图顶出容器、被 `.main-content` 的 `overflow: hidden` 裁掉。详情与设置页用 `defineAsyncComponent` 懒加载；**StockDetail 与 IndexDetail 两个入口必须同时异步**，否则 klinecharts 会经静态链回到首屏。
 - Composables：`useTauriEvent`（生命周期包装）、`useTheme`、`useChart`（分时/K 线共用）、`useUpdateCheck`（交易时段抑制）。
 - Styles：`variables.css`（设计令牌；涨跌配色的 `[data-color-scheme="us"]` 必须放在两个主题块之后，浅色变体用复合选择器提高特异性；派生 `-bg`/`-bar` 必须跟着主色换）、`dark.css`（滚动条）、`chart.css`、`settings.css`、`buttons.css`（弹框按钮 `.btn`/`.btn-ghost`/`.btn-danger`，28px，确认框与导入框共用）。
@@ -222,7 +222,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 | `ticker_transparent` | `0` | 透明背景 |
 | `ticker_click_wakes` | `1` | 点击行情条是否唤醒主界面。关闭后只是纯展示，恢复主界面走托盘或老板键（初始化失败时的「点击重试」不受它影响） |
 | `ticker_items_per_page` | `2` | 每屏条数 1–10（预设到 4 + 自定义）；上限也就是行情条最大高度 |
-| `ticker_chart_mode` | `both` | 行情条每行的迷你分时线：`off`/`price`/`limit`/`both`。`both` 把价格轴（满不透明）与涨跌停轴（50% 透明）叠进同一格，两套纵轴都以昨收为中心，所以一条 0% 线对两条线同时成立。涨跌停规则未知或数据越界时该条回退，只画主线 |
+| `ticker_chart_mode` | `both` | 行情条每行的迷你分时线：`off`/`price`/`limit`/`both`。`both` 把价格轴（满不透明）与涨跌停轴（38% 透明）叠进同一格，两套纵轴都以昨收为中心，所以一条 0% 线对两条线同时成立。涨跌停规则未知或数据越界时该条回退，只画主线 |
 | `ticker_chart_style` | `axis` | 迷你分时线的画法：`axis`（额外画 x 轴线与三个刻度）/`plain`（只有 0% 虚线与曲线）。高度两种画法都是 30px —— 由画法推导高度会让切换样式时窗口跳一下 |
 | `watchlist_columns` | 全部 8 列 | JSON 数组，顺序即列顺序，不含 `ticker_enabled` |
 | `watchlist_default_sort` | `""` | JSON `{key, order}`，空 = 不自排 |
@@ -237,7 +237,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 以下测试把这张表和前端钉在一起：键名不可改（就是 wire format）、无重复键、`groups_migrated` 不是默认键、布尔只认 `"0"/"1"`、数字可解析。
 
-两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 210 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平：多出来的宽度不会变成图，只会变成中间的空白。
+两个刻意不是设置的东西：市场概览的刷新间隔不可配（节奏全由 `market_clock` + 自适应状态机决定）；行情条宽度固定 230 逻辑像素（高度按内容测量，见 `useTickerWindowHeight`）。宽度现在只有两个落点：`datasource::TICKER_WIDTH` 与 `tauri.conf.json`（前端不再持有 `WIDTH` 常量 —— 改尺寸走 `set_ticker_size`，宽度由后端单点给）。这个值必须与 `SPARKLINE_CANVAS_WIDTH` + 文字列宽配平（230 = 16 + 118 + 8 + 88）：多出来的宽度不会变成图，只会变成中间的空白。
 
 ### 窗口位置
 

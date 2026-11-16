@@ -169,6 +169,11 @@ const PREVIEW_ROWS = [
 ];
 
 const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPerPage));
+
+/** 预览行的方向。以前价与涨跌都写死 up，跌的行会显示成红色，与实物不符。 */
+function rowTone(pct: string): 'up' | 'down' {
+  return pct.trim().startsWith('-') ? 'down' : 'up';
+}
 </script>
 
 <template>
@@ -273,8 +278,8 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
               <span class="preview-text">
                 <span class="preview-name">{{ row.name }}</span>
                 <span class="preview-figures">
-                  <span class="preview-price up">{{ row.price }}</span>
-                  <span class="preview-pct up">{{ row.pct }}</span>
+                  <span class="preview-price" :class="rowTone(row.pct)">{{ row.price }}</span>
+                  <span class="preview-pct" :class="rowTone(row.pct)">{{ row.pct }}</span>
                 </span>
               </span>
               <!-- 迷你分时用与行情条同一套画法（同一个 paintTickerSparkline），
@@ -283,6 +288,7 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
                 v-if="settings.tickerChartMode !== 'off'"
                 :mode="settings.tickerChartMode"
                 :chart-style="settings.tickerChartStyle"
+                :rising="rowTone(row.pct) === 'up'"
               />
             </div>
           </div>
@@ -401,12 +407,16 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
 .preview-row.with-chart {
   gap: var(--space-2);
 }
+.preview-row.with-chart + .preview-row.with-chart {
+  margin-top: var(--space-1);
+}
 .preview-text {
   display: contents;
 }
 .preview-row.with-chart .preview-text {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -424,6 +434,7 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
 }
 .preview-row.with-chart .preview-name {
   flex: 0 1 auto;
+  line-height: 1.3;
 }
 .preview-price {
   width: 46px;
@@ -435,7 +446,35 @@ const previewRows = computed(() => PREVIEW_ROWS.slice(0, settings.tickerItemsPer
   text-align: right;
   font-family: var(--font-mono);
 }
+/* 与行情条的挂图态一致：价格 12px/600、涨跌收进同色胶囊 */
+.preview-row.with-chart .preview-figures {
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+}
+.preview-row.with-chart .preview-price {
+  width: auto;
+  font-size: var(--text-sm);
+  line-height: 1.3;
+  font-weight: var(--font-weight-semibold);
+}
+.preview-row.with-chart .preview-pct {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-up-bg);
+}
+.preview-row.with-chart .preview-pct.down {
+  background: var(--color-down-bg);
+}
 .up { color: var(--color-up); }
+.down { color: var(--color-down); }
 
 .range-toolbar {
   display: flex;
