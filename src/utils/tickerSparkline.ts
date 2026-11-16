@@ -6,6 +6,7 @@
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
 
 import { SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
+import { beijingNow } from './minuteBars';
 import type { TickerChartStyle } from './prefs';
 
 export interface SparklineRange {
@@ -57,8 +58,10 @@ export interface SparklinePoint {
 /**
  * 把 bar 映射到画布坐标。
  *
- * x 按交易日分钟数（09:30–15:00）铺满整宽，曲线从左向右生长；午休不计入。
- * y 在 `from..to` 之间线性映射，并夹在 padding 内，防止越界数据画出画布。
+ * x 按交易日分钟数铺满整宽，曲线从左向右生长；午休不计入。`xSpanMinutes`
+ * 决定横轴铺多少分钟：默认全天 240，早盘传 120 时只铺 09:30–11:30，午后的
+ * bar 会被丢掉（此时它们本来也不该存在）。y 在 `from..to` 之间线性映射，并夹
+ * 在 padding 内，防止越界数据画出画布。
  */
 export function sparklinePoints(
   bars: readonly { timestamp: number; close: number }[],
@@ -66,18 +69,50 @@ export function sparklinePoints(
   width: number,
   height: number,
   paddingY = 3,
+  xSpanMinutes = SESSION_MINUTES,
 ): SparklinePoint[] {
   if (bars.length === 0 || !(width > 0) || !(height > 0) || !(range.to > range.from)) {
     return [];
   }
   const innerHeight = Math.max(1, height - paddingY * 2);
-  const span = range.to - range.from;
-  return bars.map((bar) => {
+  const priceSpan = range.to - range.from;
+  const xSpan = Math.max(1, xSpanMinutes);
+  const points: SparklinePoint[] = [];
+  for (const bar of bars) {
     const minutes = tradingMinutesOfDay(new Date(bar.timestamp));
-    const x = (minutes / SESSION_MINUTES) * width;
-    const ratio = Math.min(1, Math.max(0, (range.to - bar.close) / span));
-    return { x, y: paddingY + ratio * innerHeight };
-  });
+    if (minutes > xSpan) continue;
+    const ratio = Math.min(1, Math.max(0, (range.to - bar.close) / priceSpan));
+    points.push({
+      x: (minutes / xSpan) * width,
+      y: paddingY + ratio * innerHeight,
+    });
+  }
+  return points;
+}
+
+/**
+ * 迷你分时的横轴跨度（交易日分钟）。
+ *
+ * 早盘（当前时刻早于 11:30，且画的是今天的行情）只铺 09:30–11:30：此时线只走
+ * 了不到一半，按全天铺会把它挤在左半格。11:30 之后切回全天，下午才有地方长。
+ * 盘前/休市拿到的是上一交易日的完整数据时按全天，避免把昨天的一整天塞进
+ * 半天窗口。
+ */
+export function sparklineSpanMinutes(
+  bars: readonly { timestamp: number }[],
+  now: number = beijingNow(),
+): number {
+  const last = bars[bars.length - 1];
+  if (!last) return SESSION_MINUTES;
+  const nowDate = new Date(now);
+  const lastDate = new Date(last.timestamp);
+  const sameDay =
+    nowDate.getFullYear() === lastDate.getFullYear()
+    && nowDate.getMonth() === lastDate.getMonth()
+    && nowDate.getDate() === lastDate.getDate();
+  if (!sameDay) return SESSION_MINUTES;
+  const minutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+  return minutes < 11 * 60 + 30 ? SESSION_MINUTES / 2 : SESSION_MINUTES;
 }
 
 // ── 单元格几何 ──
@@ -132,6 +167,7 @@ export function sparklineCanvasPoints(
   bars: readonly { timestamp: number; close: number }[],
   range: { from: number; to: number } | null,
   width: number,
+  xSpanMinutes = SESSION_MINUTES,
 ): SparklinePoint[] {
   if (!range) return [];
   return sparklinePoints(
@@ -140,14 +176,15 @@ export function sparklineCanvasPoints(
     width,
     SPARKLINE_PLOT_HEIGHT,
     SPARKLINE_CURVE_PADDING_Y,
+    xSpanMinutes,
   ).map((p) => ({ x: p.x, y: p.y + SPARKLINE_PAD_TOP }));
 }
 
 /**
- * x 轴刻度位置：09:30（起点）、11:30/13:00（午间分界）、15:00（终点）。
+ * x 轴刻度位置：可视区间的起点、中点、右端（内缩一像素避免与边线重合）。
  *
- * 一个交易日在横轴上均匀铺开（`tradingMinutesOfDay` 已抹平午休），中点正好是
- * 上午收盘与下午开盘的分界。不放文字：宽度里挤下「09:30」既占地方又必然压线。
+ * 全天模式下中点正好是午间分界；早盘模式（只铺 09:30–11:30）下中点是 10:30。
+ * 不放文字：宽度里挤下「09:30」既占地方又必然压线。
  */
 export function axisTickPositions(width: number): number[] {
   if (!(width > 0)) return [];

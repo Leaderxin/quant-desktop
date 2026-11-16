@@ -17,8 +17,10 @@ import {
   sparklineBaselineY,
   sparklineCanvasPoints,
   sparklinePoints,
+  sparklineSpanMinutes,
   resolveSparklineRange,
 } from './tickerSparkline';
+import { SESSION_MINUTES } from './minuteAxis';
 
 function bar(close: number, hour = 9, minute = 30) {
   return { timestamp: new Date(2026, 8, 24, hour, minute).getTime(), close };
@@ -48,6 +50,32 @@ describe('resolveSparklineRange', () => {
   });
 });
 
+describe('sparklineSpanMinutes — 早盘横轴自适应', () => {
+  const today = [bar(100, 9, 30), bar(101, 10, 30)];
+  const at = (hour: number, minute = 0) => new Date(2026, 8, 24, hour, minute).getTime();
+
+  it('11:30 之前只铺早盘（120 分钟）', () => {
+    expect(sparklineSpanMinutes(today, at(9, 30))).toBe(SESSION_MINUTES / 2);
+    expect(sparklineSpanMinutes(today, at(10, 0))).toBe(SESSION_MINUTES / 2);
+    expect(sparklineSpanMinutes(today, at(11, 29))).toBe(SESSION_MINUTES / 2);
+  });
+
+  it('11:30 及之后切回全天', () => {
+    expect(sparklineSpanMinutes(today, at(11, 30))).toBe(SESSION_MINUTES);
+    expect(sparklineSpanMinutes(today, at(12, 0))).toBe(SESSION_MINUTES);
+    expect(sparklineSpanMinutes(today, at(15, 30))).toBe(SESSION_MINUTES);
+  });
+
+  it('画的是上一交易日（盘前/周末）时按全天，不把昨天塞进半天', () => {
+    const nextDay = new Date(2026, 8, 25, 9, 0).getTime();
+    expect(sparklineSpanMinutes(today, nextDay)).toBe(SESSION_MINUTES);
+  });
+
+  it('没有数据时按全天', () => {
+    expect(sparklineSpanMinutes([], at(10, 0))).toBe(SESSION_MINUTES);
+  });
+});
+
 describe('sparklinePoints', () => {
   const range = { from: 90, to: 110 };
 
@@ -58,6 +86,21 @@ describe('sparklinePoints', () => {
       240,
       56,
     );
+    expect(points[0].x).toBeCloseTo(0);
+    expect(points[1].x).toBeCloseTo(120);
+    expect(points[2].x).toBeCloseTo(240);
+  });
+
+  it('早盘跨度 120 分钟时只铺 09:30–11:30，午后 bar 不进图', () => {
+    const points = sparklinePoints(
+      [bar(100, 9, 30), bar(101, 10, 30), bar(102, 11, 30), bar(103, 13, 30)],
+      range,
+      240,
+      56,
+      3,
+      120,
+    );
+    expect(points).toHaveLength(3);
     expect(points[0].x).toBeCloseTo(0);
     expect(points[1].x).toBeCloseTo(120);
     expect(points[2].x).toBeCloseTo(240);

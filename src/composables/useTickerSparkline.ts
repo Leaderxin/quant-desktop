@@ -5,7 +5,8 @@
 // utils/tickerSparkline 里（含单测），本文件只负责取数、缓存与绘制。
 //
 // 开关打开时画一条价格曲线：以昨收为中心，0% 虚线是昨收参考线，曲线与末端圆点
-// 取当日方向色。开关关掉时整个组件不挂载。
+// 取当日方向色。横轴早盘只铺 09:30–11:30，11:30 后切全天（见
+// `sparklineSpanMinutes`）。开关关掉时整个组件不挂载。
 //
 // 画法可切换（`ticker_chart_style`）：`axis` 多一条 x 轴线与三个刻度，`plain`
 // 只有 0% 虚线与曲线。绘制本体在 utils/tickerSparkline 的
@@ -27,6 +28,7 @@ import {
   resolveSparklineRange,
   sparklineBaselineY,
   sparklineCanvasPoints,
+  sparklineSpanMinutes,
   type SparklineRange,
 } from '@/utils/tickerSparkline';
 
@@ -316,6 +318,8 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     const prevClose = effectivePrevClose();
     const range = resolveSparklineRange(bars, prevClose);
     const lastBar = bars[bars.length - 1];
+    // 早盘只铺 09:30–11:30，11:30 后切全天（见 sparklineSpanMinutes）。
+    const xSpan = sparklineSpanMinutes(bars);
 
     paintTickerSparkline(
       ctx,
@@ -323,10 +327,10 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
         style: unref(options.style),
         // 昨收是猜出来的（新股首日）时给 null：那条线本身就没有意义。
         baselineY: prevClose > 0 ? sparklineBaselineY() : null,
-        points: sparklineCanvasPoints(bars, range, cssWidth),
+        points: sparklineCanvasPoints(bars, range, cssWidth, xSpan),
         dot:
           prevClose > 0 && lastBar
-            ? sparklineDot(bars, range, cssWidth, prevClose)
+            ? sparklineDot(bars, range, cssWidth, prevClose, xSpan)
             : null,
         width: cssWidth,
         height: cssHeight,
@@ -346,8 +350,9 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     range: SparklineRange | null,
     width: number,
     prevClose: number,
+    xSpanMinutes: number,
   ) {
-    const points = sparklineCanvasPoints(barList, range, width);
+    const points = sparklineCanvasPoints(barList, range, width, xSpanMinutes);
     const last = points[points.length - 1];
     if (!last) return null;
     const lastBar = barList[barList.length - 1];
