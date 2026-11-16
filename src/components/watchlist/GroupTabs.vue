@@ -3,13 +3,13 @@
 //
 // 标签本身是按钮而不是链接：这里没有路由，切换分组只是换一份本地过滤结果，
 // 用 <a> 会让人以为会跳页。
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { NDropdown } from 'naive-ui';
 import { useWatchlistStore } from '@/stores/watchlist';
 import { GROUP_NAME_MAX_LEN } from '@/utils/prefs';
 import { computeGroupRemovalImpact, type GroupRemovalImpact } from '@/utils/watchGroups';
 import { moveByStep } from '@/utils/dragSort';
-import { Plus } from '@lucide/vue';
+import { ChevronLeft, ChevronRight, Plus } from '@lucide/vue';
 import DeleteGroupDialog from './DeleteGroupDialog.vue';
 import type { WatchGroup, WatchItem } from '@/types';
 
@@ -208,46 +208,222 @@ async function confirmDelete() {
   deleteTarget.value = null;
   if (target) await watchlist.deleteGroup(target.id);
 }
+
+// ── 横向溢出 ──
+// 标签栏隐藏滚动条（保持头部干净），但必须给出可滚动的提示，否则分组一多，
+// 鼠标用户根本不知道右边还有内容：纵向滚轮转成横向滚动 + 两侧渐隐 + 箭头按钮。
+
+const tabsViewport = ref<HTMLElement | null>(null);
+const canScrollLeft = ref(false);
+const canScrollRight = ref(false);
+let hintObserver: ResizeObserver | null = null;
+
+function updateScrollHints() {
+  const el = tabsViewport.value;
+  if (!el) return;
+  // 平滑滚动/缩放时 scrollLeft 可能是小数，留 1px 容差，箭头才不会在边缘抖动
+  canScrollLeft.value = el.scrollLeft > 1;
+  canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// 滚轮滑行：滚轮事件频率高、每次 delta 不等，直接赋值 scrollLeft 会一格一格地跳。
+// 改为时间基准的 ease-out（约 220ms），每次事件从**当前位置**重新起算：
+// 连续滚动会自然接续，反向滚动也能立刻响应，不会被上一个目标拖住。
+const WHEEL_GLIDE_MS = 220;
+let wheelRaf = 0;
+let wheelFrom = 0;
+let wheelTo = 0;
+let wheelStart = 0;
+
+function stopWheelGlide() {
+  if (wheelRaf) cancelAnimationFrame(wheelRaf);
+  wheelRaf = 0;
+}
+
+function startWheelGlide(el: HTMLElement, delta: number) {
+  const max = el.scrollWidth - el.clientWidth;
+  const to = Math.max(0, Math.min(max, el.scrollLeft + delta));
+  if (Math.abs(to - el.scrollLeft) < 0.5) return;
+  if (prefersReducedMotion()) {
+    stopWheelGlide();
+    el.scrollLeft = to;
+    return;
+  }
+
+  stopWheelGlide();
+  wheelFrom = el.scrollLeft;
+  wheelTo = to;
+  wheelStart = performance.now();
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - wheelStart) / WHEEL_GLIDE_MS);
+    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    el.scrollLeft = wheelFrom + (wheelTo - wheelFrom) * eased;
+    if (t < 1) {
+      wheelRaf = requestAnimationFrame(tick);
+    } else {
+      el.scrollLeft = wheelTo;
+      wheelRaf = 0;
+    }
+  };
+  wheelRaf = requestAnimationFrame(tick);
+}
+
+/** 「新建分组」已固定在滚动区外，这里只负责把当前分组滚进视野，不碰其它布局 */
+function scrollActiveIntoView(behavior: ScrollBehavior = 'smooth') {
+  const viewport = tabsViewport.value;
+  if (!viewport) return;
+  const active = viewport.querySelector<HTMLElement>('.group-tab.active');
+  if (!active) return;
+
+  stopWheelGlide();
+  const motion = prefersReducedMotion() ? 'auto' : behavior;
+  // 用 bounding rect 而不是 offsetLeft：活动标签的 offsetParent 不一定是滚动容器。
+  // pad 要盖过边缘渐隐（24px）和箭头按钮的叠压，否则当前标签的计数会被挡住
+  const pad = 28;
+  const view = viewport.getBoundingClientRect();
+  const tab = active.getBoundingClientRect();
+  if (tab.left < view.left + pad) {
+    viewport.scrollBy({ left: tab.left - view.left - pad, behavior: motion });
+  } else if (tab.right > view.right - pad) {
+    viewport.scrollBy({ left: tab.right - view.right + pad, behavior: motion });
+  }
+}
+
+function scrollTabs(direction: -1 | 1) {
+  const el = tabsViewport.value;
+  if (!el) return;
+  stopWheelGlide();
+  const step = Math.max(80, Math.round(el.clientWidth * 0.6));
+  el.scrollBy({
+    left: direction * step,
+    behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+  });
+}
+
+function handleTabsWheel(e: WheelEvent) {
+  const el = tabsViewport.value;
+  if (!el) return;
+  // 没溢出、或已经滚到这一侧的尽头时，把滚轮交还给外层，不要吞掉滚动
+  if (el.scrollWidth <= el.clientWidth) return;
+  const dominant = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+  if (dominant === 0) return;
+  // deltaMode：像素（0）/ 行（1）/ 页（2）。鼠标滚轮常报「行」，
+  // 直接当像素用会几乎滚不动
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+  const delta = dominant * unit;
+  const max = el.scrollWidth - el.clientWidth;
+  const target = Math.max(0, Math.min(max, el.scrollLeft + delta));
+  if (target === el.scrollLeft) return;
+  e.preventDefault();
+  startWheelGlide(el, delta);
+}
+
+onMounted(async () => {
+  await nextTick();
+  updateScrollHints();
+  scrollActiveIntoView('auto');
+  if (typeof ResizeObserver !== 'undefined' && tabsViewport.value) {
+    hintObserver = new ResizeObserver(() => updateScrollHints());
+    hintObserver.observe(tabsViewport.value);
+  }
+});
+
+onUnmounted(() => {
+  hintObserver?.disconnect();
+  hintObserver = null;
+  stopWheelGlide();
+});
+
+// 分组增删/改名/排序、编辑态切换都会改变内容宽度；当前分组变化时要保证它可见。
+// 深度监听是必要的：组内股票数变化会改变标签宽度。
+watch(
+  [() => watchlist.groups, () => watchlist.activeGroupId, editing],
+  async () => {
+    await nextTick();
+    updateScrollHints();
+    scrollActiveIntoView();
+  },
+  { deep: true },
+);
 </script>
 
 <template>
   <div class="group-tabs-wrap">
-    <div class="group-tabs" role="tablist" aria-label="自选分组">
-      <template v-for="g in watchlist.groups" :key="g.id">
-        <!-- 编辑态：输入框取代标签，Enter 提交 / Esc 取消 / 失焦提交 -->
+    <div class="group-tabs-row">
+      <div class="group-tabs-scroller">
         <div
-          v-if="editing?.mode === 'rename' && editing.id === g.id"
-          class="group-tab editing"
+          ref="tabsViewport"
+          class="group-tabs-viewport"
+          :class="{ 'fade-left': canScrollLeft, 'fade-right': canScrollRight }"
+          @scroll.passive="updateScrollHints"
+          @wheel="handleTabsWheel"
         >
-          <input
-            :ref="setInputRef"
-            v-model="draftName"
-            class="group-input"
-            spellcheck="false"
-            :maxlength="GROUP_NAME_MAX_LEN"
-            :aria-label="`重命名分组 ${g.name}`"
-            @keydown.enter.prevent="commitEdit"
-            @keydown.esc.prevent="cancelEdit"
-            @blur="commitEdit"
-          />
+          <div class="group-tabs" role="tablist" aria-label="自选分组">
+            <template v-for="g in watchlist.groups" :key="g.id">
+              <!-- 编辑态：输入框取代标签，Enter 提交 / Esc 取消 / 失焦提交 -->
+              <div
+                v-if="editing?.mode === 'rename' && editing.id === g.id"
+                class="group-tab editing"
+              >
+                <input
+                  :ref="setInputRef"
+                  v-model="draftName"
+                  class="group-input"
+                  spellcheck="false"
+                  :maxlength="GROUP_NAME_MAX_LEN"
+                  :aria-label="`重命名分组 ${g.name}`"
+                  @keydown.enter.prevent="commitEdit"
+                  @keydown.esc.prevent="cancelEdit"
+                  @blur="commitEdit"
+                />
+              </div>
+              <button
+                v-else
+                class="group-tab"
+                type="button"
+                role="tab"
+                :aria-selected="watchlist.activeGroupId === g.id"
+                :class="{ active: watchlist.activeGroupId === g.id }"
+                :title="`${g.name}（双击重命名，右键更多操作）`"
+                @click="watchlist.activeGroupId = g.id"
+                @dblclick="startRename(g)"
+                @contextmenu="handleContextMenu($event, g)"
+              >
+                {{ g.name }}
+                <span class="cnt">{{ g.watch_ids.length }}</span>
+              </button>
+            </template>
+          </div>
         </div>
-        <button
-          v-else
-          class="group-tab"
-          type="button"
-          role="tab"
-          :aria-selected="watchlist.activeGroupId === g.id"
-          :class="{ active: watchlist.activeGroupId === g.id }"
-          :title="`${g.name}（双击重命名，右键更多操作）`"
-          @click="watchlist.activeGroupId = g.id"
-          @dblclick="startRename(g)"
-          @contextmenu="handleContextMenu($event, g)"
-        >
-          {{ g.name }}
-          <span class="cnt">{{ g.watch_ids.length }}</span>
-        </button>
-      </template>
 
+        <button
+          v-if="canScrollLeft"
+          class="tabs-scroll-btn left"
+          type="button"
+          title="向左滚动"
+          aria-label="向左滚动分组"
+          @click="scrollTabs(-1)"
+        >
+          <ChevronLeft :size="14" aria-hidden="true" />
+        </button>
+        <button
+          v-if="canScrollRight"
+          class="tabs-scroll-btn right"
+          type="button"
+          title="向右滚动"
+          aria-label="向右滚动分组"
+          @click="scrollTabs(1)"
+        >
+          <ChevronRight :size="14" aria-hidden="true" />
+        </button>
+      </div>
+
+      <!-- 新建入口固定在滚动区外：分组再多也不会被滚出视野 -->
       <div v-if="editing?.mode === 'create'" class="group-tab editing">
         <input
           :ref="setInputRef"
@@ -296,15 +472,94 @@ async function confirmDelete() {
   min-width: 0;
   flex: 1;
 }
+.group-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.group-tabs-scroller {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.group-tabs-viewport {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* 横向滚到尽头时不要让滚动链传导给外层 */
+  overscroll-behavior-x: contain;
+}
+.group-tabs-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* 可滚动一侧做渐隐。mask 不依赖背景色，深浅主题、透明行情条上都能用 */
+.group-tabs-viewport.fade-left {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 100%);
+}
+.group-tabs-viewport.fade-right {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
+}
+.group-tabs-viewport.fade-left.fade-right {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 24px,
+    #000 calc(100% - 24px),
+    transparent 100%
+  );
+}
+
+/* 悬在滚动区两端的圆形箭头：鼠标用户的可点击提示，键盘同样可达 */
+.tabs-scroll-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-50%);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tabs-scroll-btn.left {
+  left: 0;
+}
+.tabs-scroll-btn.right {
+  right: 0;
+}
+.tabs-scroll-btn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.tabs-scroll-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .group-tabs {
   display: flex;
   align-items: center;
   gap: 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.group-tabs::-webkit-scrollbar {
-  display: none;
+  /* 明确让行宽等于内容宽：scrollWidth 才稳定包含溢出的标签 */
+  width: max-content;
 }
 
 .group-tab {
@@ -380,7 +635,6 @@ async function confirmDelete() {
   gap: 3px;
   height: 26px;
   padding: 0 8px;
-  margin-left: 2px;
   flex-shrink: 0;
   border: 1px dashed var(--color-border-1);
   border-radius: var(--radius-sm);
