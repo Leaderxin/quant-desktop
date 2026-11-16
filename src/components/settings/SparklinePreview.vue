@@ -9,7 +9,8 @@
 // 画法与纵轴全部走真实链路：`paintTickerSparkline` / `resolveSparklineRange`
 // 都是行情条用的那一份（含物理像素对齐与 alpha 规则），所以预览不会画出一个
 // 实际看不到的样子 —— 这类「预览与实物不符」比没有预览更糟。
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useSettingsStore } from '@/stores/settings';
 import {
   SPARKLINE_CANVAS_HEIGHT,
@@ -70,6 +71,35 @@ function palette() {
   };
 }
 
+/**
+ * 位图倍率：WebKitGTK 在分数缩放下 `devicePixelRatio` 可能只报 1，
+ * 与行情条一致地再取一次 Tauri scaleFactor，取两者较大值。
+ */
+let tauriScale = 1;
+let unlistenScale: (() => void) | null = null;
+let disposed = false;
+let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
+try {
+  appWindow = getCurrentWindow();
+} catch {
+  // 浏览器 dev / 单测：退回 devicePixelRatio
+}
+
+async function refreshScale() {
+  if (!appWindow) return;
+  try {
+    tauriScale = (await appWindow.scaleFactor()) || 1;
+  } catch {
+    tauriScale = 1;
+  }
+}
+
+async function repaintForScale() {
+  await refreshScale();
+  await nextTick();
+  paint();
+}
+
 function paint() {
   const canvas = canvasRef.value;
   if (!canvas) return;
@@ -77,7 +107,7 @@ function paint() {
   const height = canvas.clientHeight;
   if (width <= 0 || height <= 0) return;
 
-  const dpr = Math.max(window.devicePixelRatio || 1, 1);
+  const dpr = Math.max(window.devicePixelRatio || 1, tauriScale, 1);
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   const ctx = canvas.getContext('2d');
@@ -111,7 +141,26 @@ function paint() {
 
 const settings = useSettingsStore();
 
-onMounted(paint);
+onMounted(() => {
+  void repaintForScale();
+  if (appWindow) {
+    appWindow
+      .onScaleChanged(() => void repaintForScale())
+      .then((unlisten) => {
+        if (disposed) unlisten();
+        else unlistenScale = unlisten;
+      })
+      .catch(() => {
+        // 拿不到缩放事件就只按当前倍率画一次
+      });
+  }
+});
+
+onUnmounted(() => {
+  disposed = true;
+  unlistenScale?.();
+  unlistenScale = null;
+});
 // 画法变了立刻重画；主题、配色、透明切换也要重画 —— canvas 读不了 var()，
 // 只能等样式落定后重取一次调色板。
 watch(

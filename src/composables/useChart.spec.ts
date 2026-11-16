@@ -167,4 +167,33 @@ describe('useChart 切股丢弃旧请求', () => {
       timestamp: new Date('2000-01-04').getTime(),
     });
   });
+
+  it('新标的加载失败时，旧标的的自动刷新定时器必须停掉', async () => {
+    vi.useFakeTimers();
+    try {
+      invokeMock.mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd !== 'get_kline') return undefined;
+        if (args?.count === 10) return [];
+        if (args?.code === 'sh600000') return A_MAIN;
+        throw new Error('B failed');
+      });
+
+      const { api, code } = mountChart();
+      await api.initChart('daily');
+      await api.loadData('daily'); // A 成功，启动 30s 定时器
+
+      code.value = 'sh600001';
+      await api.loadData('daily'); // B 失败，不应留下 A 的定时器
+
+      vi.mocked(invokeMock).mockClear();
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      const incremental = invokeMock.mock.calls.filter(
+        ([, args]) => (args as { count?: number } | undefined)?.count === 10,
+      );
+      expect(incremental).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

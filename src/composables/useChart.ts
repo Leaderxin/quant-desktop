@@ -39,6 +39,12 @@ export function useChart(options: {
    * 再加一道代次闸门。
    */
   let dataEpoch = 0;
+  /**
+   * 上一次 `loadData` 的目标（code:market:period）。
+   * 换股/换周期时先停掉旧的增量定时器；同一目标的周期重载（新浪每轮全量拉）
+   * 不能停，否则一次失败会把自动刷新永久关掉。
+   */
+  let lastLoadKey = '';
 
   // 累积全部已加载的 K 线数据（初始 + 历次懒加载），按时间升序
   const allData = ref<KCLineData[]>([]);
@@ -314,6 +320,13 @@ export function useChart(options: {
   // ---- 数据加载 ----
 
   async function loadData(period: PeriodType) {
+    const loadKey = `${unref(options.code)}:${unref(options.market)}:${period}`;
+    if (loadKey !== lastLoadKey) {
+      // 换股/换周期：旧定时器必须立刻停。新标的加载失败时 catch 不会走到
+      // startAutoRefresh，旧定时器却会用新代码拉数据、推进仍显示旧标的的图表。
+      stopAutoRefresh();
+      lastLoadKey = loadKey;
+    }
     // 先换代号：从这一刻起，旧标的的 forward/增量请求回来都会被丢掉。
     dataEpoch += 1;
     if (abortController) {

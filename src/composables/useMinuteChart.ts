@@ -422,6 +422,9 @@ export function useMinuteChart(options: {
   // ---- 数据加载 ----
 
   async function loadData() {
+    // 换股/重试时先停旧定时器：主请求失败时不会走到 startAutoRefresh，
+    // 旧 interval 却会用新代码拉数据、推进仍显示旧标的的图表。
+    stopAutoRefresh();
     // 先换代号：从这一刻起，旧标的的增量请求回来都会被丢掉。
     dataEpoch += 1;
     if (abortController) {

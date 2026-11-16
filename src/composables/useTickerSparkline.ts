@@ -70,14 +70,34 @@ const inflight = new Map<string, Promise<boolean>>();
 /** 数据落地后要唤醒的实例（按标的 key 分组）。 */
 const subscribers = new Map<string, Set<() => void>>();
 
+/**
+ * 当前缓存属于哪个数据源。分时口径可能因源而异（1 分钟 vs 5 分钟），
+ * 切源后整份作废。放在模块作用域而不是实例 watcher：分时线关闭时实例全部
+ * 卸载，但缓存还在；下次打开前必须能发现源已经变了。
+ */
+let cacheSource = '';
+
+function ensureCacheSource(source: string) {
+  if (cacheSource === source) return;
+  cacheSource = source;
+  cache.clear();
+  lastAttempt.clear();
+}
+
 function notifySubscribers(key: string) {
   const set = subscribers.get(key);
   if (!set) return;
   for (const fn of set) fn();
 }
 
-/** 是否处于 A 股连续竞价时段（含集合竞价前后的缓冲）。 */
-function isTradingSession(now = new Date()): boolean {
+/**
+ * 是否处于 A 股连续竞价时段（含集合竞价前后的缓冲）。
+ *
+ * 按北京墙钟判断，与请求过滤用的 `beijingNow()` 同一口径；本机时区不参与，
+ * 否则 UTC+8 以外的用户会把 30s/60s 的轮询节奏整个错开。只排除周末，法定
+ * 节假日仍会按盘中节奏轮询（数据不变，成本有限）。
+ */
+function isTradingSession(now = new Date(beijingNow())): boolean {
   const day = now.getDay();
   if (day === 0 || day === 6) return false;
   const minutes = now.getHours() * 60 + now.getMinutes();
@@ -170,6 +190,7 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
 
   /** 把共享缓存里属于当前标的的数据接到本实例上（没有就清空）。 */
   function adoptCache() {
+    ensureCacheSource(settings.activeDatasource);
     const entry = cache.get(myKey);
     bars = entry ? entry.bars : [];
     dataPrevClose = entry ? entry.dataPrevClose : 0;
@@ -198,11 +219,15 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
    * 免得一只接口挂掉的票被每 3 秒的翻页反复捶。
    */
   async function fetchIntraday(force: boolean): Promise<boolean> {
+    const source = settings.activeDatasource;
+    ensureCacheSource(source);
     const code = unref(options.code);
     const market = unref(options.market);
     if (!code || !market) return false;
 
     const key = `${market}:${code}`;
+    // 在途请求按「数据源 + 标的」区分：切源后旧请求不能挡着新源的请求。
+    const requestKey = `${source}|${key}`;
     if (!shouldFetch(key, force)) {
       // 不发请求也要把已有数据接上：可能是缓存还新鲜，也可能是刚试过失败。
       adoptCache();
@@ -211,10 +236,11 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     }
 
     // 同一标的的并发请求（几个实例同时挂载同一只）合并成一次。
-    const pending = inflight.get(key);
+    const pending = inflight.get(requestKey);
     if (pending) {
       loading.value = bars.length === 0;
       const fetched = await pending;
+      if (!disposed) loading.value = false;
       if (disposed || myKey !== key) return fetched;
       adoptCache();
       if (fetched) scheduleDraw();
@@ -228,6 +254,8 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     const task = (async (): Promise<boolean> => {
       try {
         const data = await invoke<MinuteData[]>('get_intraday', { code, market });
+        // 切源后旧请求才回来：不回写缓存，否则会把旧源口径的数据塞进新源。
+        if (source !== settings.activeDatasource) return false;
         const all = mapMinuteBars(data);
         // 数据源会把「还没走完的那一分钟」也推下来；主图也是这么过滤的。
         const boundary = beijingNow();
@@ -240,19 +268,21 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
         console.error('[ticker-sparkline] get_intraday failed:', e);
         return false;
       } finally {
-        inflight.delete(key);
+        inflight.delete(requestKey);
         notifySubscribers(key);
       }
     })();
 
-    inflight.set(key, task);
+    inflight.set(requestKey, task);
     const fetched = await task;
     if (!disposed) loading.value = false;
     if (disposed || myKey !== key) return fetched;
     if (fetched) {
+      error.value = '';
       adoptCache();
       scheduleDraw();
-    } else {
+    } else if (source === settings.activeDatasource) {
+      // 切源导致的 false 由新源的请求负责，不要把错误留在界面上。
       error.value = '分时数据加载失败';
     }
     return fetched;
@@ -446,11 +476,12 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   );
 
   // 切数据源后旧缓存可能来自另一个源的 1 分钟/5 分钟口径，整份作废。
+  // 没挂载实例时没有这个 watcher；下次挂载会在 adoptCache/fetchIntraday 里
+  // 通过模块级的 cacheSource 发现源已变化并清空。
   watch(
     () => settings.activeDatasource,
     () => {
-      cache.clear();
-      lastAttempt.clear();
+      ensureCacheSource(settings.activeDatasource);
       adoptCache();
       void fetchIfVisible(true);
     },
