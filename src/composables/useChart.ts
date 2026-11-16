@@ -28,6 +28,18 @@ export function useChart(options: {
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * 数据代次：每次 `loadData` 自增，异步请求回来时对不上就整批丢掉。
+   *
+   * 图表实例与 `allData` 都是跨标的复用的。切股时，上一只股票的 forward /
+   * 增量请求可能还在路上：它回来后会往 `allData` 里 prepend 旧标的的历史，
+   * 再通过旧 loader 的 callback 把同一段数据 prepend 进图表 —— 症状是切换后
+   * 多出一段本不属于该股的历史（例如新标的 2010 年上市，图上却从 2000 年
+   * 开始）。abortController 只覆盖主请求，覆盖不到 forward/增量，所以这里
+   * 再加一道代次闸门。
+   */
+  let dataEpoch = 0;
+
   // 累积全部已加载的 K 线数据（初始 + 历次懒加载），按时间升序
   const allData = ref<KCLineData[]>([]);
   // 标记是否还有更多历史数据可加载
@@ -71,6 +83,7 @@ export function useChart(options: {
   // ---- 懒加载历史数据 ----
 
   async function loadMoreHistory(): Promise<KCLineData[]> {
+    const epoch = dataEpoch;
     if (!hasMoreForward.value || loading.value) return [];
     const span = minuteKSpan(currentPeriod.value);
     const isSina = settings.activeDatasource === 'sina';
@@ -94,6 +107,9 @@ export function useChart(options: {
         endDate,
         count,
       });
+      // 切股/切周期后旧请求才回来：直接丢弃，既不改 allData，也不把翻页结果
+      // 交回给旧 loader 的 callback（否则会 prepend 到新标的的图上）。
+      if (epoch !== dataEpoch) return [];
       const newBars = mapKLineToChart(data);
       let uniqueCount = 0;
       if (newBars.length > 0) {
@@ -114,7 +130,8 @@ export function useChart(options: {
       console.error('[useChart] forward load failed:', e);
       return [];
     } finally {
-      loading.value = false;
+      // 旧代次的请求不能把新代次的 loading 清掉
+      if (epoch === dataEpoch) loading.value = false;
     }
   }
 
@@ -130,11 +147,15 @@ export function useChart(options: {
           backward: false,
         });
       } else if (params.type === 'forward') {
+        const epoch = dataEpoch;
         if (!hasMoreForward.value) {
           params.callback([], { forward: false, backward: false });
           return;
         }
         const newBars = await loadMoreHistory();
+        // 请求属于旧标的：连 callback 都不能调 —— 它会 prepend 到当前图表。
+        // 旧图表实例的 _loading 会被切股时的 setSymbol/setDataLoader 重置，不用收尾。
+        if (epoch !== dataEpoch) return;
         params.callback(newBars, {
           forward: hasMoreForward.value,
           backward: false,
@@ -185,6 +206,7 @@ export function useChart(options: {
     const interval = getRefreshInterval(period);
     refreshTimer = setInterval(async () => {
       if (loading.value) return;
+      const epoch = dataEpoch;
       try {
         const data = await invoke<KLineData[]>('get_kline', {
           code: unref(options.code),
@@ -192,6 +214,9 @@ export function useChart(options: {
           period: period,
           count: 10,
         });
+        // 切股/切周期后旧定时器的请求才回来：丢弃，别把旧标的的最新几根
+        // 合并进新标的的 allData，更别推给新图表。
+        if (epoch !== dataEpoch || period !== currentPeriod.value) return;
         const newBars = mapKLineToChart(data);
         if (newBars.length > 0) {
           const map = new Map(allData.value.map((d) => [d.timestamp, d]));
@@ -289,6 +314,8 @@ export function useChart(options: {
   // ---- 数据加载 ----
 
   async function loadData(period: PeriodType) {
+    // 先换代号：从这一刻起，旧标的的 forward/增量请求回来都会被丢掉。
+    dataEpoch += 1;
     if (abortController) {
       abortController.abort();
     }
@@ -316,6 +343,11 @@ export function useChart(options: {
         const isSina = settings.activeDatasource === 'sina';
         hasMoreForward.value = !isSina;
         klineData.value = mapped;
+      } else {
+        // 空响应也要清掉上一只股票的数据：syncPrecision 还会读 klineData，
+        // 留着旧精度会让新标的（比如 ETF 3 位 vs 股票 2 位）显示错。
+        klineData.value = [];
+        hasMoreForward.value = false;
       }
 
       if (signal.aborted) return;

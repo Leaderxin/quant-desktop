@@ -44,6 +44,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 | `utils/minuteBars.spec.ts` / `minuteAxis.spec.ts` | 分时图交易日切分、昨收、未来 bar 的 UTC+8 上界、当日累计均价（含零成交量）；网格槽位/偏移/刻度与窄宽回退、自适应纵轴（单边行情不压半区、均价参与取幅） |
 | `utils/paneSize.spec.ts` | 副图高度按 28% 夹在 48–80px；高度未知时给兜底值 |
 | `composables/useTickerWindowHeight.spec.ts` | 行情条改高时下边缘不动；并发触发（visibilitychange + ResizeObserver）只补偿一次 |
+| `composables/useChart.spec.ts` | 切股/切周期后旧 forward 响应被代次闸门丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调 |
 | `utils/tickerSparkline.spec.ts` | 行情条分时的价格轴：±1% 下限、按最大偏离取半幅、无昨收时用首根 close 兜底；早盘横轴只铺 09:30–11:30、11:30 后切全天、上一交易日按全天；单元格几何常量；`paintTickerSparkline` 的绘制指令（`axis` 全天画轴+3 刻度、早盘画轴+2 端点刻度、`plain` 不画，0% 虚线/主线满不透明、主线与圆点跟随方向着色、渐变面积只在 ≥2 点时铺、圆点夹边） |
 | `composables/useEscapeKey.spec.ts` | 详情 Esc 关闭：只认 Escape、输入法组合中不触发、卸载即摘监听 |
 | `utils/webLog.spec.ts` | 日志桥：参数拼接、字符截断、去重窗口、窗口前缀 |
@@ -195,7 +196,7 @@ DataSource → Scheduler → QuoteCache（内存 + SQLite）
 
 跨窗口设置：`setSetting` 写库并广播 `settings-changed`；ticker 直接 `applyRemoteSetting`，**不得回广播**（会来回弹）。`datasource-changed` 单独一条，因为它还有每窗口的副作用。主题不需要专线：两个窗口各自用本窗口的 `matchMedia` 解析 —— ticker 的窗口没被钉过，读到的是系统真值。
 
-K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。
+K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。切股/切周期时主请求由 `AbortController` 丢弃，forward/增量由 `dataEpoch` 丢弃 —— 图表实例与 `allData` 跨标的复用，旧响应的 prepend 会让新标的的图上多出一段旧历史（新标的 2010 年上市，图上却从 2000 年开始）。
 
 ### Logging
 

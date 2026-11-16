@@ -59,6 +59,13 @@ export function useMinuteChart(options: {
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+  /**
+   * 数据代次：每次 `loadData` 自增。图表和 klineData 跨标的重用，切股时
+   * 上一只股票的增量请求可能还在路上；回来后代次对不上就丢掉，避免把旧
+   * 标的的 bar / 昨收写进新标的。
+   */
+  let dataEpoch = 0;
+
   /** subscribeBar 回调引用，增量推送数据到图表避免全量重绘导致的抖动 */
   let barSubscriber: ((bar: KCLineData) => void) | null = null;
 
@@ -369,11 +376,14 @@ export function useMinuteChart(options: {
     // 分时图增量刷新：通过 barSubscriber 推送增量 bar 避免全量重绘闪烁
     refreshTimer = setInterval(async () => {
       if (loading.value) return;
+      const epoch = dataEpoch;
       try {
         const data = await invoke<MinuteData[]>('get_intraday', {
           code: unref(options.code),
           market: unref(options.market),
         });
+        // 切股后旧定时器的请求才回来：整批丢弃，别写进新标的的图表/缓存。
+        if (epoch !== dataEpoch) return;
         // 丢掉还没走到的时刻。数据源的钟点要先换算到与 bar 时间戳同一口径再比（见 beijingNow），
         // 否则本机不在 UTC+8 时整段会话都会被判成未来、一并丢光
         const boundary = beijingNow();
@@ -412,6 +422,8 @@ export function useMinuteChart(options: {
   // ---- 数据加载 ----
 
   async function loadData() {
+    // 先换代号：从这一刻起，旧标的的增量请求回来都会被丢掉。
+    dataEpoch += 1;
     if (abortController) {
       abortController.abort();
     }
