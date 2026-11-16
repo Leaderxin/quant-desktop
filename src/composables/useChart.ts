@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { KLineData as KCLineData, DataLoader } from 'klinecharts';
 import type { KLineData, PeriodType, SubIndicatorType, MainOverlayType } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
+import { subPaneHeight } from '@/utils/paneSize';
 import { minuteKSpan } from './minutePeriod';
 import { useChartCore } from './useChartCore';
 
@@ -22,7 +23,7 @@ export function useChart(options: {
   mainOverlay?: MaybeRef<MainOverlayType>;
 }) {
   const settings = useSettingsStore();
-  const { chart, loading, error, currentPeriod, themeColors, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
+  const { chart, loading, error, currentPeriod, volIndicatorConfig, periodToKlinecharts, syncPrecision: syncPrecisionCore, initChartCore, disposeChart: disposeChartCore, reapplyStyles } = useChartCore(options);
 
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -224,22 +225,16 @@ export function useChart(options: {
 
   /**
    * 副图高度。klinecharts 的 pane 高度是**固定像素**，主图吃掉剩余空间；
-   * 默认 100px 在小视口下会占到图区三分之一以上，喧宾夺主。这里按图区高度的
-   * 28% 计算并夹在 48–80px：大窗口不会无限长高，小窗口也保得住主图的面积。
+   * 默认 100px 在小视口下会占到图区三分之一以上，喧宾夺主。口径见 utils/paneSize
+   * （分时图的成交量副图共用同一份，切周期时高度不跳）。
    */
-  const SUB_PANE_RATIO = 0.28;
-  const SUB_PANE_MIN = 48;
-  const SUB_PANE_MAX = 80;
-
-  function subPaneHeight(): number {
-    const total = options.chartRef.value?.clientHeight ?? 0;
-    if (!(total > 0)) return 72;
-    return Math.round(Math.min(SUB_PANE_MAX, Math.max(SUB_PANE_MIN, total * SUB_PANE_RATIO)));
+  function currentSubPaneHeight(): number {
+    return subPaneHeight(options.chartRef.value?.clientHeight ?? 0);
   }
 
   function applySubPaneHeight() {
     if (!chart.value) return;
-    chart.value.setPaneOptions({ id: SUB_PANE_ID, height: subPaneHeight() });
+    chart.value.setPaneOptions({ id: SUB_PANE_ID, height: currentSubPaneHeight() });
   }
 
   /** 图区高度随详情面板/窗口变化时同步副图比例（不监听会一直停留在初始像素值） */
@@ -255,32 +250,11 @@ export function useChart(options: {
     paneResizeObserver.observe(el);
   }
 
-  /**
-   * VOL 副图自定义外观（成交量 + MA5/10/20 均量线，柱子配色随主题）。
-   * 注意：不覆盖内置 `figures` —— v10 内置 VOL 的 volume 柱用了一个 styles 回调函数
-   * 从 `indicator.styles.bars[0]` 取色，若用静态 figure 覆盖会丢失取色逻辑导致柱子不显示。
-   * 因此仅通过 `styles.bars[0]` 传入柱子配色，保留内置 figures/calc。
-   */
-  function volIndicatorConfig() {
-    const colors = themeColors();
-    return {
-      name: 'VOL',
-      paneId: SUB_PANE_ID,
-      shortName: '成交量',
-      calcParams: [5, 10, 20],
-      styles: {
-        bars: [
-          { upColor: colors.volumeBarUp, downColor: colors.volumeBarDown, noChangeColor: colors.volumeBarNoChange },
-        ],
-      },
-    };
-  }
-
   function syncSubIndicator(name: SubIndicatorType) {
     if (!chart.value) return;
     // v10：createIndicator(value, isStack?)，paneId 须写入 value 内；同一 paneId 且 isStack=false 会替换旧指标。
     // VOL 需带自定义外观（v10 overrideIndicator 仅对已存在指标生效，故在创建时一次性传入）。
-    const create = name === 'VOL' ? volIndicatorConfig() : { name, paneId: SUB_PANE_ID };
+    const create = name === 'VOL' ? volIndicatorConfig(SUB_PANE_ID) : { name, paneId: SUB_PANE_ID };
     chart.value.createIndicator(create as any);
     // 切换指标可能重建 pane（回到默认 100px），每次创建后都按当前图高再定一次
     applySubPaneHeight();
@@ -420,7 +394,7 @@ export function useChart(options: {
   watch(() => [settings.theme, settings.colorScheme], () => {
     reapplyStyles();
     if (chart.value && unref(options.subIndicator) === 'VOL') {
-      chart.value.overrideIndicator(volIndicatorConfig() as any);
+      chart.value.overrideIndicator(volIndicatorConfig(SUB_PANE_ID) as any);
     }
   });
 
@@ -436,6 +410,17 @@ export function useChart(options: {
     });
   }
 
+  /**
+   * 完整重放主题样式。reapplyStyles 只更新全局样式，VOL 的柱子配色是创建指标时的
+   * 实例级 styles，压不到已存在的指标，需要再 override 一次。
+   */
+  function applyTheme() {
+    reapplyStyles();
+    if (chart.value && unref(options.subIndicator) === 'VOL') {
+      chart.value.overrideIndicator(volIndicatorConfig(SUB_PANE_ID) as any);
+    }
+  }
+
   return {
     chart,
     loading,
@@ -444,6 +429,6 @@ export function useChart(options: {
     initChart,
     loadData,
     disposeChart,
-    applyTheme: reapplyStyles,
+    applyTheme,
   };
 }

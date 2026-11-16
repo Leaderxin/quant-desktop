@@ -75,6 +75,35 @@ function lastSessionDay(stamped: Stamped[]): string {
   return stamped[stamped.length - 1].day;
 }
 
+/**
+ * 分时均价（当日累计 VWAP）。
+ *
+ * 后端 `MinuteData.avg_price` 目前并不是真的均价：腾讯 mkline 没有这个字段，新浪的
+ * 5 分钟 K 线也没有，两个适配器都拿 bar 的 `open` 顶上（见 tencent.rs / sina.rs）。
+ * 直接画会得到一条和价格线几乎重合的伪均价线，所以在这里自己累计：
+ * `Σ(典型价 × 成交量) / Σ成交量`，典型价取 `(high + low + close) / 3`。
+ *
+ * 传入的必须是**同一个交易日**、按时间升序的 bar（mapMinuteBars 的输出即是），
+ * 累计结果才对得上「从开盘到现在」的均价。成交量为 0 的 bar（停牌、缺数据）
+ * 不贡献成交额，均价保持上一根的累计值；累计成交量仍为 0（首根就没有成交）
+ * 时退回该根收盘价，避免把均价画成 0。
+ */
+export function cumulativeAvgPrices(
+  bars: readonly { high?: number; low?: number; close: number; volume?: number }[],
+): number[] {
+  let amount = 0;
+  let volume = 0;
+  return bars.map((bar) => {
+    const high = Number.isFinite(bar.high) ? (bar.high as number) : bar.close;
+    const low = Number.isFinite(bar.low) ? (bar.low as number) : bar.close;
+    const typical = (high + low + bar.close) / 3;
+    const vol = Number.isFinite(bar.volume) ? (bar.volume as number) : 0;
+    amount += typical * vol;
+    volume += vol;
+    return volume > 0 ? amount / volume : bar.close;
+  });
+}
+
 /** 时间戳所属的交易日 `YYYY-MM-DD`（与 stamp 同口径：按本机时区还原出的那一天） */
 export function sessionKeyOf(timestamp: number): string {
   const d = new Date(timestamp);
@@ -82,7 +111,8 @@ export function sessionKeyOf(timestamp: number): string {
 }
 
 /**
- * 分时图 bar：只保留数据里最后一个交易日，按时间升序、时间戳去重。
+ * 分时图 bar：只保留数据里最后一个交易日，按时间升序、时间戳去重，并补上当日累计均价
+ * （`avgPrice`，见 cumulativeAvgPrices）。
  * @param base 时间戳缺日期时的基准日（默认当前时间），仅为兼容旧后端存在。
  */
 export function mapMinuteBars(data: MinuteData[], base: Date = new Date()): KCLineData[] {
@@ -102,13 +132,16 @@ export function mapMinuteBars(data: MinuteData[], base: Date = new Date()): KCLi
     if (s.day === session) byTimestamp.set(s.bar.timestamp, s.bar);
   }
 
-  return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
+  const bars = [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp);
+  const avgPrices = cumulativeAvgPrices(bars);
+  return bars.map((bar, i) => ({ ...bar, avgPrice: avgPrices[i] }));
 }
 
 /**
  * 所画交易日的昨收 —— 窗口里紧邻它前面那根 bar 的收盘价，也就是上一个交易日的收盘。
  *
- * 纵轴以昨收为中心对称，而「昨收」是相对**画出来那一天**说的：盘前窗口里画的是昨日行情，
+ * 纵轴的 0%（涨跌幅刻度与自适应区间的锚点）是相对**画出来那一天**说的：盘前窗口里画的是
+ * 昨日行情，
  * 这时实时行情的 `price - change` 说的是今日昨收，两者差着昨日一整个涨跌幅，曲线会被推到
  * 中心线一侧。所以基准优先从数据里取。
  *

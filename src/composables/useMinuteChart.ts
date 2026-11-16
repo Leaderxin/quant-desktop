@@ -1,16 +1,46 @@
 import { ref, watch, onUnmounted, type Ref, type MaybeRef, unref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { registerIndicator } from 'klinecharts';
 import type { AxisCreateRangeParams, AxisCreateTicksParams, AxisRange, AxisTick, KLineData as KCLineData, DataLoader, YAxisOverride } from 'klinecharts';
 import type { MinuteData } from '@/types';
+import { useSettingsStore } from '@/stores/settings';
+import { hexToRgba } from '@/utils/color';
 import { beijingNow, mapMinuteBars, sessionKeyOf, sessionPrevClose, sessionUpdate } from '@/utils/minuteBars';
-import { inferBarMinutes, minuteAxisLayout, percentText, sessionFits, sessionTicks, symmetricRange } from '@/utils/minuteAxis';
+import { adaptiveRange, inferBarMinutes, minuteAxisLayout, percentText, sessionFits, sessionTicks } from '@/utils/minuteAxis';
+import { subPaneHeight } from '@/utils/paneSize';
 import { useChartCore } from './useChartCore';
+
+const CANDLE_PANE = 'candle_pane';
+/** 均价线指标名 — 注册一次，所有分时图共用 */
+const AVG_PRICE_INDICATOR = 'MINUTE_AVG_PRICE';
+/** 成交量副图 pane — 与 K 线的 sub_indicator_pane 分开，互不干扰 */
+const VOLUME_PANE_ID = 'minute_volume_pane';
+
+/**
+ * 均价线指标：价格类指标（series: 'price'），画在 candle pane 上，与价格线共用纵轴。
+ *
+ * VWAP 不在这里算：`MinuteData.avg_price` 在两个适配器里都只是 bar 的开盘价（见
+ * minuteBars.cumulativeAvgPrices 的注释），真正的当日累计均价在前端一次算好放在
+ * bar 的 `avgPrice` 上 —— 这里只负责把算好的值喂给 klinecharts。
+ */
+registerIndicator({
+  name: AVG_PRICE_INDICATOR,
+  // 图例并入蜡烛 tooltip（见 useChartCore 的 legend.template），指标自己那行要彻底空掉：
+  // shortName 为空 → 不画名字；figure 不带 title → 不画数值行。
+  shortName: '',
+  series: 'price',
+  figures: [{ key: 'avgPrice', type: 'line' }],
+  calc: (dataList) =>
+    dataList.map((bar) => ({
+      avgPrice: typeof bar.avgPrice === 'number' ? bar.avgPrice : bar.close,
+    })),
+});
 
 /**
  * 分时图 composable — 仅用于 MinuteChart 组件。
  * 不含副图指标、K 线懒加载等逻辑，与 K 线图表完全隔离。
  * 数据映射（bar 构造 + 只取当前交易日）见 @/utils/minuteBars；
- * 坐标轴（横轴固定一个交易日、纵轴以昨收对称）见 @/utils/minuteAxis。
+ * 坐标轴（横轴固定一个交易日、纵轴自适应但保留 0% 基准）见 @/utils/minuteAxis。
  */
 export function useMinuteChart(options: {
   chartRef: Ref<HTMLElement | null>;
@@ -23,7 +53,8 @@ export function useMinuteChart(options: {
    */
   prevClose?: MaybeRef<number | undefined>;
 }) {
-  const { chart, loading, error, periodToKlinecharts, syncPrecision, initChartCore, disposeChart: coreDispose, reapplyStyles } = useChartCore(options);
+  const settings = useSettingsStore();
+  const { chart, loading, error, periodToKlinecharts, syncPrecision, themeColors, volIndicatorConfig, initChartCore, disposeChart: coreDispose, reapplyStyles } = useChartCore(options);
 
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -112,18 +143,21 @@ export function useMinuteChart(options: {
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(() => {
       // 先让 klinecharts 自己的 ResizeObserver 更新内部尺寸，下一帧再按新宽度重排，
-      // 否则这里读到的还是旧宽度
-      requestAnimationFrame(() => applySessionAxis());
+      // 否则这里读到的还是旧宽度；副图高度也跟着图区高度重算
+      requestAnimationFrame(() => {
+        applyVolumePaneHeight();
+        applySessionAxis();
+      });
     });
     resizeObserver.observe(el);
   }
 
   // ---- 纵轴：价格 + 涨跌幅双刻度 ----
-  // 分时图的纵轴以昨收为中心对称（0.00% 在正中）：右侧价格刻度、左侧涨跌幅刻度，
-  // 两条轴共用同一个区间，所以刻度逐行对应。昨收拿不到时两条轴都不装 ——
+  // 右侧价格刻度、左侧涨跌幅刻度，两条轴共用同一个区间，所以刻度逐行对应。
+  // 区间不强制以昨收为中心（见 adaptiveRange）：单边行情下曲线仍能占满画布，
+  // 同时 0% 线两侧各留一条最小可见带。昨收拿不到时两条轴都不装 ——
   // 已经装着的也要摘掉，见 applyPriceScale。
 
-  const CANDLE_PANE = 'candle_pane';
   const PERCENT_AXIS_ID = 'minute_percent';
   const BASELINE_OVERLAY_ID = 'minute_prev_close';
 
@@ -184,7 +218,7 @@ export function useMinuteChart(options: {
     c.createYAxis(percentAxis);
 
     // 两条轴共用的区间。gap 也得一起设：默认是「上 20% / 下 10%」的非对称留白，
-    // 会把对称区间推歪。昨收无效时把 klinecharts 算好的区间原样交回去，
+    // 会叠加到自适应区间上再放大一次。昨收无效时把 klinecharts 算好的区间原样交回去，
     // 免得停牌股那种拿不到昨收的标的被画成压在顶上的一条线。
     c.overrideYAxis({
       paneId: CANDLE_PANE,
@@ -192,7 +226,7 @@ export function useMinuteChart(options: {
       createRange: (params: AxisCreateRangeParams): AxisRange => {
         const base = prevCloseValue();
         if (base <= 0) return params.defaultRange;
-        const { from, to } = symmetricRange(klineData.value, base);
+        const { from, to } = adaptiveRange(klineData.value, base);
         return {
           from, to, range: to - from,
           realFrom: from, realTo: to, realRange: to - from,
@@ -201,7 +235,8 @@ export function useMinuteChart(options: {
       },
     });
 
-    // 昨收基准线（区间正中）。锁住不给拖，默认的点/坐标轴小标签也不画。
+    // 昨收基准线（0% 基准）。纵轴区间是自适应的，这条线不保证落在正中。
+    // 锁住不给拖，默认的点/坐标轴小标签也不画。
     // 颜色跟蜡烛的 noChange 一样写死一个中性灰：深浅主题都读得出来，
     // 也就不必在切主题时重建这条线。
     c.removeOverlay({ id: BASELINE_OVERLAY_ID });
@@ -218,10 +253,112 @@ export function useMinuteChart(options: {
     });
   }
 
+  // ---- 主图：价格线配色 + 均价线 + 成交量副图 ----
+  // A 股分时图的两项标配：价格线随涨跌变色（相对昨收），以及黄色的当日累计均价线。
+  // 成交量另起一个副图窗格，横轴与主图共用（klinecharts 的 x 轴跨 pane 对齐）。
+
+  /** 已装到图上的价格线颜色，避免 5s 刷新里价格方向没变也重设一次样式 */
+  let installedLineColor = '';
+
+  /** 价格线颜色：高于昨收缴红、低于缴绿、持平中性灰；昨收/数据没到位时退回主题强调色 */
+  function minuteLineColor(colors: ReturnType<typeof themeColors>): string {
+    const prev = prevCloseValue();
+    const last = klineData.value[klineData.value.length - 1];
+    if (prev <= 0 || !last || !Number.isFinite(last.close)) return colors.lineColor;
+    if (last.close > prev) return colors.up;
+    if (last.close < prev) return colors.down;
+    return colors.noChange;
+  }
+
+  /**
+   * 价格线与其下方的渐变填充。
+   * @param force 主题切换/重建图表后强制重设：applyChartStyles 会把 lineColor 写回
+   *              默认蓝，颜色数值没变也得覆盖回来
+   */
+  function applyMinuteLineStyle(force = false) {
+    const c = chart.value;
+    if (!c) return;
+    const color = minuteLineColor(themeColors());
+    if (!force && color === installedLineColor) return;
+    installedLineColor = color;
+    c.setStyles({
+      candle: {
+        area: {
+          lineSize: 1.5,
+          lineColor: color,
+          // 渐变方向与内置默认一致：offset 0 在底部、1 靠近曲线
+          backgroundColor: [
+            { offset: 0, color: hexToRgba(color, 0.02) },
+            { offset: 1, color: hexToRgba(color, 0.18) },
+          ],
+        },
+      },
+    });
+  }
+
+  /** 已应用过的副图高度；-1 表示还没设过 */
+  let appliedVolumePaneHeight = -1;
+
+  /** 成交量副图高度与 K 线的指标副图共用同一份口径（28%，夹在 48–80px） */
+  function applyVolumePaneHeight(force = false) {
+    if (!chart.value) return;
+    const height = subPaneHeight(options.chartRef.value?.clientHeight ?? 0);
+    // 水平 resize（高度不变）时不重复 setPaneOptions：它每次都会 setBounding + 置 shouldLayout
+    if (!force && height === appliedVolumePaneHeight) return;
+    appliedVolumePaneHeight = height;
+    chart.value.setPaneOptions({ id: VOLUME_PANE_ID, height });
+  }
+
+  /** 补上均价线与成交量副图。换标的时图表实例是复用的，已存在就不要再创建 */
+  function syncMinuteIndicators() {
+    const c = chart.value;
+    if (!c) return;
+    if (c.getIndicators({ paneId: CANDLE_PANE, name: AVG_PRICE_INDICATOR }).length === 0) {
+      c.createIndicator({
+        name: AVG_PRICE_INDICATOR,
+        paneId: CANDLE_PANE,
+        // 空短名：tooltip 图例已经并进蜡烛那行，指标自己不再占一行
+        shortName: '',
+        styles: { lines: [{ color: themeColors().avgLineColor, size: 1 }] },
+      } as any, true);
+    }
+    if (c.getIndicators({ paneId: VOLUME_PANE_ID }).length === 0) {
+      // calcParams 传空数组：分时图只画量柱，不要内置的 MA5/10/20 均量线
+      c.createIndicator(volIndicatorConfig(VOLUME_PANE_ID, []) as any);
+    }
+    // 新建/复用副图时强制应用一次高度（-1 初始值之外，重建时也要设回去）
+    applyVolumePaneHeight(true);
+  }
+
+  /**
+   * 分钟图特有的主题样式：价格线颜色按涨跌重算，均价线/量柱的实例级配色也要跟着令牌走。
+   * useChartCore 的 theme watcher 只负责通用样式（且会把 area.lineColor 写回默认蓝），
+   * 所以这里必须强制重设，不能依赖 installedLineColor 的缓存。
+   */
+  function applyMinuteThemeStyles() {
+    const c = chart.value;
+    if (!c) return;
+    applyMinuteLineStyle(true);
+    c.overrideIndicator({
+      name: AVG_PRICE_INDICATOR,
+      paneId: CANDLE_PANE,
+      styles: { lines: [{ color: themeColors().avgLineColor, size: 1 }] },
+    } as any);
+    if (c.getIndicators({ paneId: VOLUME_PANE_ID }).length > 0) {
+      c.overrideIndicator(volIndicatorConfig(VOLUME_PANE_ID, []) as any);
+    }
+  }
+
+  // 主题/涨跌配色翻转：通用样式由 useChartCore 的 watcher 重放，这里补分钟图特有的部分
+  watch(() => [settings.theme, settings.colorScheme], applyMinuteThemeStyles);
+
   // 兜底昨收是异步到的（行情比分钟内数据晚一拍），到了再算一次；
   // 数据里能算出昨收时，上面的守卫会把它挡掉
   if (options.prevClose) {
-    watch(() => unref(options.prevClose), () => applyPriceScale());
+    watch(() => unref(options.prevClose), () => {
+      applyPriceScale();
+      applyMinuteLineStyle();
+    });
   }
 
   // ---- 自动刷新 ----
@@ -258,6 +395,7 @@ export function useMinuteChart(options: {
         }
         applySessionAxis();
         applyPriceScale(reset);
+        applyMinuteLineStyle();
       } catch (e) {
         console.error('[useMinuteChart] incremental update failed:', e);
       }
@@ -293,6 +431,11 @@ export function useMinuteChart(options: {
       if (data.length) {
         klineData.value = mapMinuteBars(data);
         dataPrevClose = sessionPrevClose(data);
+      } else {
+        // 空响应必须跟着标的清空：图表实例是复用的，留着上一只股票的 bar/昨收，
+        // 下面的 setSymbol + setDataLoader 会把旧数据当成新标的重新喂进去。
+        klineData.value = [];
+        dataPrevClose = null;
       }
 
       if (signal.aborted) return;
@@ -305,6 +448,7 @@ export function useMinuteChart(options: {
         applySessionAxis();
         // 数据整份换过：昨收可能恰好相等，但基准线的时间戳得跟着新数据走
         applyPriceScale(true);
+        applyMinuteLineStyle(true);
       }
       startAutoRefresh();
     } catch (e) {
@@ -328,6 +472,8 @@ export function useMinuteChart(options: {
     // 缩完柱宽就不再等于「图宽 / 格子数」。分时图本来也不给拖，索性关掉这两个手势。
     chart.value.setScrollEnabled(false);
     chart.value.setZoomEnabled(false);
+    syncMinuteIndicators();
+    applyMinuteLineStyle(true);
     applyPriceScale();
     observeResize();
   }
@@ -348,12 +494,21 @@ export function useMinuteChart(options: {
   // 不会停这里起的 5s 轮询，也不会断开新加的 ResizeObserver —— 切一次周期就漏一份
   onUnmounted(() => disposeChart());
 
+  /**
+   * 完整重放主题样式（通用 + 分钟图特有）。只调 core 的 reapplyStyles 会把价格线打回
+   * 默认蓝，而 installedLineColor 缓存会让下一次非强制刷新无法恢复。
+   */
+  function applyTheme() {
+    reapplyStyles();
+    applyMinuteThemeStyles();
+  }
+
   return {
     loading,
     error,
     initChart,
     loadData,
     disposeChart,
-    applyTheme: reapplyStyles,
+    applyTheme,
   };
 }
