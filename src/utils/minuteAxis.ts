@@ -134,7 +134,7 @@ export function sessionTicks(plotWidth: number, barSpace: number, barMinutes: nu
  * 0% 两侧的保底幅度（昨收的 1%）。开盘头一分钟涨跌往往不到 0.05%，
  * 不兜底的话纵轴会被放大到看不出任何幅度；单边行情下也靠它把 0% 线留在图内。
  */
-const MIN_RANGE_RATE = 0.01;
+export const MIN_RANGE_RATE = 0.01;
 
 /**
  * 分时图纵轴区间：覆盖价格线与均价线，但不强制以昨收为中心对称。

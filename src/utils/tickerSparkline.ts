@@ -1,11 +1,13 @@
 // src/utils/tickerSparkline.ts — 行情条迷你分时线的纯几何计算
 //
-// 只用价格轴：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值（与主图一致）。
-// 小波动不会被放大成噪声，接近涨跌停的日子自然撑满。0% 虚线就是昨收参考线。
+// 只用价格轴：以昨收为中心，半幅取数据最大偏离与昨收 1% 的较大值。1% 保底与主图
+// 共用 `minuteAxis.MIN_RANGE_RATE`；区别是主图 `adaptiveRange` 上下不对称，这里
+// 必须对称（0% 虚线才能落在正中）。小波动不会被放大成噪声，接近涨跌停的日子
+// 自然撑满。0% 虚线就是昨收参考线。
 //
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
 
-import { SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
+import { MIN_RANGE_RATE, SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
 import { beijingNow } from './minuteBars';
 import type { TickerChartStyle } from './prefs';
 
@@ -13,9 +15,6 @@ export interface SparklineRange {
   from: number;
   to: number;
 }
-
-/** 与主图 `minuteAxis.ts` 的 MIN_RANGE_RATE 保持一致：涨跌幅很小时纵轴不被放大。 */
-const MIN_RANGE_RATE = 0.01;
 
 function firstValidClose(bars: readonly { close: number }[]): number {
   for (const bar of bars) {

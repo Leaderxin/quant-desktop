@@ -455,17 +455,6 @@ export function useChart(options: {
     });
   }
 
-  /**
-   * 完整重放主题样式。reapplyStyles 只更新全局样式，VOL 的柱子配色是创建指标时的
-   * 实例级 styles，压不到已存在的指标，需要再 override 一次。
-   */
-  function applyTheme() {
-    reapplyStyles();
-    if (chart.value && unref(options.subIndicator) === 'VOL') {
-      chart.value.overrideIndicator(volIndicatorConfig(SUB_PANE_ID) as any);
-    }
-  }
-
   return {
     chart,
     loading,
@@ -474,6 +463,5 @@ export function useChart(options: {
     initChart,
     loadData,
     disposeChart,
-    applyTheme,
   };
 }

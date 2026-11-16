@@ -54,7 +54,7 @@ export function useMinuteChart(options: {
   prevClose?: MaybeRef<number | undefined>;
 }) {
   const settings = useSettingsStore();
-  const { chart, loading, error, periodToKlinecharts, syncPrecision, themeColors, volIndicatorConfig, initChartCore, disposeChart: coreDispose, reapplyStyles } = useChartCore(options);
+  const { chart, loading, error, periodToKlinecharts, syncPrecision, themeColors, volIndicatorConfig, initChartCore, disposeChart: coreDispose } = useChartCore(options);
 
   let abortController: AbortController | null = null;
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -509,21 +509,11 @@ export function useMinuteChart(options: {
   // 不会停这里起的 5s 轮询，也不会断开新加的 ResizeObserver —— 切一次周期就漏一份
   onUnmounted(() => disposeChart());
 
-  /**
-   * 完整重放主题样式（通用 + 分钟图特有）。只调 core 的 reapplyStyles 会把价格线打回
-   * 默认蓝，而 installedLineColor 缓存会让下一次非强制刷新无法恢复。
-   */
-  function applyTheme() {
-    reapplyStyles();
-    applyMinuteThemeStyles();
-  }
-
   return {
     loading,
     error,
     initChart,
     loadData,
     disposeChart,
-    applyTheme,
   };
 }
