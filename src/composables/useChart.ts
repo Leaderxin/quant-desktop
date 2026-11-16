@@ -364,6 +364,9 @@ export function useChart(options: {
       startAutoRefresh(period);
     } catch (e) {
       if (signal.aborted) return;
+      // 加载失败后不再前向翻页：hasMoreForward 在开头被重置为 true，而错误
+      // 遮罩后面仍是旧图表；旧 loader 补一次 forward 会把最近一段 prepend 进去。
+      hasMoreForward.value = false;
       error.value = `加载数据失败: ${String(e).slice(0, 160)}`;
       console.error('[useChart] loadData failed:', e);
     } finally {

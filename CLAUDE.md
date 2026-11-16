@@ -33,7 +33,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 - `stores/market.spec.ts` — 刷新并发：过期响应不落地、in-flight 与切时段交错。
 - `utils/hotkey.spec.ts` — 裸键/只带 Shift 的组合不得当热键，修饰键顺序两端一致。
 - `composables/useTickerWindowHeight.spec.ts` — 行情条并发改高只补偿一次。
-- `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调；forward 只回传新增 bar，分钟 K 不声明还有更早数据。
+- `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调；forward 只回传新增 bar，分钟 K 不声明还有更早数据，加载失败后不再前向翻页。
 - `utils/tickerSparkline.spec.ts` — 早盘/全天横轴与两种画法的绘制指令。
 
 不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（短信分类、响应解析、时段、分组归属/迁移、日志工具）；`vue-tsc` 负责类型；暂无 lint 命令。

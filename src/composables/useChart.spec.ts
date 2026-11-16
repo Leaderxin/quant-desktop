@@ -222,6 +222,39 @@ describe('useChart 切股丢弃旧请求', () => {
     expect(moreForward).toBe(false);
   });
 
+  it('加载失败后不再前向翻页', async () => {
+    invokeMock.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd !== 'get_kline') return undefined;
+      if (args?.code === 'sh600000') return A_MAIN;
+      throw new Error('B failed');
+    });
+
+    const { api, code } = mountChart();
+    await api.initChart('daily');
+    await api.loadData('daily');
+    code.value = 'sh600001';
+    await api.loadData('daily');
+    vi.mocked(invokeMock).mockClear();
+
+    let forwarded: unknown[] | null = null;
+    await mocks.state.loader!.getBars({
+      type: 'forward',
+      symbol: { ticker: 'sh600001' },
+      period: { type: 'day', span: 1 },
+      timestamp: null,
+      callback: (data: unknown[]) => {
+        forwarded = data;
+      },
+    });
+
+    expect(forwarded).toEqual([]);
+    expect(
+      invokeMock.mock.calls.filter(
+        ([, args]) => (args as { count?: number } | undefined)?.count === 200,
+      ),
+    ).toHaveLength(0);
+  });
+
   it('新标的加载失败时，旧标的的自动刷新定时器必须停掉', async () => {
     vi.useFakeTimers();
     try {
