@@ -48,7 +48,9 @@ export interface TickerWindowHeightOptions {
  * `content` 必须是**内容高度不受窗口高度影响**的元素（自身不写 height:100%），
  * 否则「量高度 → 改窗口 → 再量」会自我循环。
  *
- * 需要 `core:window:allow-set-size` 等权限，见 capabilities/default.json。
+ * 改尺寸走 `set_ticker_size` 命令（后端顺手把 min/max 钉成同一个值），
+ * webview 没有 `core:window:allow-set-size` 权限；这里只需要读几何与改位置，
+ * 见 capabilities/default.json。
  */
 export function useTickerWindowHeight(
   content: Ref<HTMLElement | null>,
@@ -78,6 +80,19 @@ export function useTickerWindowHeight(
   /** 已写回 `ticker_height` 的高度，避免强制同步时重复写库。 */
   let lastPersisted = 0;
   let disposed = false;
+  /**
+   * apply 的串行化状态。
+   *
+   * 一条 apply 链要跨好几次异步 IPC（outerSize → set_ticker_size →
+   * outerSize/outerPosition → setPosition，见下）。重试定时器、
+   * `visibilitychange`、ResizeObserver/rAF 会从不同路径同时进来；两条链若在
+   * 「读到旧高度、还没看到新尺寸」的窗口里交错，就会各自补偿一次 y —— 底边
+   * 被多推一次，而 Moved 处理器会把这个位置存进库，又变回跨重启漂移。
+   * 同一时刻只跑一条链，其余合并成一次尾随调用（保留 force，重试不会被吞掉）。
+   */
+  let applying = false;
+  let pending = false;
+  let pendingForce = false;
 
   function measure(): number {
     const el = content.value;
@@ -87,20 +102,46 @@ export function useTickerWindowHeight(
   }
 
   /**
+   * 串行化入口：同一时刻只跑一条 apply 链，期间到达的调用合并成一次尾随调用。
+   *
+   * 尾随调用保留 force —— 缩放变化那几轮重试的目标高度没变，靠 force 才能
+   * 绕过 `lastApplied` 的「无变化」判断。
+   */
+  async function apply(force = false) {
+    if (applying) {
+      pending = true;
+      pendingForce = pendingForce || force;
+      return;
+    }
+    applying = true;
+    try {
+      await applyOnce(force);
+    } finally {
+      applying = false;
+      if (pending && !disposed) {
+        const nextForce = pendingForce;
+        pending = false;
+        pendingForce = false;
+        void apply(nextForce);
+      }
+    }
+  }
+
+  /**
    * 把窗口高度设成当前内容高度。
    *
-   * 行情条贴在屏幕右下角，但 setSize 以左上角为锚伸缩：长高会把下边缘
+   * 行情条贴在屏幕右下角，但改尺寸以左上角为锚伸缩：长高会把下边缘
    * 推出屏幕，压矮则让窗口悬在半空。所以改完尺寸后按「物理高度差」把
    * y 反向挪回去，把下边缘钉在原地（新位置会被 lib.rs 的 Moved 处理器
    * 照常存进 SQLite）。行情条无窗口装饰（inner == outer），outerSize 量
-   * 到的就是 setSize 设的那个高度。
+   * 到的就是命令设的那个高度。
    */
-  async function apply(force = false) {
+  async function applyOnce(force = false) {
     const target = measure();
     if (target <= 0) return;
     if (!isReady()) return;
     if (!force && Math.abs(target - lastApplied) < EPSILON) return;
-    // 预读当前物理高度：setSize 一旦生效窗口矩形就变了，位移量得拿改之前的算。
+    // 预读当前物理高度：改尺寸一旦生效窗口矩形就变了，位移量得拿改之前的算。
     let prevHeight: number | null = null;
     try {
       prevHeight = (await appWindow.outerSize()).height;
@@ -108,9 +149,9 @@ export function useTickerWindowHeight(
       // 读不到就只改高度、放弃锚定
     }
     try {
-      // 只调高度，宽度由后端按常量给（理由见 WIDTH 注释）。走 IPC 而不是
-      // `setSize`：后端那一步会把 min/max 尺寸提示一起钉成同一个值，窗口因此
-      // 不可被用户/WM 缩放 —— 直接在 webview 里 setSize 就绕过了它。
+      // 只调高度，宽度由后端按 `datasource::TICKER_WIDTH` 单点给（见文件头）。
+      // 走 IPC 而不是 `setSize`：后端那一步会把 min/max 尺寸提示一起钉成同一个
+      // 值，窗口因此不可被用户/WM 缩放 —— 直接在 webview 里 setSize 就绕过了它。
       await invoke('set_ticker_size', { height: Math.round(target) });
       lastApplied = target;
     } catch (e) {
@@ -118,8 +159,39 @@ export function useTickerWindowHeight(
       console.debug('[ticker] height sync skipped:', e);
       return;
     }
+    if (prevHeight !== null) {
+      try {
+        // 用改尺寸之后的真实高度差，而不是 target × scale 的估算：
+        // 125%/150% 下取整方向未必一致，估算值会累积出 1px 漂移。
+        let afterHeight = (await appWindow.outerSize()).height;
+        if (afterHeight === prevHeight) {
+          // 个别平台读回来的仍是旧值，退回按缩放估算（与旧实现一致）。
+          const scale = await appWindow.scaleFactor();
+          afterHeight = Math.round(target * scale);
+        }
+        const growth = afterHeight - prevHeight;
+        if (growth !== 0) {
+          const pos = await appWindow.outerPosition();
+          await appWindow.setPosition(new PhysicalPosition(pos.x, pos.y - growth));
+        }
+        // 后端把 min/max 钉成了同一个值（禁止用户缩放）。如果哪一天某个平台
+        // 连**我们的**改尺寸也一起夹住，症状是窗口底部永久多出一截空白 ——
+        // 那是一年前在 Linux 上踩过的坑，这里留一条能查的记录，而不是靠肉眼发现。
+        const scale = await appWindow.scaleFactor().catch(() => 1);
+        const wanted = Math.round(target * scale);
+        if (Math.abs(afterHeight - wanted) > 1) {
+          console.warn(
+            `[ticker] 窗口高度没跟上内容: 目标 ${wanted}px / 实际 ${afterHeight}px（内容 ${target} 逻辑像素 × ${scale}）`,
+          );
+        }
+      } catch (e) {
+        console.debug('[ticker] bottom-edge anchor skipped:', e);
+      }
+    }
     // 高度写回库：下次启动/显示前先按它设尺寸，位置才不会因为
     // 「先按配置高度建窗、再按内容长高」而每次重启向上漂移。
+    // 放在锚定之后：这条写库是一次额外的异步 IPC，夹在 set_ticker_size 和
+    // setPosition 之间只会拉长并发的危险窗口。
     if (Math.abs(target - lastPersisted) >= EPSILON) {
       try {
         await invoke('set_setting', { key: 'ticker_height', value: String(target) });
@@ -127,34 +199,6 @@ export function useTickerWindowHeight(
       } catch (e) {
         console.debug('[ticker] height persist skipped:', e);
       }
-    }
-    if (prevHeight === null) return;
-    try {
-      // 用 setSize 之后的真实高度差，而不是 target × scale 的估算：
-      // 125%/150% 下取整方向未必一致，估算值会累积出 1px 漂移。
-      let afterHeight = (await appWindow.outerSize()).height;
-      if (afterHeight === prevHeight) {
-        // 个别平台读回来的仍是旧值，退回按缩放估算（与旧实现一致）。
-        const scale = await appWindow.scaleFactor();
-        afterHeight = Math.round(target * scale);
-      }
-      const growth = afterHeight - prevHeight;
-      if (growth !== 0) {
-        const pos = await appWindow.outerPosition();
-        await appWindow.setPosition(new PhysicalPosition(pos.x, pos.y - growth));
-      }
-      // 后端把 min/max 钉成了同一个值（禁止用户缩放）。如果哪一天某个平台
-      // 连**我们的**改尺寸也一起夹住，症状是窗口底部永久多出一截空白 ——
-      // 那是一年前在 Linux 上踩过的坑，这里留一条能查的记录，而不是靠肉眼发现。
-      const scale = await appWindow.scaleFactor().catch(() => 1);
-      const wanted = Math.round(target * scale);
-      if (Math.abs(afterHeight - wanted) > 1) {
-        console.warn(
-          `[ticker] 窗口高度没跟上内容: 目标 ${wanted}px / 实际 ${afterHeight}px（内容 ${target} 逻辑像素 × ${scale}）`,
-        );
-      }
-    } catch (e) {
-      console.debug('[ticker] bottom-edge anchor skipped:', e);
     }
   }
 
@@ -249,6 +293,8 @@ export function useTickerWindowHeight(
     unlistenScale = null;
     stopRetries();
     if (syncRaf) cancelAnimationFrame(syncRaf);
+    pending = false;
+    pendingForce = false;
     lastApplied = 0;
   });
 }

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick, ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, type InvokeArgs } from '@tauri-apps/api/core';
 
 /**
  * useTickerWindowHeight 的窗口同步行为测试。
@@ -207,5 +207,44 @@ describe('useTickerWindowHeight', () => {
       key: 'ticker_height',
       value: '39',
     });
+  });
+
+  it('并发的两次 apply 只补偿一次 y：底边不会被推两次', async () => {
+    const raw = { scrollHeight: 24 };
+    const content = ref(raw as unknown as HTMLElement);
+    const ready = ref(true);
+    mountComposable(() => useTickerWindowHeight(content, { ready }));
+    await flushAsync();
+
+    // 初始落地：y = 1050、height = 30
+    expect(mocks.state.y + mocks.state.height).toBe(BOTTOM_EDGE);
+
+    // 把下一次 set_ticker_size 挂起，复现「两条链都读到了旧高度」的窗口。
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = vi.mocked(invoke).getMockImplementation()!;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: InvokeArgs) => {
+      if (cmd === 'set_ticker_size') await gate;
+      return original(cmd, args);
+    });
+
+    raw.scrollHeight = 39;
+    // 路径一：内容变化 → rAF → apply（卡在 set_ticker_size）
+    FakeResizeObserver.instances[0].callback();
+    flushRaf();
+    await flushAsync();
+    // 路径二：窗口变可见 → 直接 apply(true)。串行化后它只能排队。
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flushAsync();
+
+    release();
+    await flushAsync(30);
+
+    const moves = mocks.api.setPosition.mock.calls.map(([p]) => (p as { y: number }).y);
+    // 没有串行化时两条链都会减一次 19，第二次会读到已被推走的 y 再减一次。
+    expect(moves.filter((y) => y === 1031)).toHaveLength(1);
+    expect(mocks.state.y + mocks.state.height).toBe(BOTTOM_EDGE);
   });
 });

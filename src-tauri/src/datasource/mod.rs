@@ -98,15 +98,15 @@ pub const DEFAULT_INDEX_CODES: &[&str] = &[
 ];
 
 /// Ticker window default dimensions (logical pixels — keep in sync with
-/// `tauri.conf.json` → `app.windows[ticker]`, `WIDTH` in
-/// `useTickerWindowHeight.ts`, and `SPARKLINE_CANVAS_WIDTH`.
+/// `tauri.conf.json` → `app.windows[ticker]` and `SPARKLINE_CANVAS_WIDTH`;
+/// the frontend no longer carries a width constant).
 ///
 /// 宽度不是随手取的：内边距 16 + 文字列 98（价格 46 + 间距 4 + 涨跌 48）+
 /// 图前间距 8 + 分时图 75 = 197，凑到 210 留出零头。多要一分就是中间一块
 /// 空白，少要一分就会把数字列挤到溢出。
 ///
 /// The ticker's height is only a first-launch fallback: the frontend measures the
-/// real content height, calls `setSize`, and persists it to the internal
+/// real content height, calls `set_ticker_size`, and persists it to the internal
 /// `ticker_height` setting (see `useTickerWindowHeight.ts`). Startup and
 /// `set_ticker_visible` restore that saved height before restoring the window
 /// position, so the bottom-edge anchor never mistakes a size change for a move.
