@@ -7,6 +7,7 @@ import {
   sessionKeyOf,
   sessionPrevClose,
   sessionUpdate,
+  visibleMinuteBars,
 } from './minuteBars';
 
 /**
@@ -252,5 +253,37 @@ describe('beijingNow', () => {
     const [open] = mapMinuteBars([bar('2026-09-24 09:30')]);
     // 不管本机在哪个时区：北京 09:31 时，标着 09:30 的那根是过去的
     expect(open.timestamp).toBeLessThanOrEqual(beijingNow(Date.UTC(2026, 8, 24, 1, 31)));
+  });
+});
+
+describe('visibleMinuteBars', () => {
+  const at = (hour: number, minute: number) => new Date(2026, 8, 24, hour, minute).getTime();
+  const now = at(10, 58);
+
+  it('保留已完成 bar 与进行中的下一分钟（标签是分钟终点）', () => {
+    const bars = [{ timestamp: at(10, 57) }, { timestamp: at(10, 58) }, { timestamp: at(10, 59) }];
+    expect(visibleMinuteBars(bars, now)).toHaveLength(3);
+  });
+
+  it('丢掉一分钟以上的未来 bar', () => {
+    const bars = [{ timestamp: at(10, 57) }, { timestamp: at(10, 58) }, { timestamp: at(10, 59) }, { timestamp: at(11, 0) }];
+    expect(visibleMinuteBars(bars, now)).toEqual([
+      { timestamp: at(10, 57) },
+      { timestamp: at(10, 58) },
+      { timestamp: at(10, 59) },
+    ]);
+  });
+
+  it('5 分钟源（新浪备用）按 5 分钟余量放行进行中的那根', () => {
+    const bars = [at(10, 45), at(10, 50), at(10, 55), at(11, 0), at(11, 5)].map((timestamp) => ({ timestamp }));
+    // 11:01 时，进行中的 5 分钟块标签是 11:05
+    expect(visibleMinuteBars(bars, at(11, 1))).toHaveLength(5);
+    // 再远一根（11:10）不能进来
+    const withFuture = [...bars, { timestamp: at(11, 10) }];
+    expect(visibleMinuteBars(withFuture, at(11, 1))).toHaveLength(5);
+  });
+
+  it('空输入返回空数组', () => {
+    expect(visibleMinuteBars([], now)).toEqual([]);
   });
 });

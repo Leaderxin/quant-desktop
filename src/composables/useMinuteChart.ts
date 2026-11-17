@@ -5,7 +5,7 @@ import type { AxisCreateRangeParams, AxisCreateTicksParams, AxisRange, AxisTick,
 import type { MinuteData } from '@/types';
 import { useSettingsStore } from '@/stores/settings';
 import { hexToRgba } from '@/utils/color';
-import { beijingNow, mapMinuteBars, sessionKeyOf, sessionPrevClose, sessionUpdate } from '@/utils/minuteBars';
+import { mapMinuteBars, sessionKeyOf, sessionPrevClose, sessionUpdate, visibleMinuteBars } from '@/utils/minuteBars';
 import { adaptiveRange, inferBarMinutes, minuteAxisLayout, percentText, sessionFits, sessionTicks } from '@/utils/minuteAxis';
 import { subPaneHeight } from '@/utils/paneSize';
 import { useChartCore } from './useChartCore';
@@ -384,10 +384,9 @@ export function useMinuteChart(options: {
         });
         // 切股后旧定时器的请求才回来：整批丢弃，别写进新标的的图表/缓存。
         if (epoch !== dataEpoch) return;
-        // 丢掉还没走到的时刻。数据源的钟点要先换算到与 bar 时间戳同一口径再比（见 beijingNow），
-        // 否则本机不在 UTC+8 时整段会话都会被判成未来、一并丢光
-        const boundary = beijingNow();
-        const validBars = mapMinuteBars(data).filter((b) => b.timestamp <= boundary);
+        // 丢掉还没走到的时刻，但保留数据源返回的进行中分钟（标签比现在晚一分钟，
+        // 见 visibleMinuteBars）。不保留的话，5s 轮询也只能在整分钟边界推动曲线。
+        const validBars = visibleMinuteBars(mapMinuteBars(data));
         if (validBars.length === 0) return;
 
         const newLast = validBars[validBars.length - 1];
@@ -444,7 +443,8 @@ export function useMinuteChart(options: {
       if (signal.aborted) return;
 
       if (data.length) {
-        klineData.value = mapMinuteBars(data);
+        // 与 5s 增量刷新共用同一口径：保留进行中分钟，纵轴/横轴才不会漏算它
+        klineData.value = visibleMinuteBars(mapMinuteBars(data));
         dataPrevClose = sessionPrevClose(data);
       } else {
         // 空响应必须跟着标的清空：图表实例是复用的，留着上一只股票的 bar/昨收，

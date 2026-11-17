@@ -2,6 +2,7 @@
 
 import type { KLineData as KCLineData } from 'klinecharts';
 import type { MinuteData } from '@/types';
+import { inferBarMinutes } from './minuteAxis';
 
 /**
  * 分时图数据整形：MinuteData → 图表 bar。
@@ -200,4 +201,26 @@ export function beijingNow(now: number = Date.now()): number {
     shifted.getFullYear(), shifted.getMonth(), shifted.getDate(),
     shifted.getHours(), shifted.getMinutes(),
   ).getTime();
+}
+
+/**
+ * 过滤「明显还没走到」的 bar，但保留数据源返回的**进行中分钟**。
+ *
+ * 数据源的最后一根是当前这一分钟（腾讯 m1）或当前 5 分钟块（新浪备用源），
+ * 标签都是块终点，比 `beijingNow()` 晚 1~5 分钟。一并丢掉的话，分时图要等整块
+ * 走完才动 —— 5s 轮询也白搭。这里按数据自身的中位跨度留出未来余量，并把余量
+ * 夹在 1~5 分钟：两个数据源都能放行进行中的那根，明显更远的未来 bar 仍然丢弃。
+ *
+ * 首次加载与 5s 增量刷新必须共用这一条：两处口径不一致时会出现「图里有一根、
+ * klineData 里没有」，纵轴区间与横轴排版都会漏算进行中的那根。
+ */
+export function visibleMinuteBars<T extends { timestamp: number }>(
+  bars: readonly T[],
+  now: number = beijingNow(),
+): T[] {
+  if (bars.length === 0) return [];
+  // 中位跨度：腾讯 1 分钟、新浪 5 分钟；样本不足时 inferBarMinutes 返回 1
+  const intervalMinutes = Math.min(5, Math.max(1, inferBarMinutes(bars)));
+  const boundary = now + intervalMinutes * 60_000;
+  return bars.filter((bar) => bar.timestamp <= boundary);
 }
