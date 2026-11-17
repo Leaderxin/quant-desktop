@@ -29,7 +29,8 @@ import {
   sparklineBaselineY,
   sparklineCanvasPoints,
   sparklineSpanMinutes,
-  type SparklineRange,
+  withLiveTail,
+  type SparklinePalette,
 } from '@/utils/tickerSparkline';
 
 /**
@@ -37,7 +38,8 @@ import {
  *
  * 一屏最多 10 行、每行一个实例，15s 会变成持续对数据源的小轰炸；而分时是
  * 1 分钟粒度 —— 30s 已经比数据本身变得快一倍。报价与涨跌幅由主调度器每 2s
- * 推过来，不依赖这条线。
+ * 推过来，不依赖这条线：曲线**末端**也用实时报价追加一个点（见 withLiveTail），
+ * 所以这条轮询只负责补齐已走完的分钟，不负责让线动起来。
  */
 const POLL_TRADING_MS = 30_000;
 /** 午休 / 收盘 / 周末：降频，避免常驻窗口整夜空拉接口。 */
@@ -120,6 +122,10 @@ export interface TickerSparklineOptions {
   style: MaybeRef<TickerChartStyle>;
   /** 实时行情给的兜底昨收（`price - change`），数据里没有上一交易日时才用 */
   prevClose?: MaybeRef<number | undefined>;
+  /** 实时报价。用来在曲线末端追加一个点（见 withLiveTail），让末端跟着 2s 行情动 */
+  price?: MaybeRef<number | null | undefined>;
+  /** 报价时间（Unix 秒）；用于拒绝缓存里的上一交易日旧报价 */
+  quoteTime?: MaybeRef<number | undefined>;
 }
 
 export function useTickerSparkline(options: TickerSparklineOptions) {
@@ -138,6 +144,8 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
   let drawRaf = 0;
   let tauriScale = 1;
+  /** CSS 变量只有在主题/配色切换时会变；报价驱动 2s 一次的重绘不要每次都解析样式 */
+  let palette: SparklinePalette | null = null;
 
   let appWindow: ReturnType<typeof getCurrentWindow> | null = null;
   try {
@@ -257,8 +265,10 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
         // 切源后旧请求才回来：不回写缓存，否则会把旧源口径的数据塞进新源。
         if (source !== settings.activeDatasource) return false;
         const all = mapMinuteBars(data);
-        // 数据源会把「还没走完的那一分钟」也推下来；主图也是这么过滤的。
         const boundary = beijingNow();
+        // 这里只留**已走完**的分钟：进行中那根的横坐标与 withLiveTail 追加的
+        // 实时价点相同，两者都留会在同一格画出两个点。详情页的分时图相反 ——
+        // 它没有实时价尾点，放行进行中分钟才有 5s 的推进（见 visibleMinuteBars）。
         const valid = all.filter((bar) => bar.timestamp <= boundary);
         const prev = sessionPrevClose(data) ?? 0;
         cache.set(key, { bars: valid, dataPrevClose: prev, fetchedAt: Date.now() });
@@ -346,10 +356,22 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     if (!ctx) return;
 
     const prevClose = effectivePrevClose();
-    const range = resolveSparklineRange(bars, prevClose);
-    const lastBar = bars[bars.length - 1];
+    // 末端追加实时报价：分时轮询只补齐已走完的分钟，曲线要跟着 2s 行情动
+    // 必须靠这一下（原因见 withLiveTail）。
+    const displayBars = withLiveTail(
+      bars,
+      unref(options.price ?? 0),
+      beijingNow(),
+      unref(options.quoteTime ?? 0),
+    );
+    const range = resolveSparklineRange(displayBars, prevClose);
+    const lastBar = displayBars[displayBars.length - 1];
     // 早盘只铺 09:30–11:30，11:30 后切全天（见 sparklineSpanMinutes）。
-    const xSpan = sparklineSpanMinutes(bars);
+    const xSpan = sparklineSpanMinutes(displayBars);
+    // 坐标只算一次：末端圆点直接复用最后一个点，别再对同一批数据重映射一遍。
+    const points = sparklineCanvasPoints(displayBars, range, cssWidth, xSpan);
+    const dotPoint = points[points.length - 1];
+    if (!palette) palette = readColors();
 
     paintTickerSparkline(
       ctx,
@@ -357,37 +379,18 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
         style: unref(options.style),
         // 昨收是猜出来的（新股首日）时给 null：那条线本身就没有意义。
         baselineY: prevClose > 0 ? sparklineBaselineY() : null,
-        points: sparklineCanvasPoints(bars, range, cssWidth, xSpan),
+        points,
         dot:
-          prevClose > 0 && lastBar
-            ? sparklineDot(bars, range, cssWidth, prevClose, xSpan)
+          prevClose > 0 && lastBar && dotPoint
+            ? { x: dotPoint.x, y: dotPoint.y, rising: lastBar.close >= prevClose }
             : null,
         width: cssWidth,
         height: cssHeight,
         xSpanMinutes: xSpan,
       },
-      readColors(),
+      palette,
       dpr,
     );
-  }
-
-  /**
-   * 末端圆点：位置跟着价格曲线，颜色跟随相对昨收的涨跌。
-   *
-   * 昨收未知时不画 —— 「涨还是跌」这个问题本身没有答案。
-   */
-  function sparklineDot(
-    barList: readonly { timestamp: number; close: number }[],
-    range: SparklineRange | null,
-    width: number,
-    prevClose: number,
-    xSpanMinutes: number,
-  ) {
-    const points = sparklineCanvasPoints(barList, range, width, xSpanMinutes);
-    const last = points[points.length - 1];
-    if (!last) return null;
-    const lastBar = barList[barList.length - 1];
-    return { x: last.x, y: last.y, rising: lastBar.close >= prevClose };
   }
 
   // ---- 生命周期 ----
@@ -455,13 +458,14 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
     },
   );
 
-  // 名称/模式/画法/兜底昨收变化只影响怎么画，不重新请求。
+  // 画法/兜底昨收/实时报价变化只影响怎么画，不重新请求。
   // 画法必须在这里：它只改绘制分支，别处没人读 options.style，漏了这条就是
-  // 「设置里改了、行情条不动」。
+  // 「设置里改了、行情条不动」。报价同理：它只往曲线末端追加一个点。
   watch(
     [
       () => unref(options.style),
       () => unref(options.prevClose),
+      () => unref(options.price ?? 0),
     ],
     () => scheduleDraw(),
   );
@@ -471,6 +475,8 @@ export function useTickerSparkline(options: TickerSparklineOptions) {
   watch(
     [() => settings.theme, () => settings.colorScheme, () => settings.tickerTransparent],
     () => {
+      // 配色令牌变了才需要重新解析 CSS 变量；清掉缓存后下一帧再读。
+      palette = null;
       void nextTick(() => scheduleDraw());
     },
   );

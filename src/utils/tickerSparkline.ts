@@ -8,7 +8,7 @@
 // 不依赖 canvas，方便单测；绘制在 useTickerSparkline 里。
 
 import { MIN_RANGE_RATE, SESSION_MINUTES, tradingMinutesOfDay } from './minuteAxis';
-import { beijingNow } from './minuteBars';
+import { beijingNow, sessionKeyOf } from './minuteBars';
 import type { TickerChartStyle } from './prefs';
 
 export interface SparklineRange {
@@ -47,6 +47,53 @@ export function resolveSparklineRange(
   if (!(base > 0)) return { from: 0, to: 0 };
   const half = Math.max(maxDeviation(bars, base), base * minRate);
   return { from: base - half, to: base + half };
+}
+
+/**
+ * 在已完成的分时 bar 末尾追加一个「实时价」点。
+ *
+ * 分时接口（腾讯 m1）返回的最后一根是进行中的分钟，标签是分钟终点，比当前时刻
+ * 晚一分钟；调用方按「不画未来 bar」把它过滤掉，所以只靠分时轮询时，曲线要等
+ * 整分钟走完才动一次 —— 轮询调到几秒都一样。行情条报价每 2s 更新，这里把当前价
+ * 追加到下一分钟的横坐标上：线的末端与圆点就能跟着红绿数字动，历史形状仍来自
+ * 分时接口。
+ *
+ * 不用「替换最后一根 close」的做法：那会把已完成分钟的收盘价抹掉，若它恰是当日
+ * 极值，纵轴半幅会随报价回缩，整条历史曲线就跟着 2s 一次的报价上下缩放。
+ *
+ * 三道守卫：
+ * - 最后一根必须属于 `now` 当天：休市/盘前画的是上一交易日，不能把今天的报价接上去；
+ * - 报价时间（Unix 秒）也必须属于当天：报价抓取失败时后端会 emit 缓存里的旧报价，
+ *   旧价接到今天的分时上会画出一段假的尾段；
+ * - 报价与最后一根收盘价相差 10 倍以上时丢弃：脏报价不该把整条曲线压成直线。
+ *
+ * 返回新数组，绝不修改调用方（缓存）里的原始数组。
+ */
+export function withLiveTail<T extends { timestamp: number; close: number }>(
+  bars: readonly T[],
+  price: number | null | undefined,
+  now: number,
+  /** 报价时间，Unix 秒（后端用 `Utc::now()` 写入） */
+  quoteTime: number | null | undefined,
+): readonly { timestamp: number; close: number }[] {
+  if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return bars;
+  if (bars.length === 0) return bars;
+  const last = bars[bars.length - 1];
+  if (sessionKeyOf(last.timestamp) !== sessionKeyOf(now)) return bars;
+  if (
+    typeof quoteTime !== 'number'
+    || !Number.isFinite(quoteTime)
+    || quoteTime <= 0
+    // quoteTime 是真实 UTC 秒，先换算到北京墙钟，才能和 bar 的日期口径一致
+    || sessionKeyOf(beijingNow(quoteTime * 1000)) !== sessionKeyOf(now)
+  ) {
+    return bars;
+  }
+  if (last.close > 0 && (price > last.close * 10 || price < last.close / 10)) return bars;
+  // 当前分钟在数据源里对应「下一分钟终点」的标签：下一根已完成的 bar 到来时
+  // 落在同一格，曲线不会横向跳一下。
+  const tailTimestamp = Math.floor(now / 60_000) * 60_000 + 60_000;
+  return [...bars, { timestamp: tailTimestamp, close: price }];
 }
 
 export interface SparklinePoint {
@@ -103,13 +150,9 @@ export function sparklineSpanMinutes(
 ): number {
   const last = bars[bars.length - 1];
   if (!last) return SESSION_MINUTES;
+  // 与 withLiveTail 共用同一套交易日口径，避免两处判定漂移
+  if (sessionKeyOf(last.timestamp) !== sessionKeyOf(now)) return SESSION_MINUTES;
   const nowDate = new Date(now);
-  const lastDate = new Date(last.timestamp);
-  const sameDay =
-    nowDate.getFullYear() === lastDate.getFullYear()
-    && nowDate.getMonth() === lastDate.getMonth()
-    && nowDate.getDate() === lastDate.getDate();
-  if (!sameDay) return SESSION_MINUTES;
   const minutes = nowDate.getHours() * 60 + nowDate.getMinutes();
   return minutes < 11 * 60 + 30 ? SESSION_MINUTES / 2 : SESSION_MINUTES;
 }

@@ -19,6 +19,7 @@ import {
   sparklinePoints,
   sparklineSpanMinutes,
   resolveSparklineRange,
+  withLiveTail,
 } from './tickerSparkline';
 import { SESSION_MINUTES } from './minuteAxis';
 
@@ -47,6 +48,53 @@ describe('resolveSparklineRange', () => {
 
   it('没有任何有效数据时返回空区间', () => {
     expect(resolveSparklineRange([], 0)).toEqual({ from: 0, to: 0 });
+  });
+});
+
+describe('withLiveTail', () => {
+  const now = new Date(2026, 8, 24, 10, 0).getTime();
+  const bars = [bar(100, 9, 30), bar(101, 9, 31), bar(102, 9, 59)];
+  // 北京时间 10:00 对应的真实 Unix 秒；用 UTC 构造，测试不依赖本机时区
+  const quoteTime = Date.UTC(2026, 8, 24, 2, 0) / 1000;
+  const prevDayQuote = Date.UTC(2026, 8, 23, 2, 0) / 1000;
+
+  it('同一天时在末尾追加实时价，不改原数组与已完成 bar', () => {
+    const out = withLiveTail(bars, 105.5, now, quoteTime);
+    expect(out).toHaveLength(4);
+    expect(out[3].close).toBe(105.5);
+    // 当前分钟对应「下一分钟终点」的横坐标，下一根 bar 到来时原地接上
+    expect(out[3].timestamp).toBe(now + 60_000);
+    expect(out[2].close).toBe(102);
+    expect(bars).toHaveLength(3);
+    expect(out).not.toBe(bars);
+  });
+
+  it('报价无效（null / 0 / NaN）时原样返回', () => {
+    expect(withLiveTail(bars, null, now, quoteTime)).toBe(bars);
+    expect(withLiveTail(bars, 0, now, quoteTime)).toBe(bars);
+    expect(withLiveTail(bars, Number.NaN, now, quoteTime)).toBe(bars);
+  });
+
+  it('报价不是当天（缓存里的上一交易日旧价）时不接', () => {
+    expect(withLiveTail(bars, 105.5, now, prevDayQuote)).toBe(bars);
+    expect(withLiveTail(bars, 105.5, now, null)).toBe(bars);
+    expect(withLiveTail(bars, 105.5, now, 0)).toBe(bars);
+  });
+
+  it('最后一根不是当天（休市画上一交易日）时不接今天的报价', () => {
+    const nextDay = new Date(2026, 8, 25, 10, 0).getTime();
+    const quote = Date.UTC(2026, 8, 25, 2, 0) / 1000;
+    expect(withLiveTail(bars, 105.5, nextDay, quote)).toBe(bars);
+  });
+
+  it('量级异常的脏报价丢弃', () => {
+    expect(withLiveTail(bars, 9999, now, quoteTime)).toBe(bars);
+    // +17% 这类真实波动仍然接受
+    expect(withLiveTail(bars, 120, now, quoteTime)).toHaveLength(4);
+  });
+
+  it('没有数据时原样返回', () => {
+    expect(withLiveTail([], 105.5, now, quoteTime)).toEqual([]);
   });
 });
 

@@ -172,6 +172,8 @@ const tickerItems = computed(() =>
       market: item.market,
       price: q?.price ?? null,
       changePct: q?.change_pct ?? null,
+      // 分时线用它判断报价是不是当天的（Unix 秒，后端按抓取时刻写入）
+      quoteTime: q?.timestamp,
       // 分时图数据里没有上一交易日时（新股首日）的兜底昨收
       prevClose: q ? q.price - q.change : undefined,
     };
@@ -415,6 +417,8 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
             :market="item.market"
             :chart-style="settings.tickerChartStyle"
             :prev-close="item.prevClose"
+            :price="item.price"
+            :quote-time="item.quoteTime"
           />
         </div>
       </template>
