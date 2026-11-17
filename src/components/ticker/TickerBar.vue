@@ -237,6 +237,16 @@ let isDragging = false;
 function onMouseDown(e: MouseEvent) {
   // 中键/右键既不拖动也不打开主窗口，别为它们挂监听。
   if (e.button !== 0) return;
+  // 阻止 mousedown 的默认行为「按下即聚焦」。焦点落在行情条上之后，窗口
+  // 重新激活时（主窗口关闭后激活权还给 ticker、startDragging 结束窗口被
+  // 激活）WebView 会按键盘焦点重绘 UA 的黑色焦点框 —— 表现为整条行情条
+  // 四周多出一圈黑边。行情条的鼠标交互只依赖 click / drag，不需要 DOM
+  // 焦点；键盘 Tab 聚焦不经过这里，焦点与 :focus-visible 描边仍然保留。
+  e.preventDefault();
+  // preventDefault 只挡住「这次按下要聚焦」，挡不住已经持有的焦点：此前用
+  // Tab 进来、或由窗口激活恢复的焦点要显式收掉，否则重新激活时同样会画框。
+  // 鼠标一按下就视为切回鼠标操作，收掉键盘焦点不影响后续 Tab 导航。
+  (e.currentTarget as HTMLElement | null)?.blur();
   // 上一次手势没收到 mouseup 的话，它的监听还挂着 —— 先收干净再挂新的，
   // 否则两份并存，旧的那份会拿旧起点抢先判定。
   stopMouseTracking?.();
@@ -428,6 +438,18 @@ async function handleClick(event: MouseEvent | KeyboardEvent) {
 }
 .ticker-bar:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+/*
+  焦点样式显式接管，不依赖 UA 默认值（那圈黑框在深色透明行情条上很扎眼）：
+  - 鼠标路径已在 onMouseDown 里阻止聚焦，正常情况下不会命中这两条；
+  - 键盘 Tab 进来时保留一圈主题色描边，键盘用户仍能看清焦点位置。
+*/
+.ticker-bar:focus:not(:focus-visible) {
+  outline: none;
+}
+.ticker-bar:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 /* 透明模式下不能有 hover 底色：底板已经去掉了，悬停时冒出一块半透明矩形
    会像渲染残留。光标仍会变成 grab，交互提示没有丢。 */
