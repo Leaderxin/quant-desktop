@@ -17,6 +17,10 @@ const props = defineProps<{
   chartStyle: TickerChartStyle;
   /** 实时行情给的兜底昨收（price - change） */
   prevClose?: number;
+  /** 实时报价：在曲线末端追加一个点，让末端跟着报价的 2s 节奏动 */
+  price?: number | null;
+  /** 报价时间（Unix 秒）：同一天的旧报价才允许接到今天的曲线上 */
+  quoteTime?: number;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -34,6 +38,8 @@ useTickerSparkline({
   market: toRef(props, 'market'),
   style: toRef(props, 'chartStyle'),
   prevClose: toRef(props, 'prevClose'),
+  price: toRef(props, 'price'),
+  quoteTime: toRef(props, 'quoteTime'),
 });
 </script>
 
