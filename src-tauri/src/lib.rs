@@ -10,6 +10,7 @@ pub mod hotkey;
 pub mod import;
 pub mod events;
 pub mod logging;
+mod window_bounds;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
