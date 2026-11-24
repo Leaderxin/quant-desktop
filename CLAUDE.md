@@ -36,7 +36,7 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
 - `composables/useChart.spec.ts` — 切股/切周期后旧 forward 响应被代次丢弃，不会 prepend 到新标的；同一标的的 forward 仍正常回调；forward 只回传新增 bar，分钟 K 不声明还有更早数据，加载失败后不再前向翻页。
 - `utils/tickerSparkline.spec.ts` — 早盘/全天横轴与两种画法的绘制指令。
 
-不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（短信分类、响应解析、时段、分组归属/迁移、日志工具）；`vue-tsc` 负责类型；暂无 lint 命令。
+不覆盖，别把缺席当疏漏：Vue 组件渲染（无 `@vue/test-utils`）、拖拽 DOM 事件（只测落点算术）、纯视觉（配色、间距、图标）。`cargo test` 覆盖 Rust 侧（响应解析、时段、搜索与导入匹配、分组归属/迁移、日志工具、行情条位置边界）；`vue-tsc` 负责类型；暂无 lint 命令。
 
 ## Git 提交信息
 
@@ -50,14 +50,12 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 | 窗口 | Label | 入口 | 配置 |
 |------|-------|------|------|
-| 主界面 | `main` | `index.html` → `src/main.ts` | 1100×680，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
-| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 220×38，置顶、无边框、默认右下角、不进任务栏 |
+| 主界面 | `main` | `index.html` → `src/main.ts` | 1388×1009，启动隐藏，关闭即隐藏到托盘，位置/大小存库 |
+| 行情条 | `ticker` | `ticker.html` → `src/ticker.ts` | 220×40（高度按内容测量），置顶、无边框、默认右下角、不进任务栏 |
 
 [vite.config.ts](vite.config.ts) 配了两个 Rollup 入口；两个窗口各自挂一个 Vue app、各自一个 Pinia 实例，store 与 composable 通过 import 共用。
 
 CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `http://ipc.localhost`，其余平台 `ipc:`）；缺了它每次 invoke 都会先 fetch 失败再退回 postMessage，日志里成串 `IPC custom protocol failed`。
-
-行情条的位置边界由 [window_bounds.rs](src-tauri/src/window_bounds.rs) 单点管理：边界是**显示器工作区并集**（`Monitor::work_area()`，Windows 的 `WM_MOVING` 路径等价地取 `GetMonitorInfoW` 的 `rcWork`；已扣除 Windows 任务栏 / macOS 菜单栏与 Dock / Linux 面板），判定是「窗口矩形被并集完整覆盖」，因此相邻显示器之间可以骑在交界上，但整条永远不会落到屏幕外。恢复入口只有 `restore_ticker_position`（启动、显示，以及拔屏后下次显示时的回退都走它（应用内没有显示器热插拔监听；Windows 拔屏时系统迁移窗口产生的 Moved 会由 worker 钳制））；Windows 拖拽在 `WM_MOVING` 里实时修正候选 `RECT`，macOS/Linux 由去抖 worker 在停止移动 200ms 后钳制，`Resized` 也触发同一套逻辑（高度随内容增长时防止钻进任务栏）。原生 Wayland 无法设置窗口位置，钳制退化为 no-op。**不要**再按 `primary_monitor()` 或显示器矩形写第二份边界判断 —— 负坐标扩展屏与任务栏遮挡都会漏掉。
 
 ### Linux 启动后端：Wayland 会话自动切 XWayland
 
@@ -73,7 +71,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 
 ### Rust 后端（`src-tauri/src/`）
 
-**`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。窗口位置/大小落库并在下次启动时按显示器边界校验后恢复。
+**`lib.rs`** — 应用装配：开库、注册数据源（腾讯默认，新浪备用）、恢复报价缓存、起后台 `Scheduler`、建托盘（左键显示/隐藏、右键 显示 / 行情条 / — / 检查更新 / 设置 / 退出）、注册全部 IPC、初始化 updater。主窗口的 `CloseRequested` 被拦成隐藏。
 
 - 启动路径上**不要做串行网络等待**：`detect_and_set_proxy` 的 7 个本地端口必须并行、超时 ≤150ms（Win10 上端口被静默丢弃时，串行的 1s 超时会逐个等满）。它与 `Scheduler::spawn` 都在 `main.show()` 之后，但必须「先探测、后调度器」。共享行情 client 用 `.no_proxy()` 且必须惰性获取 —— **适配器不要在构造时初始化它**。
 
@@ -83,7 +81,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - `set_ticker_size(window, w, h)`：**行情条所有改尺寸的路径都必须走它**（启动、`set_ticker_visible`、前端按内容量出的高度）。三步都有坑：先清 min/max 提示（Linux/GTK 会把非 resizable 窗口的提示钉成建窗时的值，不清就收不回内容高度，底部永久多一截）→ 改尺寸 → 把新尺寸钉回 min/max（WM 见 min==max 才不给缩放手柄；只靠 `set_resizable(false)` 挡不住 GNOME/Mutter 的缩放手势）。前端因此**没有** `core:window:allow-set-size` 权限，绕过命令改不动尺寸。
 - `show_main_window(app)`：`show()` 之后必须 `unminimize()` —— Windows 的 `SW_SHOW` 不会退出最小化，用户只看到任务栏图标闪一下。托盘左键还要判 `is_minimized()`：最小化窗口在 Win32 眼里仍是 `WS_VISIBLE`，只判 `is_visible()` 会把想叫回来的窗口又藏起来。托盘的「设置」在显示窗口后还要 `emit("open-settings")`（webview 常驻，隐藏时也收得到）。
 - `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system` 在 Windows/macOS 必须传 `None` 给 tao，否则会钉死 `prefers-color-scheme`；**Linux 例外**：tao 把 `None` 实现成强制浅色，必须先用 `linux_portal_theme()` 读 portal 再 `set_theme(Some(...))`，先解 pin 会闪白（机制与 #37 见代码注释）。启动那次必须先于 `main.show()`；只作用于 `main`。
-- 行情条位置边界另有单点 `window_bounds::restore_ticker_position` / `clamp_and_save`，规则见「两个窗口」一节；`set_ticker_visible` 与 setup 都必须调 `restore_ticker_position`，`clamp_and_save` 只由去抖 worker 调用，不要各自读一遍 `ticker_x/ticker_y`。
+- 行情条位置边界：`window_bounds::restore_ticker_position` 用于启动/显示，`clamp_and_save` 只由去抖 worker 调用；规则见「窗口位置」，不要各自读 `ticker_x/ticker_y`。
 
 **`domain/mod.rs`** — IPC 数据类型，对应 [src/types/index.ts](src/types/index.ts)：`Quote`、`IndexQuote`、`Depth`/`Level`、`MinuteData`、`KLineData`、`StockBrief`、`Market`（CN/HK/US）。
 
@@ -181,7 +179,7 @@ DataSource → Scheduler → QuoteCache（内存 + SQLite）
 
 跨窗口设置：`setSetting` 写库并广播 `settings-changed`；ticker 直接 `applyRemoteSetting`，**不得回广播**（会来回弹）。`datasource-changed` 单独一条，因为它还有每窗口的副作用。主题不需要专线：两个窗口各自用本窗口的 `matchMedia` 解析 —— ticker 的窗口没被钉过，读到的是系统真值。
 
-K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。切股/切周期时主请求由 `AbortController` 丢弃，forward/增量由 `dataEpoch` 丢弃 —— 图表实例与 `allData` 跨标的复用，旧响应的 prepend 会让新标的的图上多出一段旧历史（新标的 2010 年上市，图上却从 2000 年开始）。分钟 K 不做前向翻页（mkline 的 `end_date` 不生效，返回的仍是最近一段）；forward 只把去重后的 bar 交给图表，否则 prepend 会叠出重复段。
+K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick 颜色显式对齐，底部是带 MA5/10/20 的 `VOL`。切股/切周期时主请求由 `AbortController` 丢弃，forward/增量由 `dataEpoch` 丢弃 —— 图表实例与 `allData` 跨标的复用，旧响应的 prepend 会让新标的的图上多出一段旧历史。分钟 K 不做前向翻页（mkline 的 `end_date` 不生效，返回的仍是最近一段）；forward 只把去重后的 bar 交给图表，否则 prepend 会叠出重复段。
 
 ### Logging
 
@@ -226,7 +224,9 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 ### 窗口位置
 
-主窗口的 `window_x`/`window_y`/`window_width`/`window_height` 在移动/缩放/关闭时写入 `settings`，下次启动按显示器边界校验后恢复。行情条位置存 `ticker_x`/`ticker_y`（物理像素），启动/显示时由 `window_bounds::restore_ticker_position` 按显示器工作区钳制后恢复；无存档或存档值无法解析时才退回主显示器工作区右下角；越界存档会被钳回工作区并集。
+主窗口的 `window_x`/`window_y`/`window_width`/`window_height` 在移动/缩放/关闭时写入 `settings`，下次启动按显示器边界校验后恢复。
+
+行情条位置存 `ticker_x`/`ticker_y`（物理像素），由 [window_bounds.rs](src-tauri/src/window_bounds.rs) 单点管理：边界是**显示器工作区并集**（已扣除 Windows 任务栏 / macOS 菜单栏与 Dock / Linux 面板），判定是窗口矩形被并集完整覆盖，因此允许骑在相邻显示器交界上、但整条不会出界；混合 DPI 下按目标显示器的缩放换算物理尺寸。恢复入口只有 `restore_ticker_position`（启动、显示、拔屏后下次显示；应用没有热插拔监听）；Windows 拖拽在 `WM_MOVING` 实时修正，macOS/Linux 在停止移动 200ms 后钳制，`Resized` 走同一套兜底（高度增长不会钻进任务栏）。原生 Wayland 无法设置窗口位置，钳制退化为 no-op。**不要**再按 `primary_monitor()` 或显示器矩形另写一份边界判断 —— 负坐标扩展屏与任务栏遮挡都会漏掉。
 
 ### 官网（`website/`）
 
