@@ -57,6 +57,8 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `http://ipc.localhost`，其余平台 `ipc:`）；缺了它每次 invoke 都会先 fetch 失败再退回 postMessage，日志里成串 `IPC custom protocol failed`。
 
+行情条的位置边界由 [window_bounds.rs](src-tauri/src/window_bounds.rs) 单点管理：边界是**显示器工作区并集**（`Monitor::work_area()`，已扣除 Windows 任务栏 / macOS 菜单栏与 Dock / Linux 面板），判定是「窗口矩形被并集完整覆盖」，因此相邻显示器之间可以骑在交界上，但整条永远不会落到屏幕外。恢复入口只有 `restore_ticker_position`（启动、显示、拔屏后回退都走它）；Windows 拖拽在 `WM_MOVING` 里实时修正候选 `RECT`，macOS/Linux 由去抖 worker 在停止移动 200ms 后钳制，`Resized` 也触发同一套逻辑（高度随内容增长时防止钻进任务栏）。原生 Wayland 无法设置窗口位置，钳制退化为 no-op。**不要**再按 `primary_monitor()` 或显示器矩形写第二份边界判断 —— 负坐标扩展屏与任务栏遮挡都会漏掉。
+
 ### Linux 启动后端：Wayland 会话自动切 XWayland
 
 行情条的「始终置顶」靠 GTK `keep_above`，而 Wayland 没有对应协议（置顶是合成器权力），所以只能走 XWayland。[linux_backend.rs](src-tauri/src/linux_backend.rs) 在 `run()` 的**第一句**（GTK 初始化之前）检测会话，必要时带 `GDK_BACKEND=x11,wayland` 重新 `exec` 自己（替换进程映像，不双开）—— 图标、自启、终端三条路径因此一致；已设 `GDK_BACKEND` 的启动环境仍被尊重。
@@ -81,6 +83,7 @@ CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `h
 - `set_ticker_size(window, w, h)`：**行情条所有改尺寸的路径都必须走它**（启动、`set_ticker_visible`、前端按内容量出的高度）。三步都有坑：先清 min/max 提示（Linux/GTK 会把非 resizable 窗口的提示钉成建窗时的值，不清就收不回内容高度，底部永久多一截）→ 改尺寸 → 把新尺寸钉回 min/max（WM 见 min==max 才不给缩放手柄；只靠 `set_resizable(false)` 挡不住 GNOME/Mutter 的缩放手势）。前端因此**没有** `core:window:allow-set-size` 权限，绕过命令改不动尺寸。
 - `show_main_window(app)`：`show()` 之后必须 `unminimize()` —— Windows 的 `SW_SHOW` 不会退出最小化，用户只看到任务栏图标闪一下。托盘左键还要判 `is_minimized()`：最小化窗口在 Win32 眼里仍是 `WS_VISIBLE`，只判 `is_visible()` 会把想叫回来的窗口又藏起来。托盘的「设置」在显示窗口后还要 `emit("open-settings")`（webview 常驻，隐藏时也收得到）。
 - `set_app_theme(app, theme)`：参数是**模式**（`dark`/`light`/`system`），不是解析后的主题。`system` 在 Windows/macOS 必须传 `None` 给 tao，否则会钉死 `prefers-color-scheme`；**Linux 例外**：tao 把 `None` 实现成强制浅色，必须先用 `linux_portal_theme()` 读 portal 再 `set_theme(Some(...))`，先解 pin 会闪白（机制与 #37 见代码注释）。启动那次必须先于 `main.show()`；只作用于 `main`。
+- 行情条位置边界另有单点 `window_bounds::restore_ticker_position` / `clamp_and_save`，规则见上一节；`set_ticker_visible` 与 setup 都必须调它们，不要各自读一遍 `ticker_x/ticker_y`。
 
 **`domain/mod.rs`** — IPC 数据类型，对应 [src/types/index.ts](src/types/index.ts)：`Quote`、`IndexQuote`、`Depth`/`Level`、`MinuteData`、`KLineData`、`StockBrief`、`Market`（CN/HK/US）。
 
