@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "site:assets": "node scripts/site-assets.mjs",
     "site:images": "node scripts/optimize-images.mjs",
+    "msix:icons": "node scripts/msix-icons.mjs",
     "tauri": "tauri",
     "tauri:build": "node scripts/build.mjs"
   },

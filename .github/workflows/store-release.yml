@@ -41,8 +41,11 @@ jobs:
 
           # 显式 UTF-8 读取，不依赖 PS 版本的默认代码页（tauri.conf.json 含中文）。
           $utf8 = New-Object System.Text.UTF8Encoding $false   # $false = 不写 BOM
+          # 相对路径按当前目录解析，绝对路径原样使用。不能无条件 Join-Path：
+          # 传绝对路径会拼成 "$PWD/C:\..."，GetFullPath 直接以「路径格式不正确」失败。
           function Read-Utf8([string]$Path) {
-            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath((Join-Path $PWD $Path)), $utf8)
+            $full = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $PWD $Path }
+            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath($full), $utf8)
           }
 
           $errors = @()
@@ -71,6 +74,15 @@ jobs:
           foreach ($icon in @("StoreLogo.png", "Square44x44Logo.png", "Square150x150Logo.png")) {
             if (-not (Test-Path "src-tauri/icons/$icon")) {
               $errors += "Missing icon asset: src-tauri/icons/$icon"
+            }
+          }
+
+          # 任务栏图标的 unplated 变体（scripts/msix-icons.mjs 生成并提交）。
+          # 缺了它们，Windows 会把 Square44x44Logo 画在强调色底板上。
+          $msixIcons = @(Get-ChildItem "src-tauri/icons/msix" -Filter "*.png" -ErrorAction SilentlyContinue)
+          foreach ($form in @("unplated", "lightunplated")) {
+            if (-not ($msixIcons.Name -match "\.targetsize-\d+_altform-$form\.png$")) {
+              $errors += "Missing src-tauri/icons/msix/*_altform-$form.png - run: npm run msix:icons"
             }
           }
 
@@ -128,8 +140,11 @@ jobs:
           # 显式 UTF-8 读写，不依赖 PS 版本的默认代码页。
           # AppxManifest.xml 含中文（商店名称），若按系统 ANSI 代码页读取会损坏。
           $utf8 = New-Object System.Text.UTF8Encoding $false   # $false = 不写 BOM
+          # 相对路径按当前目录解析，绝对路径原样使用。不能无条件 Join-Path：
+          # 传绝对路径会拼成 "$PWD/C:\..."，GetFullPath 直接以「路径格式不正确」失败。
           function Read-Utf8([string]$Path) {
-            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath((Join-Path $PWD $Path)), $utf8)
+            $full = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $PWD $Path }
+            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath($full), $utf8)
           }
 
           # ── 1. 解包 MSI（msiexec /a 仅提取文件树，不执行安装）──
@@ -181,6 +196,57 @@ jobs:
           foreach ($icon in @("StoreLogo.png", "Square44x44Logo.png", "Square150x150Logo.png")) {
             Copy-Item "src-tauri/icons/$icon" "$pkgRoot/$icon"
           }
+
+          # 目标尺寸的 unplated 变体必须落在包根：MRT 按目录解析候选，回退用的
+          # Square44x44Logo.png 与变体必须在同一路径下（文件名里的限定符
+          # targetsize-N/altform-* 由下一步生成的 resources.pri 索引）。
+          Get-ChildItem "src-tauri/icons/msix" -Filter "*.png" |
+            Copy-Item -Destination $pkgRoot
+
+          # ── 4b. 生成 resources.pri（让 unplated 变体真正生效）──
+          # AppxManifest 只能引用不带限定符的 Square44x44Logo.png；文件名里的
+          # targetsize-N/altform-* 要被 MRT 选中，必须先编进资源索引。没有 PRI
+          # 时 Windows 直接用那张基础图并按 plated 语义画一块底板，颜色取自
+          # uap:VisualElements@BackgroundColor —— "transparent" 会被解析成系统
+          # 强调色（默认蓝），任务栏上就是一块蓝方块。
+          $makepri = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makepri.exe" `
+            -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $makepri) { throw "makepri.exe not found under Windows Kits\10\bin" }
+
+          # 配置写到包外：放进包根会被当成资源一并索引。
+          $priConfig = Join-Path $env:TEMP "quant-desktop-priconfig.xml"
+          & $makepri createconfig /cf $priConfig /dq zh-CN /o
+          if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed with exit code $LASTEXITCODE" }
+
+          # createconfig 默认写一段 <packaging>（autoResourcePackage: Language /
+          # Scale / DXFeatureLevel）：命中这些限定符的资源会被拆进独立资源包。
+          # 平铺 MSIX 只带一个 resources.pri，今天没有 scale-* 资产因此输出不变，
+          # 但将来补 scale 变体就会取不到 —— 直接去掉，留单一资源索引。
+          $priCfg = [System.IO.File]::ReadAllText($priConfig, $utf8)
+          $priCfg = $priCfg -replace '(?s)\s*<packaging>.*?</packaging>', ''
+          [System.IO.File]::WriteAllText($priConfig, $priCfg, $utf8)
+          if ([System.IO.File]::ReadAllText($priConfig, $utf8) -match '<packaging>') {
+            throw "Failed to strip <packaging> from priconfig.xml"
+          }
+
+          # /dq 必须与 AppxManifest 的 <Resource Language> 一致。
+          & $makepri new /pr $pkgRoot /cf $priConfig `
+            /of "$pkgRoot/resources.pri" /mn "$pkgRoot/AppxManifest.xml" /o
+          if ($LASTEXITCODE -ne 0) { throw "makepri new failed with exit code $LASTEXITCODE" }
+
+          # makepri 索引为空或不完整时同样返回 0，必须回读确认两个 unplated
+          # 候选真的在里面；漏了只会表现为任务栏继续显示强调色底板。
+          $priDump = Join-Path $env:TEMP "quant-desktop-pri-dump.xml"
+          & $makepri dump /if "$pkgRoot/resources.pri" /of $priDump /o | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "makepri dump failed with exit code $LASTEXITCODE" }
+          $dump = Read-Utf8 $priDump
+          foreach ($form in @("UNPLATED", "LIGHTUNPLATED")) {
+            if ($dump -notmatch "AlternateForm-$form") {
+              throw "resources.pri has no AlternateForm-$form candidate; the taskbar icon would stay plated."
+            }
+          }
+          Remove-Item $priConfig, $priDump -Force -ErrorAction SilentlyContinue
 
           # ── 5. makeappx 打包 ──
           # runner 镜像的 Windows SDK 版本会变化，勿硬编码路径。

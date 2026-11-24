@@ -87,7 +87,7 @@ export function useTickerWindowHeight(
    * outerSize/outerPosition → setPosition，见下）。重试定时器、
    * `visibilitychange`、ResizeObserver/rAF 会从不同路径同时进来；两条链若在
    * 「读到旧高度、还没看到新尺寸」的窗口里交错，就会各自补偿一次 y —— 底边
-   * 被多推一次，而 Moved 处理器会把这个位置存进库，又变回跨重启漂移。
+   * 被多推一次，而 window_bounds 的去抖 worker 会把这个位置存进库，又变回跨重启漂移。
    * 同一时刻只跑一条链，其余合并成一次尾随调用（保留 force，重试不会被吞掉）。
    */
   let applying = false;
@@ -132,7 +132,7 @@ export function useTickerWindowHeight(
    *
    * 行情条贴在屏幕右下角，但改尺寸以左上角为锚伸缩：长高会把下边缘
    * 推出屏幕，压矮则让窗口悬在半空。所以改完尺寸后按「物理高度差」把
-   * y 反向挪回去，把下边缘钉在原地（新位置会被 lib.rs 的 Moved 处理器
+   * y 反向挪回去，把下边缘钉在原地（新位置会被 window_bounds 的去抖 worker
    * 照常存进 SQLite）。行情条无窗口装饰（inner == outer），outerSize 量
    * 到的就是命令设的那个高度。
    */

@@ -217,7 +217,7 @@ const retryHintVisible = ref(false);
 // ── Dragging ──
 // Uses Tauri's startDragging() API (Win32 DefWindowProc) for smooth
 // OS-level window dragging on both Windows 10 and 11.
-// Position is auto-saved by the Rust WindowEvent::Moved handler in lib.rs.
+// Position is auto-saved by the settle worker in src-tauri/src/window_bounds.rs.
 //
 // 点击 / 拖动靠按下后的位移区分：
 // - 点击(位移 ≤ 阈值)：@click 照常触发 → 打开主窗口（受「点击唤醒主界面」设置控制）
