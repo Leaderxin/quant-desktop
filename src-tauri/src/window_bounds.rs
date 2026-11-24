@@ -7,12 +7,131 @@
 //
 // 本模块只管几何与调用时机；平台差异只在「从哪拿工作区」和「什么时候调用」。
 
+use crate::db::{keys, Database};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WorkArea {
     pub x: i32,
     pub y: i32,
     pub w: u32,
     pub h: u32,
+}
+
+/// 工作区右下角的默认边距（物理像素）。
+const DEFAULT_MARGIN: i32 = 10;
+
+fn work_area_of(monitor: &tauri::Monitor) -> WorkArea {
+    let wa = monitor.work_area();
+    WorkArea {
+        x: wa.position.x,
+        y: wa.position.y,
+        w: wa.size.width,
+        h: wa.size.height,
+    }
+}
+
+/// 当前所有显示器的工作区。取不到时返回空表，调用方必须把空表当成「无法判定」。
+fn work_areas(window: &tauri::WebviewWindow) -> Vec<WorkArea> {
+    match window.available_monitors() {
+        Ok(monitors) => monitors.iter().map(work_area_of).collect(),
+        Err(e) => {
+            log::warn!("[bounds] available_monitors failed: {e}");
+            Vec::new()
+        }
+    }
+}
+
+fn read_saved_position(db: &Database) -> Option<(i32, i32)> {
+    let x = db.get_setting(keys::TICKER_X).ok().flatten()?;
+    let y = db.get_setting(keys::TICKER_Y).ok().flatten()?;
+    Some((x.parse().ok()?, y.parse().ok()?))
+}
+
+fn save_position(db: &Database, pos: (i32, i32)) {
+    if let Err(e) = db.set_setting(keys::TICKER_X, &pos.0.to_string()) {
+        log::warn!("[bounds] 保存 ticker_x 失败: {e}");
+    }
+    if let Err(e) = db.set_setting(keys::TICKER_Y, &pos.1.to_string()) {
+        log::warn!("[bounds] 保存 ticker_y 失败: {e}");
+    }
+}
+
+/// 启动 / 显示行情条时的位置恢复（唯一入口）。
+///
+/// 存档越界（显示器被拔掉、分辨率变化、负坐标布局变化）时钳回工作区并集；
+/// 完全不可用时退回主显示器工作区右下角。恢复后会立刻写回库，避免下次显示
+/// 继续拿一个非法存档来校验。
+pub(crate) fn restore_ticker_position(
+    window: &tauri::WebviewWindow,
+    db: &Database,
+    logical_height: u32,
+) {
+    let areas = work_areas(window);
+    if areas.is_empty() {
+        log::warn!("[bounds] 读不到显示器信息，保持行情条当前位置");
+        return;
+    }
+
+    // set_size 是投递到事件循环的请求，紧接着读 outer_size() 可能还是旧值，
+    // 所以按逻辑尺寸 × 缩放换算目标物理尺寸（与 set_ticker_size 的口径一致）。
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let size = (
+        (crate::datasource::TICKER_WIDTH as f64 * scale).round().max(1.0) as u32,
+        (logical_height as f64 * scale).round().max(1.0) as u32,
+    );
+
+    let saved = read_saved_position(db);
+    let target = match saved.and_then(|p| clamp_rect(p, size, &areas)) {
+        Some(p) => p,
+        None => {
+            let primary = window
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .map(|m| work_area_of(&m))
+                .or_else(|| areas.first().copied())
+                .unwrap_or(areas[0]);
+            bottom_right_in(&primary, size, DEFAULT_MARGIN)
+        }
+    };
+
+    if saved != Some(target) {
+        log::info!("[bounds] 行情条位置 {:?} -> {:?}", saved, target);
+    }
+    if let Err(e) = window.set_position(tauri::PhysicalPosition::new(target.0, target.1)) {
+        log::warn!("[bounds] 设置行情条位置失败: {e}");
+        return;
+    }
+    save_position(db, target);
+}
+
+/// 把当前窗口钳回工作区并落库；返回落库后的位置。幂等。
+///
+/// 保存前先读库比较，避免「钳制触发 Moved → 再钳制」这轮重复写。
+pub(crate) fn clamp_and_save(
+    window: &tauri::WebviewWindow,
+    db: &Database,
+) -> Option<(i32, i32)> {
+    let pos = window.outer_position().ok()?;
+    let size = window.outer_size().ok()?;
+    let areas = work_areas(window);
+    if areas.is_empty() {
+        return None;
+    }
+
+    let current = (pos.x, pos.y);
+    let target = clamp_rect(current, (size.width, size.height), &areas)?;
+    if target != current {
+        if let Err(e) = window.set_position(tauri::PhysicalPosition::new(target.0, target.1)) {
+            log::warn!("[bounds] 钳制行情条位置失败: {e}");
+            return None;
+        }
+        log::debug!("[bounds] 行情条位置 {:?} -> {:?}", current, target);
+    }
+    if read_saved_position(db) != Some(target) {
+        save_position(db, target);
+    }
+    Some(target)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -191,12 +310,50 @@ fn bottom_right_in(area: &WorkArea, size: (u32, u32), margin: i32) -> (i32, i32)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{keys, Database};
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     fn area(x: i32, y: i32, w: u32, h: u32) -> WorkArea {
         WorkArea { x, y, w, h }
     }
 
     const SIZE: (u32, u32) = (220, 40);
+
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_db(tag: &str) -> (std::path::PathBuf, Database) {
+        let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "qd-bounds-{tag}-{}-{nanos}-{seq}",
+            std::process::id()
+        ));
+        let db = Database::open(dir.clone()).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn saved_position_round_trips_and_bad_values_are_ignored() {
+        let (dir, db) = temp_db("position");
+
+        assert_eq!(read_saved_position(&db), None, "没有存档时应返回 None");
+
+        save_position(&db, (-1900, 120));
+        assert_eq!(
+            read_saved_position(&db),
+            Some((-1900, 120)),
+            "负坐标扩展屏的位置必须原样读回"
+        );
+
+        db.set_setting(keys::TICKER_X, "oops").unwrap();
+        assert_eq!(read_saved_position(&db), None, "坏值视为没有存档");
+
+        drop(db);
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn fully_visible_position_is_unchanged() {

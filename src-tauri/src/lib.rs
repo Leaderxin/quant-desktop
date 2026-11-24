@@ -359,34 +359,9 @@ pub fn set_ticker_visible(
     let _ = window.set_skip_taskbar(true);
     apply_tool_window_style(&window);
 
-    // 位置:优先恢复上次保存的坐标，越界或首次则回到右下角默认位。
-    let mon = window.primary_monitor().ok().flatten();
-    let (mon_w, mon_h) = mon
-        .as_ref()
-        .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
-        .unwrap_or((1920, 1080));
-    // 按即将设置的高度算物理尺寸：set_size 是投递到事件循环的请求，紧接着
-    // outer_size() 读到的可能还是旧值，位置校验就会用错高度。
-    let scale = window.scale_factor().unwrap_or(1.0);
-    let tw = (crate::datasource::TICKER_WIDTH as f64 * scale).round() as i32;
-    let th = (height as f64 * scale).round() as i32;
-
-    let mut restored = false;
-    if let Ok(Some(x)) = db.get_setting(keys::TICKER_X) {
-        if let Ok(Some(y)) = db.get_setting(keys::TICKER_Y) {
-            if let (Ok(sx), Ok(sy)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                if sx + tw > 0 && sy + th > 0 && sx < mon_w && sy < mon_h {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(sx, sy));
-                    restored = true;
-                }
-            }
-        }
-    }
-    if !restored {
-        let x = mon_w.saturating_sub(tw + 10);
-        let y = mon_h.saturating_sub(th + 60);
-        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-    }
+    // 位置恢复与边界校验只有一个入口：显示器工作区并集钳制。
+    // 负坐标扩展屏、任务栏与拔屏后的回退都在 window_bounds 里处理。
+    window_bounds::restore_ticker_position(&window, db, height);
 
     let _ = db.set_setting(keys::TICKER_VISIBLE, "1");
     Ok(())
@@ -926,92 +901,23 @@ pub fn run() {
                     initial_ticker_height,
                 );
 
-                // 钳制与「可见比例」都按事件发生时的真实尺寸算：行情条高度会随
-                // 内容（图表开关、轮播条数）变化，用启动时捕获的高度会把底部
-                // 越界的位置当成合法值存下来。
-                fn ticker_physical_size(window: &tauri::WebviewWindow) -> (i32, i32) {
-                    let size = window.outer_size().unwrap_or_else(|_| {
-                        // TICKER_* 是逻辑像素，折算物理像素需乘窗口缩放系数，
-                        // 否则 DPI ≠ 100% 时兜底几何偏小
-                        let scale = window.scale_factor().unwrap_or(1.0);
-                        tauri::PhysicalSize::new(
-                            (crate::datasource::TICKER_WIDTH as f64 * scale) as u32,
-                            (crate::datasource::TICKER_HEIGHT as f64 * scale) as u32,
-                        )
-                    });
-                    (size.width as i32, size.height as i32)
-                }
+                // 位置恢复与边界校验只有一个入口（工作区并集钳制）。
+                window_bounds::restore_ticker_position(
+                    &ticker,
+                    &db,
+                    initial_ticker_height,
+                );
 
-                // Capture monitor bounds and ticker size for clamping on move.
-                // 这里按「即将设置的高度」算，而不是 outer_size()：set_size 是
-                // 投递到事件循环的请求，紧接着读到的可能还是旧的 40px。
-                let mon = ticker.primary_monitor().ok().flatten();
-                let (mon_w, mon_h) = mon
-                    .as_ref()
-                    .map(|m| { let s = m.size(); (s.width as i32, s.height as i32) })
-                    .unwrap_or((1920, 1080));
-                let scale = ticker.scale_factor().unwrap_or(1.0);
-                let tw = (crate::datasource::TICKER_WIDTH as f64 * scale).round() as i32;
-                let th = (initial_ticker_height as f64 * scale).round() as i32;
-
-                // Save ticker position on move.  Only persist if enough of the
-                // ticker is actually visible — if the user drags it way off
-                // screen, we skip saving so the next launch falls back to the
-                // default bottom-right position.
+                // 位置变化后按工作区并集钳制并落库。
+                // Task 3 会把它换成去抖 worker；这里先保持「每次移动即处理」，
+                // 让中间状态也能正确记住扩展屏位置。
                 let ticker_for_move = ticker.clone();
-                let db_clone = db.clone();
+                let db_for_move = db.clone();
                 let _ = ticker.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Moved(pos) = event {
-                        let (tw, th) = ticker_physical_size(&ticker_for_move);
-                        // How much of the ticker is inside the monitor bounds?
-                        let visible_left = pos.x.max(0);
-                        let visible_right = (pos.x + tw).min(mon_w);
-                        let visible_w = (visible_right - visible_left).max(0);
-                        let visible_top = pos.y.max(0);
-                        let visible_bottom = (pos.y + th).min(mon_h);
-                        let visible_h = (visible_bottom - visible_top).max(0);
-
-                        // Require at least 50×20 px visible — otherwise it's
-                        // too far off-screen to be easily found.
-                        if visible_w < 50 || visible_h < 20 {
-                            return;
-                        }
-
-                        let clamped_x = pos.x.max(0).min(mon_w - tw);
-                        let clamped_y = pos.y.max(0).min(mon_h - th);
-                        if let Err(e) = db_clone.set_setting(keys::TICKER_X, &clamped_x.to_string()) {
-                            log::warn!("Failed to save ticker_x: {}", e);
-                        }
-                        if let Err(e) = db_clone.set_setting(keys::TICKER_Y, &clamped_y.to_string()) {
-                            log::warn!("Failed to save ticker_y: {}", e);
-                        }
+                    if matches!(event, tauri::WindowEvent::Moved(_)) {
+                        window_bounds::clamp_and_save(&ticker_for_move, &db_for_move);
                     }
                 });
-
-                // Restore saved position, fall back to bottom-right
-                let (mut saved_x, mut saved_y) = (0i32, 0i32);
-                let mut has_pos = false;
-                if let Ok(Some(x)) = db.get_setting(keys::TICKER_X) {
-                    if let Ok(Some(y)) = db.get_setting(keys::TICKER_Y) {
-                        if let (Ok(x_val), Ok(y_val)) = (x.parse::<i32>(), y.parse::<i32>()) {
-                            saved_x = x_val;
-                            saved_y = y_val;
-                            has_pos = true;
-                        }
-                    }
-                }
-                if has_pos
-                    && saved_x + tw > 0
-                    && saved_y + th > 0
-                    && saved_x < mon_w
-                    && saved_y < mon_h
-                {
-                    let _ = ticker.set_position(tauri::PhysicalPosition::new(saved_x, saved_y));
-                } else {
-                    let x = (mon_w).saturating_sub(tw + 10);
-                    let y = (mon_h).saturating_sub(th + 60);
-                    let _ = ticker.set_position(tauri::PhysicalPosition::new(x, y));
-                }
 
                 // Remove ticker from taskbar at both levels:
                 //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)
