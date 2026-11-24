@@ -142,20 +142,23 @@ fn covered(rect: Rect, areas: &[WorkArea]) -> bool {
             return false;
         }
         spans.sort_unstable();
-        if spans[0].0 > top {
-            return false;
-        }
-        let mut reach = spans[0].1;
-        for &(span_top, span_bottom) in &spans[1..] {
-            if span_top > reach {
-                return false;
-            }
-            reach = reach.max(span_bottom);
-            if reach >= bottom {
+        // cursor 式区间合并：从 top 开始逐段向前推进。完全落在 cursor 之下的
+        // span 跳过；只在下一次起点已超过 cursor（且尚未到 bottom）时才是空洞。
+        // 先判断 cursor >= bottom 再检查间隙，已覆盖的矩形不会被上方无关 span 判死。
+        let mut cursor = top;
+        for &(span_top, span_bottom) in &spans {
+            if cursor >= bottom {
                 break;
             }
+            if span_bottom <= cursor {
+                continue;
+            }
+            if span_top > cursor {
+                return false;
+            }
+            cursor = cursor.max(span_bottom);
         }
-        if reach < bottom {
+        if cursor < bottom {
             return false;
         }
     }
@@ -259,6 +262,19 @@ mod tests {
         let areas = [area(0, 0, 1000, 1000), area(1200, 0, 1000, 1000)];
         // 900..1120 有 120px 落在 1000..1200 的空洞里
         assert_eq!(clamp_rect((900, 100), SIZE, &areas), Some((780, 100)));
+    }
+
+    #[test]
+    fn stacked_monitors_with_gap_keep_window_in_place() {
+        // 上下叠放、x 区间相同但 y 之间有 120px 空洞（1080..1200）。
+        let areas = [area(0, 0, 1920, 1080), area(0, 1200, 1920, 1080)];
+
+        // 整条落在上屏内：必须原样返回，不能因为下方 span 与上方 span 的间隙被判死。
+        assert_eq!(clamp_rect((100, 1300), SIZE, &areas), Some((100, 1300)));
+
+        // 整条落在空洞里（1100..1140）：必须被拉回某块屏内，且落点完整可见。
+        // 往上 60px（到 1040）比往下 100px（到 1200）更近。
+        assert_eq!(clamp_rect((100, 1100), SIZE, &areas), Some((100, 1040)));
     }
 
     #[test]
