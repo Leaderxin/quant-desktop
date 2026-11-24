@@ -48,7 +48,7 @@ pub mod keys {
     pub const WINDOW_HEIGHT: &str = "window_height";
     pub const WINDOW_MAXIMIZED: &str = "window_maximized";
 
-    /// 行情条窗口位置(用户拖动后保存,越界则回落右下角默认位)。
+    /// 行情条窗口位置(用户拖动后保存,越界会被钳回显示器工作区并集)。
     pub const TICKER_X: &str = "ticker_x";
     pub const TICKER_Y: &str = "ticker_y";
 

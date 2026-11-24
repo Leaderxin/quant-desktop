@@ -132,7 +132,7 @@ export function useTickerWindowHeight(
    *
    * 行情条贴在屏幕右下角，但改尺寸以左上角为锚伸缩：长高会把下边缘
    * 推出屏幕，压矮则让窗口悬在半空。所以改完尺寸后按「物理高度差」把
-   * y 反向挪回去，把下边缘钉在原地（新位置会被 lib.rs 的 Moved 处理器
+   * y 反向挪回去，把下边缘钉在原地（新位置会被 window_bounds 的去抖 worker
    * 照常存进 SQLite）。行情条无窗口装饰（inner == outer），outerSize 量
    * 到的就是命令设的那个高度。
    */

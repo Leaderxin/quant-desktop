@@ -57,7 +57,7 @@ QuantDesktop 是监控 A 股的 Tauri 2 桌面应用：两个独立 webview 窗�
 
 CSP 必须放行 `connect-src 'self' ipc: http://ipc.localhost`（Windows 走 `http://ipc.localhost`，其余平台 `ipc:`）；缺了它每次 invoke 都会先 fetch 失败再退回 postMessage，日志里成串 `IPC custom protocol failed`。
 
-行情条的位置边界由 [window_bounds.rs](src-tauri/src/window_bounds.rs) 单点管理：边界是**显示器工作区并集**（`Monitor::work_area()`，Windows 的 `WM_MOVING` 路径等价地取 `GetMonitorInfoW` 的 `rcWork`；已扣除 Windows 任务栏 / macOS 菜单栏与 Dock / Linux 面板），判定是「窗口矩形被并集完整覆盖」，因此相邻显示器之间可以骑在交界上，但整条永远不会落到屏幕外。恢复入口只有 `restore_ticker_position`（启动、显示、拔屏后回退都走它）；Windows 拖拽在 `WM_MOVING` 里实时修正候选 `RECT`，macOS/Linux 由去抖 worker 在停止移动 200ms 后钳制，`Resized` 也触发同一套逻辑（高度随内容增长时防止钻进任务栏）。原生 Wayland 无法设置窗口位置，钳制退化为 no-op。**不要**再按 `primary_monitor()` 或显示器矩形写第二份边界判断 —— 负坐标扩展屏与任务栏遮挡都会漏掉。
+行情条的位置边界由 [window_bounds.rs](src-tauri/src/window_bounds.rs) 单点管理：边界是**显示器工作区并集**（`Monitor::work_area()`，Windows 的 `WM_MOVING` 路径等价地取 `GetMonitorInfoW` 的 `rcWork`；已扣除 Windows 任务栏 / macOS 菜单栏与 Dock / Linux 面板），判定是「窗口矩形被并集完整覆盖」，因此相邻显示器之间可以骑在交界上，但整条永远不会落到屏幕外。恢复入口只有 `restore_ticker_position`（启动、显示，以及拔屏后下次显示时的回退都走它（应用内没有显示器热插拔监听；Windows 拔屏时系统迁移窗口产生的 Moved 会由 worker 钳制））；Windows 拖拽在 `WM_MOVING` 里实时修正候选 `RECT`，macOS/Linux 由去抖 worker 在停止移动 200ms 后钳制，`Resized` 也触发同一套逻辑（高度随内容增长时防止钻进任务栏）。原生 Wayland 无法设置窗口位置，钳制退化为 no-op。**不要**再按 `primary_monitor()` 或显示器矩形写第二份边界判断 —— 负坐标扩展屏与任务栏遮挡都会漏掉。
 
 ### Linux 启动后端：Wayland 会话自动切 XWayland
 
@@ -226,7 +226,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 
 ### 窗口位置
 
-主窗口的 `window_x`/`window_y`/`window_width`/`window_height` 在移动/缩放/关闭时写入 `settings`，下次启动按显示器边界校验后恢复。行情条位置存 `ticker_x`/`ticker_y`（物理像素），启动/显示时由 `window_bounds::restore_ticker_position` 按显示器工作区钳制后恢复；无存档或存档失效时才退回主显示器工作区右下角。
+主窗口的 `window_x`/`window_y`/`window_width`/`window_height` 在移动/缩放/关闭时写入 `settings`，下次启动按显示器边界校验后恢复。行情条位置存 `ticker_x`/`ticker_y`（物理像素），启动/显示时由 `window_bounds::restore_ticker_position` 按显示器工作区钳制后恢复；无存档或存档值无法解析时才退回主显示器工作区右下角；越界存档会被钳回工作区并集。
 
 ### 官网（`website/`）
 

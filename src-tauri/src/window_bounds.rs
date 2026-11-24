@@ -37,7 +37,7 @@ fn work_areas(window: &tauri::WebviewWindow) -> Vec<WorkArea> {
     match window.available_monitors() {
         Ok(monitors) => monitors.iter().map(work_area_of).collect(),
         Err(e) => {
-            log::warn!("[bounds] available_monitors failed: {e}");
+            log::warn!("[bounds] 读取显示器列表失败: {e}");
             Vec::new()
         }
     }
@@ -58,11 +58,71 @@ fn save_position(db: &Database, pos: (i32, i32)) {
     }
 }
 
+/// 在物理坐标系里找离 `point` 最近的显示器，返回它的缩放系数。
+///
+/// 不用 `WebviewWindow::monitor_from_point`：tao 在 Windows 上按物理像素解释
+/// 该点，在 macOS/Linux 上按逻辑像素解释（tao 的 monitor position 是逻辑坐标
+/// 乘 scale_factor 得到的物理值），跨平台口径不一致。这里统一用
+/// `Monitor::position()/size()` 的物理矩形自己算距离。
+fn nearest_monitor_scale(window: &tauri::WebviewWindow, point: (i32, i32)) -> Option<f64> {
+    let monitors = window.available_monitors().ok()?;
+    monitors
+        .iter()
+        .map(|m| {
+            let pos = m.position();
+            let size = m.size();
+            let dx = axis_distance(
+                point.0 as i64,
+                pos.x as i64,
+                pos.x as i64 + size.width as i64,
+            );
+            let dy = axis_distance(
+                point.1 as i64,
+                pos.y as i64,
+                pos.y as i64 + size.height as i64,
+            );
+            (m.scale_factor(), dx * dx + dy * dy)
+        })
+        .min_by(|a, b| a.1.cmp(&b.1))
+        .map(|(scale, _)| scale)
+}
+
+fn axis_distance(value: i64, lo: i64, hi: i64) -> i64 {
+    if value < lo {
+        lo - value
+    } else if value > hi {
+        value - hi
+    } else {
+        0
+    }
+}
+
+/// 恢复目标：优先钳制存档；没有存档或存档不可用时退回主屏工作区右下角。
+///
+/// 拆成纯函数是为了可测：这是 `restore_ticker_position` 里唯一的决策分支。
+fn resolve_restore_target(
+    saved: Option<(i32, i32)>,
+    size: (u32, u32),
+    areas: &[WorkArea],
+    primary: Option<WorkArea>,
+) -> Option<(i32, i32)> {
+    if areas.is_empty() {
+        return None;
+    }
+    if let Some(pos) = saved {
+        if let Some(clamped) = clamp_rect(pos, size, areas) {
+            return Some(clamped);
+        }
+    }
+    let area = primary.or_else(|| areas.first().copied())?;
+    Some(bottom_right_in(&area, size, DEFAULT_MARGIN))
+}
+
 /// 启动 / 显示行情条时的位置恢复（唯一入口）。
 ///
 /// 存档越界（显示器被拔掉、分辨率变化、负坐标布局变化）时钳回工作区并集；
-/// 完全不可用时退回主显示器工作区右下角。恢复后会立刻写回库，避免下次显示
-/// 继续拿一个非法存档来校验。
+/// 完全不可用时退回主显示器工作区右下角。位置确实变化时写回库，避免下次
+/// 显示继续拿一个非法存档来校验。
 pub(crate) fn restore_ticker_position(
     window: &tauri::WebviewWindow,
     db: &Database,
@@ -74,27 +134,42 @@ pub(crate) fn restore_ticker_position(
         return;
     }
 
-    // set_size 是投递到事件循环的请求，紧接着读 outer_size() 可能还是旧值，
-    // 所以按逻辑尺寸 × 缩放换算目标物理尺寸（与 set_ticker_size 的口径一致）。
-    let scale = window.scale_factor().unwrap_or(1.0);
+    let saved = read_saved_position(db);
+
+    // 物理尺寸必须按「目标显示器」的缩放算：启动时窗口还在默认位置（通常是
+    // 主屏），用 window.scale_factor() 会把 220 逻辑像素按错误的 DPI 折算，
+    // 在混合缩放的多屏布局里把贴着边界的存档往内挤一截，且挤完还会写回库。
+    // 目标显示器由存档坐标在物理坐标系里最近的那块决定；没有存档时用主屏
+    // （默认位置就在主屏右下角）。
+    let scale = saved
+        .and_then(|p| nearest_monitor_scale(window, p))
+        .or_else(|| {
+            window
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .map(|m| m.scale_factor())
+        })
+        .or_else(|| {
+            window
+                .current_monitor()
+                .ok()
+                .flatten()
+                .map(|m| m.scale_factor())
+        })
+        .unwrap_or_else(|| window.scale_factor().unwrap_or(1.0));
     let size = (
         (crate::datasource::TICKER_WIDTH as f64 * scale).round().max(1.0) as u32,
         (logical_height as f64 * scale).round().max(1.0) as u32,
     );
 
-    let saved = read_saved_position(db);
-    let target = match saved.and_then(|p| clamp_rect(p, size, &areas)) {
-        Some(p) => p,
-        None => {
-            let primary = window
-                .primary_monitor()
-                .ok()
-                .flatten()
-                .map(|m| work_area_of(&m))
-                .or_else(|| areas.first().copied())
-                .unwrap_or(areas[0]);
-            bottom_right_in(&primary, size, DEFAULT_MARGIN)
-        }
+    let primary = window
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| work_area_of(&m));
+    let Some(target) = resolve_restore_target(saved, size, &areas, primary) else {
+        return;
     };
 
     if saved != Some(target) {
@@ -104,7 +179,11 @@ pub(crate) fn restore_ticker_position(
         log::warn!("[bounds] 设置行情条位置失败: {e}");
         return;
     }
-    save_position(db, target);
+    // 只在位置确实变化时写库：显示一次就写两行 SQLite 没有必要，也和
+    // `clamp_and_save` 的去重口径保持一致。
+    if saved != Some(target) {
+        save_position(db, target);
+    }
 }
 
 /// 把当前窗口钳回工作区并落库；返回落库后的位置。幂等。
@@ -335,7 +414,7 @@ pub(crate) fn spawn_settle_worker(window: tauri::WebviewWindow, db: Arc<Database
     ));
 
     let event_signal = signal.clone();
-    let _ = window.on_window_event(move |event| {
+    window.on_window_event(move |event| {
         if matches!(
             event,
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
@@ -372,7 +451,7 @@ pub(crate) fn spawn_settle_worker(window: tauri::WebviewWindow, db: Arc<Database
                 drop(state);
 
                 if let Some(pos) = clamp_and_save(&window, &db) {
-                    log::debug!("[bounds] settled at {:?}", pos);
+                    log::debug!("[bounds] 行情条位置已收敛于 {:?}", pos);
                 }
             }
         });
@@ -472,6 +551,11 @@ mod win32 {
         1 // 继续枚举
     }
 
+    /// WM_MOVING 每帧触发、运行在 UI 线程的模态移动循环里；这里不复用上面的
+    /// Tauri 版 `work_areas(window)`：那会走事件循环转发与等待，在原生回调里
+    /// 既没必要也不安全。两者都只产出工作区矩形，边界规则完全相同。
+    ///
+    /// 枚举失败时返回空表，实时钳制退化为 no-op（松手后的去抖 worker 仍会钳制）。
     fn work_areas() -> Vec<WorkArea> {
         let mut areas: Vec<WorkArea> = Vec::new();
         unsafe {
@@ -680,5 +764,46 @@ mod tests {
     fn bottom_right_default_stays_inside_with_margin() {
         let a = area(0, 0, 1920, 1040);
         assert_eq!(bottom_right_in(&a, SIZE, 10), (1690, 990));
+    }
+
+    #[test]
+    fn left_above_monitor_with_negative_y_is_kept() {
+        let areas = [area(0, 0, 1920, 1040), area(0, -1080, 1920, 1080)];
+        assert_eq!(clamp_rect((100, -1000), SIZE, &areas), Some((100, -1000)));
+        assert_eq!(clamp_rect((100, -1100), SIZE, &areas), Some((100, -1080)));
+    }
+
+    #[test]
+    fn taskbar_on_the_right_shrinks_the_work_area() {
+        let areas = [area(0, 0, 1860, 1040)];
+        assert_eq!(clamp_rect((1800, 100), SIZE, &areas), Some((1640, 100)));
+    }
+
+    #[test]
+    fn restore_target_prefers_saved_and_clamps_out_of_bounds() {
+        let areas = [area(0, 0, 1920, 1040)];
+        assert_eq!(
+            resolve_restore_target(Some((100, 100)), SIZE, &areas, None),
+            Some((100, 100))
+        );
+        assert_eq!(
+            resolve_restore_target(Some((-100, 100)), SIZE, &areas, None),
+            Some((0, 100))
+        );
+    }
+
+    #[test]
+    fn restore_target_without_save_uses_primary_bottom_right() {
+        let primary = area(0, 0, 1920, 1040);
+        let areas = [primary, area(1920, 0, 1920, 1040)];
+        assert_eq!(
+            resolve_restore_target(None, SIZE, &areas, Some(primary)),
+            Some((1690, 990))
+        );
+    }
+
+    #[test]
+    fn restore_target_without_monitors_is_none() {
+        assert_eq!(resolve_restore_target(Some((0, 0)), SIZE, &[], None), None);
     }
 }
