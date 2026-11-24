@@ -382,6 +382,162 @@ pub(crate) fn spawn_settle_worker(window: tauri::WebviewWindow, db: Arc<Database
     }
 }
 
+/// 给行情条挂 Win32 移动子类：拖拽过程中直接修正系统给出的候选矩形。
+///
+/// 只在 Windows 编译。Windows 的任务栏是 topmost 且行情条刻意不抢焦点，
+/// 靠 z 序压不过它，所以拖到任务栏附近时必须实时停住，不能等松手再弹回。
+#[cfg(target_os = "windows")]
+pub(crate) fn install_move_clamp(window: &tauri::WebviewWindow) {
+    win32::install(window);
+}
+
+#[cfg(target_os = "windows")]
+mod win32 {
+    use super::{clamp_rect, WorkArea};
+    use std::ffi::c_void;
+
+    type HWND = *mut c_void;
+    type HMONITOR = *mut c_void;
+
+    const WM_MOVING: u32 = 0x0216;
+    const WM_NCDESTROY: u32 = 0x0082;
+    const SUBCLASS_ID: usize = 0x5144_5442; // "QDTB"
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct RECT {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    #[repr(C)]
+    struct MONITORINFO {
+        cb_size: u32,
+        rc_monitor: RECT,
+        rc_work: RECT,
+        flags: u32,
+    }
+
+    type MonitorEnumProc =
+        unsafe extern "system" fn(HMONITOR, *mut c_void, *mut RECT, isize) -> i32;
+    type SubclassProc =
+        unsafe extern "system" fn(HWND, u32, usize, isize, usize, usize) -> isize;
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn EnumDisplayMonitors(
+            hdc: *mut c_void,
+            clip: *const RECT,
+            callback: MonitorEnumProc,
+            data: isize,
+        ) -> i32;
+        fn GetMonitorInfoW(monitor: HMONITOR, info: *mut MONITORINFO) -> i32;
+    }
+
+    #[link(name = "comctl32")]
+    extern "system" {
+        fn SetWindowSubclass(
+            hwnd: HWND,
+            callback: SubclassProc,
+            id: usize,
+            ref_data: usize,
+        ) -> i32;
+        fn RemoveWindowSubclass(hwnd: HWND, callback: SubclassProc, id: usize) -> i32;
+        fn DefSubclassProc(hwnd: HWND, msg: u32, wparam: usize, lparam: isize) -> isize;
+    }
+
+    unsafe extern "system" fn collect_area(
+        monitor: HMONITOR,
+        _hdc: *mut c_void,
+        _rect: *mut RECT,
+        data: isize,
+    ) -> i32 {
+        let out = &mut *(data as *mut Vec<WorkArea>);
+        let mut info = MONITORINFO {
+            cb_size: std::mem::size_of::<MONITORINFO>() as u32,
+            rc_monitor: RECT::default(),
+            rc_work: RECT::default(),
+            flags: 0,
+        };
+        if GetMonitorInfoW(monitor, &mut info) != 0 {
+            out.push(WorkArea {
+                x: info.rc_work.left,
+                y: info.rc_work.top,
+                w: (info.rc_work.right - info.rc_work.left).max(0) as u32,
+                h: (info.rc_work.bottom - info.rc_work.top).max(0) as u32,
+            });
+        }
+        1 // 继续枚举
+    }
+
+    fn work_areas() -> Vec<WorkArea> {
+        let mut areas: Vec<WorkArea> = Vec::new();
+        unsafe {
+            EnumDisplayMonitors(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                collect_area,
+                &mut areas as *mut Vec<WorkArea> as isize,
+            );
+        }
+        areas
+    }
+
+    unsafe extern "system" fn ticker_move_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: usize,
+        lparam: isize,
+        id: usize,
+        _ref_data: usize,
+    ) -> isize {
+        if msg == WM_MOVING && lparam != 0 {
+            let rect = &mut *(lparam as *mut RECT);
+            let size = (
+                (rect.right - rect.left).max(0) as u32,
+                (rect.bottom - rect.top).max(0) as u32,
+            );
+            if let Some((x, y)) = clamp_rect((rect.left, rect.top), size, &work_areas()) {
+                let dx = x - rect.left;
+                let dy = y - rect.top;
+                if dx != 0 || dy != 0 {
+                    rect.left += dx;
+                    rect.right += dx;
+                    rect.top += dy;
+                    rect.bottom += dy;
+                }
+            }
+            // 修改后的 RECT 交给系统继续处理；tao 不处理 WM_MOVING，链式安全。
+            return DefSubclassProc(hwnd, msg, wparam, lparam);
+        }
+        if msg == WM_NCDESTROY {
+            RemoveWindowSubclass(hwnd, ticker_move_proc, id);
+        }
+        DefSubclassProc(hwnd, msg, wparam, lparam)
+    }
+
+    pub(super) fn install(window: &tauri::WebviewWindow) {
+        use raw_window_handle::HasWindowHandle;
+        let Ok(handle) = window.window_handle() else {
+            log::warn!("[bounds] 取不到行情条窗口句柄，拖拽实时钳制未启用");
+            return;
+        };
+        let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() else {
+            log::warn!("[bounds] 行情条窗口不是 Win32 句柄，拖拽实时钳制未启用");
+            return;
+        };
+        let hwnd = h.hwnd.get() as HWND;
+        let ok = unsafe { SetWindowSubclass(hwnd, ticker_move_proc, SUBCLASS_ID, 0) };
+        if ok == 0 {
+            log::warn!("[bounds] SetWindowSubclass 失败，拖拽实时钳制未启用");
+        } else {
+            log::info!("[bounds] 行情条拖拽实时钳制已安装（WM_MOVING）");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

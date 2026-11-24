@@ -912,6 +912,9 @@ pub fn run() {
                 // Windows 的拖拽由 WM_MOVING 实时处理，这里负责落库与键盘移动兜底。
                 window_bounds::spawn_settle_worker(ticker.clone(), db.clone());
 
+                #[cfg(target_os = "windows")]
+                window_bounds::install_move_clamp(&ticker);
+
                 // Remove ticker from taskbar at both levels:
                 //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)
                 //   apply_tool_window → WS_EX_TOOLWINDOW (survives Explorer restart)
