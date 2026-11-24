@@ -908,16 +908,9 @@ pub fn run() {
                     initial_ticker_height,
                 );
 
-                // 位置变化后按工作区并集钳制并落库。
-                // Task 3 会把它换成去抖 worker；这里先保持「每次移动即处理」，
-                // 让中间状态也能正确记住扩展屏位置。
-                let ticker_for_move = ticker.clone();
-                let db_for_move = db.clone();
-                let _ = ticker.on_window_event(move |event| {
-                    if matches!(event, tauri::WindowEvent::Moved(_)) {
-                        window_bounds::clamp_and_save(&ticker_for_move, &db_for_move);
-                    }
-                });
+                // 位置/尺寸变化后去抖钳制并落库：macOS/Linux 靠它完成实际钳制，
+                // Windows 的拖拽由 WM_MOVING 实时处理，这里负责落库与键盘移动兜底。
+                window_bounds::spawn_settle_worker(ticker.clone(), db.clone());
 
                 // Remove ticker from taskbar at both levels:
                 //   set_skip_taskbar  → ITaskbarList::DeleteTab (immediate, one-shot)

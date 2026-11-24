@@ -8,6 +8,8 @@
 // 本模块只管几何与调用时机；平台差异只在「从哪拿工作区」和「什么时候调用」。
 
 use crate::db::{keys, Database};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WorkArea {
@@ -305,6 +307,79 @@ fn bottom_right_in(area: &WorkArea, size: (u32, u32), margin: i32) -> (i32, i32)
         (max_x - margin as i64).max(area.x as i64) as i32,
         (max_y - margin as i64).max(area.y as i64) as i32,
     )
+}
+
+/// 停止移动多久后才认为手势结束（毫秒）。
+///
+/// X11/macOS 拿不到可靠的「拖拽结束」信号，只能靠静默判定。阈值太短会在
+/// 拖拽中途贴边，太长则松手后回弹有明显的滞后感；200ms 是两者的折中。
+const SETTLE_DELAY: Duration = Duration::from_millis(200);
+
+struct SettleState {
+    last_change: Instant,
+    dirty: bool,
+}
+
+/// 监听行情条的移动与改尺寸，静默后钳制并落库。
+///
+/// Windows 的拖拽已由 `WM_MOVING` 实时修正，这里只负责落库；macOS/Linux
+/// 的实际钳制由它完成。监听 `Resized` 是因为高度随内容变化：前端把下边缘
+/// 钉住，长高可能把窗口顶进任务栏，而这条路径没有 Moved 事件。
+pub(crate) fn spawn_settle_worker(window: tauri::WebviewWindow, db: Arc<Database>) {
+    let signal = Arc::new((
+        std::sync::Mutex::new(SettleState {
+            last_change: Instant::now(),
+            dirty: false,
+        }),
+        std::sync::Condvar::new(),
+    ));
+
+    let event_signal = signal.clone();
+    let _ = window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+        ) {
+            let (lock, cv) = &*event_signal;
+            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            state.last_change = Instant::now();
+            state.dirty = true;
+            cv.notify_all();
+        }
+    });
+
+    let spawned = std::thread::Builder::new()
+        .name("ticker-bounds".into())
+        .spawn(move || {
+            let (lock, cv) = &*signal;
+            loop {
+                let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                while !state.dirty {
+                    state = cv.wait(state).unwrap_or_else(|e| e.into_inner());
+                }
+                // 等到最后一次几何变化之后连续 SETTLE_DELAY 没有新事件。
+                loop {
+                    let elapsed = state.last_change.elapsed();
+                    if elapsed >= SETTLE_DELAY {
+                        break;
+                    }
+                    state = cv
+                        .wait_timeout(state, SETTLE_DELAY - elapsed)
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0;
+                }
+                state.dirty = false;
+                drop(state);
+
+                if let Some(pos) = clamp_and_save(&window, &db) {
+                    log::debug!("[bounds] settled at {:?}", pos);
+                }
+            }
+        });
+
+    if let Err(e) = spawned {
+        log::warn!("[bounds] 启动位置收敛线程失败，位置只在下次显示时校正: {e}");
+    }
 }
 
 #[cfg(test)]
