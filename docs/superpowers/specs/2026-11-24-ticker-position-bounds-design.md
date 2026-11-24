@@ -73,7 +73,8 @@
 pub struct WorkArea { pub x: i32, pub y: i32, pub w: u32, pub h: u32 }
 
 /// 返回使窗口被工作区并集完整覆盖、且位移最小的左上角。
-/// 已经完整可见 → 原样返回；没有任何可行解（无显示器 / 窗口比所有屏都大）→ None。
+/// 已经完整可见 → 原样返回；没有显示器 → None；窗口比所有工作区都大时
+/// 退回重叠面积最大者的左上角（保证至少锚在可见区域）。
 pub fn clamp_rect(pos: (i32, i32), size: (u32, u32), areas: &[WorkArea]) -> Option<(i32, i32)>
 ```
 

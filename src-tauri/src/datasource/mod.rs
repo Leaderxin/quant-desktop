@@ -111,8 +111,8 @@ pub const DEFAULT_INDEX_CODES: &[&str] = &[
 /// `set_ticker_visible` restore that saved height before restoring the window
 /// position, so the bottom-edge anchor never mistakes a size change for a move.
 ///
-/// Consumers needing *physical* pixels (the `outer_size()` fallbacks in
-/// `lib.rs`) must multiply by the window's `scale_factor()` — the raw value
+/// Consumers needing *physical* pixels (e.g. `window_bounds` sizing) must
+/// multiply by the relevant monitor's `scale_factor()` — the raw value
 /// undersizes the window at DPI ≠ 100%.
 pub const TICKER_WIDTH: u32 = 220;
 pub const TICKER_HEIGHT: u32 = 40;
