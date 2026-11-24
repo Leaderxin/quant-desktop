@@ -61,6 +61,12 @@
         Square150x150Logo="Square150x150Logo.png"
         Square44x44Logo="Square44x44Logo.png"
         BackgroundColor="transparent" />
+      <!-- BackgroundColor 只决定「plated 回退」时那块底板的颜色，而 transparent
+           会被解析成系统强调色（默认蓝）。正常情况下用不到它：Square44x44Logo
+           的 targetsize-N_altform-unplated / _altform-lightunplated 变体在打包时
+           由 makepri 编进 resources.pri（见 store-release.yml），Windows 会直接
+           按目标尺寸取无底板图。别把变体的限定符写进上面的路径 —— 包校验会拒绝。
+           150x150 只有固定的一张，开始菜单磁贴仍是带底板的。 -->
       <Extensions>
         <!-- 打包应用的开机自启：声明 StartupTask（默认关闭，应用内开关通过 WinRT
              StartupTask API 启用，见 src-tauri/src/commands/autostart.rs）。

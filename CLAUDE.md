@@ -236,7 +236,7 @@ K 线：蜡烛按 `compareRule: 'previous_close'`（红涨绿跌灰平），wick
 - [release.yml](.github/workflows/release.yml) — `v*` tag / 手动；三平台矩阵，产出 exe/msi/dmg/deb/AppImage。
 - [ci.yml](.github/workflows/ci.yml) — push/PR：前端 `vue-tsc` + vitest；Windows job 跑 `cargo check`（default + `--features store`）与 `cargo test`；`backend-linux` job 编译并运行 Linux-only 的 `linux_backend` 用例。
 - [pages.yml](.github/workflows/pages.yml) — 官网：`site-assets.mjs` 校验后发布；PR 只校验。
-- [store-release.yml](.github/workflows/store-release.yml) — 手动 MSIX：`--features store` 构建后 `msiexec /a` + `makeappx` 重打包；`store` feature 关 updater、Windows 自启换 StartupTask。
+- [store-release.yml](.github/workflows/store-release.yml) — 手动 MSIX：`--features store` 构建后 `msiexec /a` + `makeappx` 重打包；`store` feature 关 updater、Windows 自启换 StartupTask。**任务栏图标**取自包资源而非 exe 内嵌图标（exe/msi 版没有包身份，所以正常）：必须带 `Square44x44Logo.targetsize-N_altform-unplated/lightunplated` 变体（`npm run msix:icons` 生成、产物提交）并由 `makepri` 编进 `resources.pri`，否则 Windows 按 plated 语义画一块底板，颜色取 `BackgroundColor`（`transparent` 会解析成系统强调色）。manifest 的图片路径不能带限定符；生成后必须回读 dump 确认 `AlternateForm-UNPLATED/LIGHTUNPLATED` 真在里面（空索引同样返回 0）。
 
 ## 依赖版本钉子
 
