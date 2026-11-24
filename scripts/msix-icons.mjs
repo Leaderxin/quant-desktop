@@ -132,13 +132,21 @@ async function main() {
   await rm(WORKER, { recursive: true, force: true });
   await mkdir(WORKER, { recursive: true });
 
-  // Clear the previous run: a size/form dropped from the lists above must not
-  // linger and keep getting packed.
-  await rm(OUT_DIR, { recursive: true, force: true });
-  await mkdir(OUT_DIR, { recursive: true });
-
   console.log(`[msix-icons] rendering ${TARGET_SIZES.length} sizes from ${ICON} …`);
   const encoded = await encodeIcons();
+
+  // A size the page failed to render surfaces here, not as a TypeError from
+  // decode(undefined) three lines down.
+  const missing = TARGET_SIZES.filter((n) => typeof encoded[n] !== 'string');
+  if (missing.length > 0) {
+    throw new Error(`encoder returned no image for sizes: ${missing.join(', ')}`);
+  }
+
+  // Clear the previous run only after rendering succeeded: a size/form dropped
+  // from the lists above must not linger and keep getting packed, but a Chrome
+  // failure must not delete the committed assets from the working tree either.
+  await rm(OUT_DIR, { recursive: true, force: true });
+  await mkdir(OUT_DIR, { recursive: true });
 
   let count = 0;
   for (const n of TARGET_SIZES) {

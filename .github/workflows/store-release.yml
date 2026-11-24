@@ -41,8 +41,11 @@ jobs:
 
           # 显式 UTF-8 读取，不依赖 PS 版本的默认代码页（tauri.conf.json 含中文）。
           $utf8 = New-Object System.Text.UTF8Encoding $false   # $false = 不写 BOM
+          # 相对路径按当前目录解析，绝对路径原样使用。不能无条件 Join-Path：
+          # 传绝对路径会拼成 "$PWD/C:\..."，GetFullPath 直接以「路径格式不正确」失败。
           function Read-Utf8([string]$Path) {
-            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath((Join-Path $PWD $Path)), $utf8)
+            $full = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $PWD $Path }
+            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath($full), $utf8)
           }
 
           $errors = @()
@@ -79,7 +82,7 @@ jobs:
           $msixIcons = @(Get-ChildItem "src-tauri/icons/msix" -Filter "*.png" -ErrorAction SilentlyContinue)
           foreach ($form in @("unplated", "lightunplated")) {
             if (-not ($msixIcons.Name -match "\.targetsize-\d+_altform-$form\.png$")) {
-              $errors += "Missing src-tauri/icons/msix/*_altform-$form.png — run: npm run msix:icons"
+              $errors += "Missing src-tauri/icons/msix/*_altform-$form.png - run: npm run msix:icons"
             }
           }
 
@@ -137,8 +140,11 @@ jobs:
           # 显式 UTF-8 读写，不依赖 PS 版本的默认代码页。
           # AppxManifest.xml 含中文（商店名称），若按系统 ANSI 代码页读取会损坏。
           $utf8 = New-Object System.Text.UTF8Encoding $false   # $false = 不写 BOM
+          # 相对路径按当前目录解析，绝对路径原样使用。不能无条件 Join-Path：
+          # 传绝对路径会拼成 "$PWD/C:\..."，GetFullPath 直接以「路径格式不正确」失败。
           function Read-Utf8([string]$Path) {
-            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath((Join-Path $PWD $Path)), $utf8)
+            $full = if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path $PWD $Path }
+            [System.IO.File]::ReadAllText([System.IO.Path]::GetFullPath($full), $utf8)
           }
 
           # ── 1. 解包 MSI（msiexec /a 仅提取文件树，不执行安装）──
@@ -212,6 +218,17 @@ jobs:
           $priConfig = Join-Path $env:TEMP "quant-desktop-priconfig.xml"
           & $makepri createconfig /cf $priConfig /dq zh-CN /o
           if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed with exit code $LASTEXITCODE" }
+
+          # createconfig 默认写一段 <packaging>（autoResourcePackage: Language /
+          # Scale / DXFeatureLevel）：命中这些限定符的资源会被拆进独立资源包。
+          # 平铺 MSIX 只带一个 resources.pri，今天没有 scale-* 资产因此输出不变，
+          # 但将来补 scale 变体就会取不到 —— 直接去掉，留单一资源索引。
+          $priCfg = [System.IO.File]::ReadAllText($priConfig, $utf8)
+          $priCfg = $priCfg -replace '(?s)\s*<packaging>.*?</packaging>', ''
+          [System.IO.File]::WriteAllText($priConfig, $priCfg, $utf8)
+          if ([System.IO.File]::ReadAllText($priConfig, $utf8) -match '<packaging>') {
+            throw "Failed to strip <packaging> from priconfig.xml"
+          }
 
           # /dq 必须与 AppxManifest 的 <Resource Language> 一致。
           & $makepri new /pr $pkgRoot /cf $priConfig `
