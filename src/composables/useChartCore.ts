@@ -208,8 +208,11 @@ export function useChartCore(options: {
           text: { size: 11, color: c.tooltipText, family: 'var(--font-sans)' },
         } as any, // text 为遗留字段
         priceMark: {
-          high: { show: false },
-          low: { show: false },
+          // 可视范围内的最高/最低价标识：klinecharts 按当前视口重算，滚动、缩放后
+          // 自动跟着换位置。颜色跟纵轴刻度一致，不借用涨跌色 —— 最高点不一定是
+          // 上涨那根，染成红/绿会被误读成方向。
+          high: { show: true, color: c.tickColor, textSize: 10, textFamily: 'var(--font-sans)' },
+          low: { show: true, color: c.tickColor, textSize: 10, textFamily: 'var(--font-sans)' },
           last: { show: false, upColor: c.up, downColor: c.down, noChangeColor: c.noChange, extendTexts: [] },
         },
       },
